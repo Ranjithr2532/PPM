@@ -1,0 +1,172 @@
+#root {
+  min-height: 100vh;
+}
+
+.ant-layout {
+  background: transparent;
+}
+
+.ant-table {
+  font-size: 0.92rem;
+}
+
+/* Enhanced styling for flashy UI */
+.ant-card {
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.ant-card:hover {
+  transform: translateY(-4px);
+}
+
+.ant-statistic-title {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.ant-statistic-content {
+  font-weight: 700;
+}
+
+/* Gradient button enhancement */
+.ant-btn-primary {
+  transition: all 0.3s ease;
+}
+
+.ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* Search and filter section styling */
+.ant-input-affix-wrapper,
+.ant-picker,
+.ant-select-selector {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.ant-input-affix-wrapper:hover,
+.ant-picker:hover,
+.ant-select:hover .ant-select-selector {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+/* Table enhancements */
+.ant-table-thead > tr > th {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  border: none;
+  height: auto;
+  padding: 10px 12px;
+  line-height: 1.2;
+}
+
+/* Prevent sticky/fixed header cells from stretching vertically */
+.ant-table-thead > tr {
+  height: auto;
+}
+
+.ant-table-thead > tr > th.ant-table-cell-fix-left,
+.ant-table-thead > tr > th.ant-table-cell-fix-right {
+  height: auto;
+}
+
+.ant-table-tbody > tr > td {
+  padding: 10px 12px;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #f0f7ff;
+}
+
+.ant-table-bordered .ant-table-thead > tr > th,
+.ant-table-bordered .ant-table-tbody > tr > td {
+  border-color: #e8e8e8;
+}
+
+/* Card shadow enhancement */
+.ant-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.metric-toggle .ant-segmented-item {
+  border-color: #ef4444;
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.metric-toggle .ant-segmented-item-checked {
+  color: #ffffff;
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.metric-toggle .ant-segmented-item:not(.ant-segmented-item-checked):hover {
+  background: #fca5a5;
+}
+
+/* Master Proposals - Description cell truncation */
+.description-cell {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Responsive table for Master Proposals */
+.master-proposals-table .ant-table-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-proposals-table .ant-table-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: keep-all;
+}
+
+.admin-proposals-table .ant-table-cell > * {
+  white-space: nowrap;
+}
+
+/* Sticky header for admin table */
+.admin-proposals-table .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+}
+
+.admin-proposals-table .ant-table-thead > tr > th::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fafafa;
+  z-index: -1;
+}
+
+.role-proposals-table .ant-table-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: keep-all;
+}
+
+.role-proposals-table .ant-table-cell > * {
+  white-space: nowrap;
+}

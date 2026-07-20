@@ -1,0 +1,30 @@
+<svg
+  width="260"
+  height="100"
+  viewBox="0 0 260 100"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+  aria-label="CMTI logo"
+>
+  <title>CMTI</title>
+  <g fill="#0077c8">
+    <path
+      d="M20 32C20 18.745 30.745 8 44 8h52v18H48c-4.418 0-8 3.582-8 8v30c0 4.418 3.582 8 8 8h48v18H44C30.745 90 20 79.255 20 66V32Z"
+    />
+    <path
+      d="M90 10h30v80H90z"
+      transform="skewX(-8)"
+    />
+    <path
+      d="M140 10h28v80h-28z"
+      transform="skewX(-8)"
+    />
+    <path
+      d="M176 10h30v54h32V10h30v80h-30V64h-32v26h-30z"
+    />
+    <path
+      d="M240 10h22v80h-22z"
+    />
+  </g>
+</svg>
+
