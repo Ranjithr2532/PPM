@@ -4,12 +4,11 @@ import Proposals from './pages/Proposals'
 import Configuration from './pages/Configuration'
 import Projects from './pages/Projects'
 import MasterProposals from './pages/MasterProposals'
-import GHProposals from './pages/GHproposals'
-import CHProposals from './pages/CHproposals'
+import Allproposals from './pages/Allproposals'
+// import CHProposals from './pages/CHproposals'
 import Login from './pages/Login'
 import CreateLogin from './pages/CreateLogin'
 import Sidebar from './components/Sidebar'
-import ScientistProposals from './pages/ScientistProposals'
 import DirectorProposals from './pages/Directorproposals'
 import FinancialAnalytics from './pages/financialanalytics'
 import Analytics from './pages/Analytics'
@@ -73,6 +72,7 @@ function RoleProtectedLayout({ basePath }) {
   const isAdmin = normalizedRole === 'admin' || normalizedRole === 'guest'
 
   // Select correct page components based on the current route base path.
+  // This ensures /admin uses the admin Analytics page instead of GH analytics.
   let ProposalsComponent = GHProposals
   let ProjectsComponent = Projects
   let AnalyticsComponent = Analytics
@@ -82,10 +82,11 @@ function RoleProtectedLayout({ basePath }) {
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
   } else if (basePath === 'ch') {
-    ProposalsComponent = CHProposals
+    ProposalsComponent = Allproposals
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
   } else if (basePath === 'scientist') {
+    // Scientist now has its own dedicated component
     ProposalsComponent = ScientistProposals
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
@@ -130,7 +131,7 @@ function RoleProtectedLayout({ basePath }) {
             {/* Only admins can access configuration */}
             {isAdmin && (
               <>
-                <Route path="overall-analytics" element={<Analytics />} />
+                <Route path="overall-analytics" element={<DirectorAnalytics />} />
                 <Route path="configuration" element={<Configuration />} />
                 <Route path="notification" element={<AdminNotification />} />
                 <Route path="access-control" element={<UserAccess />} />

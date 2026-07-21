@@ -64,7 +64,7 @@ function Login() {
       console.log('Login response:', response.data)
 
       const userData = response.data
-      
+
       let token = userData.access_token || userData.token
       if (!token) {
         const authHeader = response.headers?.authorization || response.headers?.Authorization
@@ -218,27 +218,27 @@ function Login() {
   // GH Role Selection Handlers
   const handleRoleSelection = (role) => {
     if (!pendingUserData) return
-    
+
     setSelectedRole(role)
-    
+
     // Update user payload with selected role
     const updatedUserPayload = {
       ...pendingUserData,
       role: role.toLowerCase()
     }
-    
+
     try {
       localStorage.setItem('ppm_user', JSON.stringify(updatedUserPayload))
       console.log('User saved to localStorage with role:', updatedUserPayload)
     } catch (err) {
       console.error('Failed to save user to localStorage', err)
     }
-    
+
     message.success(`Logged in as ${role}`)
     setShowRoleSelection(false)
     setPendingUserData(null)
     setSelectedRole('')
-    
+
     // Navigate based on selected role
     if (role === 'Group Head') {
       navigate('/gh/proposals')
@@ -451,7 +451,7 @@ function Login() {
               Welcome, {pendingUserData?.name}! Please select how you want to proceed:
             </p>
           </div>
-          
+
           <div className="space-y-3">
             <Button
               type="primary"
@@ -463,7 +463,7 @@ function Login() {
                 <span>Login as Group Head</span>
               </div>
             </Button>
-            
+
             <Button
               size="large"
               className="w-full h-12 text-base bg-green-600 hover:bg-green-700 text-white"
@@ -474,7 +474,7 @@ function Login() {
               </div>
             </Button>
           </div>
-          
+
           <div className="mt-4 pt-4 border-t">
             <Button
               type="link"

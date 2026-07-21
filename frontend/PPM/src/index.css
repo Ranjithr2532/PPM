@@ -16,3 +16,28 @@ body {
   min-height: 100vh;
   background-color: #f8fafc;
 }
+
+/* Ant Design Descriptions clean layout fixes */
+.ant-descriptions-view table {
+  width: 100% !important;
+  table-layout: fixed !important;
+}
+
+.ant-descriptions-item-label {
+  font-weight: 600 !important;
+  color: #334155 !important;
+  white-space: normal !important;
+  word-break: keep-all !important;
+  width: 20% !important;
+  vertical-align: top !important;
+  background-color: #f8fafc !important;
+}
+
+.ant-descriptions-item-content {
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+  color: #0f172a !important;
+  width: 30% !important;
+  vertical-align: top !important;
+}
