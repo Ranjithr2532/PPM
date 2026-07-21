@@ -8,8 +8,8 @@ import Allproposals from './pages/Allproposals'
 import Login from './pages/Login'
 import CreateLogin from './pages/CreateLogin'
 import Sidebar from './components/Sidebar'
-import DirectorProposals from './pages/Directorproposals'
-import FinancialAnalytics from './pages/financialanalytics'
+// import DirectorProposals from './pages/Directorproposals'
+// import FinancialAnalytics from './pages/financialanalytics'
 import Analytics from './pages/Analytics'
 
 
@@ -88,10 +88,10 @@ function RoleProtectedLayout({ basePath }) {
     ProposalsComponent = Allproposals
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
-  } else if (basePath === 'director') {
-    ProposalsComponent = DirectorProposals
-    // ProjectsComponent = Projects
-    AnalyticsComponent = Analytics
+    // } else if (basePath === 'director') {
+    //   ProposalsComponent = DirectorProposals
+    //   // ProjectsComponent = Projects
+    //   AnalyticsComponent = Analytics
   } else if (basePath === 'guest') {
     ProposalsComponent = Proposals
     ProjectsComponent = Projects
@@ -116,9 +116,9 @@ function RoleProtectedLayout({ basePath }) {
               <Route path="master-proposals" element={<MasterProposals />} />
             )}
             <Route path="analytics" element={<AnalyticsComponent />} />
-            {normalizedRole === 'director' && (
+            {/* {normalizedRole === 'director' && (
               <Route path="financial-analytics" element={<FinancialAnalytics />} />
-            )}
+            )} */}
             {normalizedRole !== 'director' && (
               <Route path="projects" element={<ProjectsComponent />} />
             )}
