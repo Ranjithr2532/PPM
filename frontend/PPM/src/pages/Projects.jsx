@@ -2812,13 +2812,15 @@ function Projects() {
             key: 'ALL',
             label: `All (${filteredCards.length})`,
           },
-          ...projectTypeOrder.map((type) => {
-            const count = groupedProjects[type]?.length || 0
-            return {
-              key: type,
-              label: `${type} (${count})`,
-            }
-          }),
+          ...projectTypeOrder
+            .filter((type) => (groupedProjects[type]?.length || 0) > 0)
+            .map((type) => {
+              const count = groupedProjects[type]?.length || 0
+              return {
+                key: type,
+                label: `${type} (${count})`,
+              }
+            }),
         ]}
       />
 
