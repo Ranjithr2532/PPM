@@ -216,7 +216,7 @@ function Projects() {
       if (rawUser) {
         return (JSON.parse(rawUser)?.name || '').trim()
       }
-    } catch (err) {}
+    } catch (err) { }
     return ''
   })
 
@@ -226,7 +226,7 @@ function Projects() {
       if (rawUser) {
         return (JSON.parse(rawUser)?.role || '').toLowerCase().trim()
       }
-    } catch (err) {}
+    } catch (err) { }
     return ''
   })
 
@@ -236,7 +236,7 @@ function Projects() {
       if (rawUser) {
         return (JSON.parse(rawUser)?.center || '').trim()
       }
-    } catch (err) {}
+    } catch (err) { }
     return ''
   })
 
@@ -246,7 +246,7 @@ function Projects() {
       if (rawUser) {
         return (JSON.parse(rawUser)?.group || '').trim()
       }
-    } catch (err) {}
+    } catch (err) { }
     return ''
   })
 
@@ -272,7 +272,16 @@ function Projects() {
         const center = (parsedUser?.center || '').trim()
 
         const roleLower = role.toLowerCase().trim()
-        if (roleLower === 'scientist' || roleLower === 'gh' || roleLower === 'group head') {
+        const group = (parsedUser?.group || '').trim()
+
+        if (roleLower === 'gh' || roleLower === 'group head') {
+          if (group) {
+            url = `${apiBase}/proposals/projects/by-group/${encodeURIComponent(group)}`
+          } else {
+            const encodedName = encodeURIComponent(name)
+            url = `${apiBase}/proposals/by-name/${encodedName}?user_role=${encodeURIComponent(roleLower)}`
+          }
+        } else if (roleLower === 'scientist') {
           const encodedName = encodeURIComponent(name)
           const roleQuery = role ? `?user_role=${encodeURIComponent(roleLower)}` : ''
           url = `${apiBase}/proposals/by-name/${encodedName}${roleQuery}`
@@ -2803,15 +2812,13 @@ function Projects() {
             key: 'ALL',
             label: `All (${filteredCards.length})`,
           },
-          ...projectTypeOrder
-            .filter((type) => (groupedProjects[type]?.length || 0) > 0)
-            .map((type) => {
-              const count = groupedProjects[type]?.length || 0
-              return {
-                key: type,
-                label: `${type} (${count})`,
-              }
-            }),
+          ...projectTypeOrder.map((type) => {
+            const count = groupedProjects[type]?.length || 0
+            return {
+              key: type,
+              label: `${type} (${count})`,
+            }
+          }),
         ]}
       />
 

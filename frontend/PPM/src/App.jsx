@@ -73,7 +73,7 @@ function RoleProtectedLayout({ basePath }) {
 
   // Select correct page components based on the current route base path.
   // This ensures /admin uses the admin Analytics page instead of GH analytics.
-  let ProposalsComponent = GHProposals
+  let ProposalsComponent = Allproposals
   let ProjectsComponent = Projects
   let AnalyticsComponent = Analytics
 
@@ -86,8 +86,7 @@ function RoleProtectedLayout({ basePath }) {
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
   } else if (basePath === 'scientist') {
-    // Scientist now has its own dedicated component
-    ProposalsComponent = ScientistProposals
+    ProposalsComponent = Allproposals
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
   } else if (basePath === 'director') {
@@ -131,7 +130,7 @@ function RoleProtectedLayout({ basePath }) {
             {/* Only admins can access configuration */}
             {isAdmin && (
               <>
-                <Route path="overall-analytics" element={<DirectorAnalytics />} />
+                <Route path="overall-analytics" element={<Analytics />} />
                 <Route path="configuration" element={<Configuration />} />
                 <Route path="notification" element={<AdminNotification />} />
                 <Route path="access-control" element={<UserAccess />} />
