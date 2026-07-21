@@ -1875,3 +1875,43 @@ def get_not_converted_proposals_for_scientist(name: str, db: Session = Depends(g
         result.append(proposal_data)
 
     return result
+
+
+# ------------------------------
+# GET PROJECTS (WHERE PROJECT_NUMBER IS NOT NULL) WRT GROUP
+# ------------------------------
+@router.get("/projects/by-group/{group}")
+def get_projects_by_group(group: str, db: Session = Depends(get_db)):
+    """
+    Get all projects (proposals where project_number is NOT NULL and NOT empty)
+    filtered by group name.
+    """
+    import re
+    group_clean = re.sub(r'\s+', ' ', group.strip()).lower()
+
+    proposals = (
+        db.query(Proposal)
+        .filter(
+            func.lower(Proposal.group) == group_clean,
+            Proposal.project_number.isnot(None),
+            func.trim(Proposal.project_number) != ""
+        )
+        .order_by(desc(Proposal.id))
+        .all()
+    )
+
+    result = []
+    for proposal in proposals:
+        proposal_data = {
+            key: value
+            for key, value in proposal.__dict__.items()
+            if not key.startswith("_")
+        }
+        payments = db.query(Payment).filter(Payment.project_id == proposal.id).all()
+        proposal_data["payments"] = [
+            {k: v for k, v in p.__dict__.items() if not k.startswith("_")}
+            for p in payments
+        ]
+        result.append(proposal_data)
+
+    return result

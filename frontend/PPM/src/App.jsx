@@ -71,7 +71,8 @@ function RoleProtectedLayout({ basePath }) {
   const isAdmin = normalizedRole === 'admin' || normalizedRole === 'guest'
 
   // Select correct page components based on the current route base path.
-  let ProposalsComponent = Allproposals
+  // This ensures /admin uses the admin Analytics page instead of GH analytics.
+  let ProposalsComponent = GHProposals
   let ProjectsComponent = Projects
   let AnalyticsComponent = Analytics
 
