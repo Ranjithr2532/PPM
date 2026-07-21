@@ -364,7 +364,8 @@ def get_proposals_by_name(
 ):
     from models.user_model import User
     
-    name_lower = name.lower()
+    name_clean = " ".join(name.split())
+    name_lower = name_clean.lower()
     
     # Always look up the user from database for group/center info
     user = db.query(User).filter(func.lower(User.name) == name_lower).first()
@@ -425,12 +426,7 @@ def get_proposals_by_name(
         )
 
         if not proposals:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"No proposals found for '{name}' in quotation_given_by_name OR group"
-                ),
-            )
+            return []
 
         # Serialize proposals with payments data
         result = []
@@ -468,15 +464,33 @@ def get_proposals_by_name(
         return result
     
     if effective_role == 'scientist':
-        # Scientist users should only see proposals assigned to them as the project coordinator.
+        # Scientist users should see proposals assigned to them or created by them
+        words = name_clean.split()
+        conditions = []
+        if words:
+            # Match each word in the scientist name to handle whitespace/formatting variations
+            word_conditions = [
+                and_(
+                    *[
+                        or_(
+                            func.lower(Proposal.project_co_ordinator).contains(w.lower()),
+                            func.lower(Proposal.quotation_given_by_name).contains(w.lower()),
+                        )
+                        for w in words
+                    ]
+                )
+            ]
+            conditions.extend(word_conditions)
+
         proposals_query = (
             db.query(Proposal)
             .filter(
+                or_(*conditions) if conditions else True,
                 or_(
-                    func.lower(Proposal.project_co_ordinator).contains(name_lower),
-                    func.lower(Proposal.quotation_given_by_name).contains(name_lower),
-                ),
-                Proposal.is_acknowledged == True,
+                    Proposal.is_acknowledged == True,
+                    Proposal.is_acknowledged.is_(None),
+                    Proposal.is_acknowledged == False,
+                )
             )
             .distinct(Proposal.id)
             .all()
@@ -525,14 +539,7 @@ def get_proposals_by_name(
             proposals.append(p)
 
     if not proposals:
-        role_info = f" (including all {effective_role.upper()} role users)" if effective_role in ['gh', 'ch'] else ""
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"No proposals found for '{name}'{role_info} in quotation_given_by_name "
-                f"OR project_co_ordinator"
-            ),
-        )
+        return []
 
     # Serialize proposals with payments data
     result = []
@@ -577,7 +584,87 @@ def get_proposals_by_name(
     
     return result
 
+# ------------------------------
+# GET PROPOSALS BY GROUP (for GH role)
+# ------------------------------
+@router.get("/by-group/{group}", response_model=List[ProposalResponse])
+def get_proposals_by_group(
+    group: str,
+    user_role: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    from models.user_model import User
 
+    group_clean = group.strip().lower()
+
+    # Find all users in this group
+    group_users = db.query(User).filter(
+        func.lower(User.group) == group_clean
+    ).all()
+    group_user_names = [u.name.lower() for u in group_users if u.name]
+
+    # Build conditions:
+    # 1. Proposal's group matches GH's group exactly
+    group_match = func.lower(Proposal.group) == group_clean
+
+    # 2. Proposal has no group set, but is assigned to a group member
+    no_group = or_(Proposal.group == None, Proposal.group == '')
+    assigned_to_member = or_(
+        func.lower(Proposal.quotation_given_by_name).in_(group_user_names) if group_user_names else False,
+        func.lower(Proposal.project_co_ordinator).in_(group_user_names) if group_user_names else False,
+    )
+
+    proposals = (
+        db.query(Proposal)
+        .filter(
+            or_(
+                group_match,
+                and_(no_group, assigned_to_member),
+            ),
+            Proposal.is_acknowledged == True,
+        )
+        .distinct(Proposal.id)
+        .all()
+    )
+
+    if not proposals:
+        return []
+
+    result = []
+    for proposal in proposals:
+        proposal_data = {
+            key: value
+            for key, value in proposal.__dict__.items()
+            if not key.startswith("_")
+        }
+
+        if not proposal_data.get('group') and proposal.group:
+            proposal_data['group'] = proposal.group
+
+        payments = db.query(Payment).filter(
+            Payment.project_id == proposal.id
+        ).all()
+
+        payments_data = []
+        for payment in payments:
+            payment_dict = {
+                key: value
+                for key, value in payment.__dict__.items()
+                if not key.startswith("_")
+            }
+
+            if payment.stage_id:
+                stage = db.query(Stage).filter(Stage.id == payment.stage_id).first()
+                payment_dict["stage_name"] = stage.name if stage else None
+            else:
+                payment_dict["stage_name"] = None
+
+            payments_data.append(payment_dict)
+
+        proposal_data["payments"] = payments_data
+        result.append(proposal_data)
+
+    return result
 
 
 # ------------------------------
