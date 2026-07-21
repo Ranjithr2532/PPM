@@ -959,10 +959,28 @@ function Analytics() {
           userName = parsed?.name || ''
           userCenter = (parsed?.center || '').trim()
         }
-      } catch (e) {}
+      } catch (e) { }
+
+      let userId = ''
+      try {
+        const rawUser2 = window.localStorage.getItem('ppm_user')
+        if (rawUser2) userId = JSON.parse(rawUser2)?.user_id || ''
+      } catch (e) { }
 
       let baseUrl = `${API_BASE_URL}/proposals/`
-      if (userRole === 'scientist' || userRole === 'gh' || userRole === 'group head') {
+      if (userRole === 'gh' || userRole === 'group head') {
+        // Same approach as the working Proposals page: use the group stored
+        // at login directly, skip the by-name lookup entirely (name lookups
+        // can resolve to the wrong user if names collide).
+        let userGroup = ''
+        try {
+          const rawUser2 = window.localStorage.getItem('ppm_user')
+          if (rawUser2) userGroup = (JSON.parse(rawUser2)?.group || '').trim()
+        } catch (e) { }
+        if (userGroup) {
+          baseUrl = `${API_BASE_URL}/proposals/by-group/${encodeURIComponent(userGroup)}`
+        }
+      } else if (userRole === 'scientist') {
         const encodedName = encodeURIComponent(userName)
         const roleQuery = `?user_role=${encodeURIComponent(userRole)}`
         baseUrl = `${API_BASE_URL}/proposals/by-name/${encodedName}${roleQuery}`
@@ -1676,6 +1694,12 @@ function Analytics() {
     return true
   }, [])
 
+  const getCoordinator = useCallback((item) => {
+    const c = (item.project_co_ordinator || '').trim()
+    if (c) return c
+    return (item.quotation_given_by_name || '').trim() || 'Unknown'
+  }, [])
+
   const filterForDrill = useCallback(
     (items) =>
       items.filter((item) => {
@@ -1687,7 +1711,7 @@ function Analytics() {
           if (selectedGroup && item.group !== selectedGroup) return false
         }
         if (drillLevel === 'coordinator' || drillLevel === 'category' || drillLevel === 'project_code' || drillLevel === 'project_name') {
-          if (selectedProjectName && normalizeValue(item.project_co_ordinator) !== normalizeValue(selectedProjectName)) return false
+          if (selectedProjectName && normalizeValue(getCoordinator(item)) !== normalizeValue(selectedProjectName)) return false
         }
         if (drillLevel === 'project_code' || drillLevel === 'project_name') {
           if (selectedProjectCode && getProjectCode(item.project_number) !== getProjectCode(selectedProjectCode)) return false
@@ -1697,7 +1721,7 @@ function Analytics() {
         }
         return true
       }),
-    [drillLevel, matchCategory, selectedCategory, selectedCenter, selectedGroup, selectedProjectName, selectedProjectCode],
+    [drillLevel, matchCategory, selectedCategory, selectedCenter, selectedGroup, selectedProjectName, selectedProjectCode, getCoordinator],
   )
 
   const getFinancialValue = useCallback((item) => {
@@ -1716,10 +1740,14 @@ function Analytics() {
     return `${crore.toFixed(crore % 1 === 0 ? 0 : 2)} cr`
   }, [])
 
+
   const buildBreakdown = useCallback((items, dimension) => {
     const totals = {}
     items.forEach((item) => {
-      const key = String(item[dimension] || 'Unknown').trim() || 'Unknown'
+      // For coordinator dimension, use the effective coordinator (with fallback)
+      const key = dimension === 'project_co_ordinator'
+        ? (getCoordinator(item) || 'Unknown')
+        : String(item[dimension] || 'Unknown').trim() || 'Unknown'
       totals[key] = (totals[key] || 0) + (chartMetric === 'amount' ? getFinancialValue(item) : 1)
     })
     const entries = Object.entries(totals).sort((a, b) => b[1] - a[1])
@@ -1727,7 +1755,7 @@ function Analytics() {
       labels: entries.map(([key]) => key),
       values: entries.map(([, value]) => value),
     }
-  }, [chartMetric, getFinancialValue])
+  }, [chartMetric, getFinancialValue, getCoordinator])
 
   const chartData = useMemo(() => {
     const items = filterForDrill(filteredData)
@@ -1885,7 +1913,10 @@ function Analytics() {
     }
 
     if (drillLevel === 'project_code') {
-      const filteredItems = items.filter((item) => normalizeValue(item.project_co_ordinator) === normalizeValue(selectedProjectName))
+      // If selectedProjectName is set (GH/CH/Admin), filter by coordinator. For Scientist it's empty so use all items.
+      const filteredItems = selectedProjectName
+        ? items.filter((item) => normalizeValue(getCoordinator(item)) === normalizeValue(selectedProjectName))
+        : items
       const projectCodes = {}
       filteredItems.forEach((item) => {
         const code = getProjectCode(item.project_number)
@@ -1896,13 +1927,18 @@ function Analytics() {
       return {
         labels: entries.map(([key]) => key),
         values: entries.map(([, value]) => value),
-        title: `${selectedProjectName} by Project Code`,
+        title: selectedProjectName ? `${selectedProjectName} by Project Code` : `${CATEGORIES.find((c) => c.key === selectedCategory)?.label || 'All'} by Project Code`,
         dimension: 'project_code',
       }
     }
 
     if (drillLevel === 'project_name') {
-      const filteredItems = items.filter((item) => normalizeValue(item.project_co_ordinator) === normalizeValue(selectedProjectName) && getProjectCode(item.project_number) === getProjectCode(selectedProjectCode))
+      // Filter by coordinator if set, then by project code
+      const filteredItems = items.filter((item) => {
+        if (selectedProjectName && normalizeValue(getCoordinator(item)) !== normalizeValue(selectedProjectName)) return false
+        if (selectedProjectCode && getProjectCode(item.project_number) !== getProjectCode(selectedProjectCode)) return false
+        return true
+      })
       return {
         ...buildBreakdown(filteredItems, 'activity'),
         title: `${selectedProjectCode} Projects by Activity`,
@@ -1975,6 +2011,10 @@ function Analytics() {
       if (!raw) return 'admin'
       const parsed = JSON.parse(raw)
       const role = (parsed?.role || '').toLowerCase().trim()
+      // Normalize role aliases so all checks use short form
+      if (role === 'group head') return 'gh'
+      if (role === 'center head' || role === 'centre head') return 'ch'
+      if (role === 'scientist') return 'scientist'
       return role === 'role' ? 'guest' : (role || 'admin')
     } catch {
       return 'admin'
@@ -1986,7 +2026,17 @@ function Analytics() {
       setDrillLevel('project_code')
       setSelectedProjectCode('')
     } else if (drillLevel === 'project_code') {
-      setDrillLevel('coordinator')
+      if (userRole === 'scientist') {
+        // Scientist goes straight back to top (no coordinator level)
+        setDrillLevel('top')
+        setSelectedCategory('all')
+        setSelectedCenter('')
+        setSelectedGroup('')
+        setSelectedProjectName('')
+      } else {
+        // GH, CH, Admin etc go back to coordinator
+        setDrillLevel('coordinator')
+      }
       setSelectedProjectCode('')
     } else if (drillLevel === 'category') {
       setDrillLevel('coordinator')
@@ -2071,11 +2121,17 @@ function Analytics() {
         }
 
         setSelectedCategory(categoryKey)
-        if (userRole === 'gh' || userRole === 'scientist') {
+        if (userRole === 'scientist') {
+          // Scientist drills directly to project_code (data scoped to only their own name)
+          setDrillLevel('project_code')
+        } else if (userRole === 'gh') {
+          // GH sees all scientists in their group → drill to coordinator first
           setDrillLevel('coordinator')
         } else if (userRole === 'ch') {
+          // CH drills to group level first
           setDrillLevel('group')
         } else {
+          // Admin/Director/Guest drill to centre level
           setDrillLevel('center')
         }
         setSelectedCenter('')

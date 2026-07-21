@@ -356,10 +356,25 @@ def get_proposals_with_payments(db: Session = Depends(get_db)):
 # ------------------------------
 # GET PROPOSALS BY NAME (with role-based extension for gh/ch)
 # ------------------------------
+# @router.get("/by-name/{name}", response_model=List[ProposalResponse])
+# def get_proposals_by_name(
+#     name: str,
+#     user_role: Optional[str] = None,
+#     db: Session = Depends(get_db)
+# ):
+#     from models.user_model import User
+    
+#     name_clean = " ".join(name.split())
+#     name_lower = name_clean.lower()
+    
+#     # Always look up the user from database for group/center info
+#     user = db.query(User).filter(func.lower(User.name) == name_lower).first()
+
 @router.get("/by-name/{name}", response_model=List[ProposalResponse])
 def get_proposals_by_name(
     name: str,
     user_role: Optional[str] = None,
+    user_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     from models.user_model import User
@@ -367,8 +382,13 @@ def get_proposals_by_name(
     name_clean = " ".join(name.split())
     name_lower = name_clean.lower()
     
-    # Always look up the user from database for group/center info
-    user = db.query(User).filter(func.lower(User.name) == name_lower).first()
+    # Prefer the exact user_id when available — name matching can collide
+    # across users who share a name, silently picking the wrong person's
+    # group/center and leaking their data.
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+    else:
+        user = db.query(User).filter(func.lower(User.name) == name_lower).first()
     
     # If user_role query param is provided, use it; otherwise use from database
     if user_role:
@@ -391,6 +411,8 @@ def get_proposals_by_name(
     # GH should only see proposals from SAME CENTER + SAME GROUP:
     #   1. Proposal's center matches GH's center
     #   2. AND (proposal's group matches GH's group OR assigned to group member)
+
+
     if effective_role == 'gh':
         user_group_lower = (user.group or '').strip().lower() if user else ''
         user_center_lower = (user.center or '').strip().lower() if user else ''
@@ -411,6 +433,8 @@ def get_proposals_by_name(
             func.lower(Proposal.quotation_given_by_name).in_(group_user_names) if group_user_names else False,
             func.lower(Proposal.project_co_ordinator).in_(group_user_names) if group_user_names else False,
         )
+
+   
         
         proposals = (
             db.query(Proposal)
