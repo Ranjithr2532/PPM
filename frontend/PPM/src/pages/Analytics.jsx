@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, Statistic, Row, Col, Select, Typography, message } from 'antd'
-import {
-  FileTextOutlined,
-  AppstoreOutlined,
-  DollarCircleOutlined,
-  PlayCircleOutlined,
-  ProjectOutlined,
-} from '@ant-design/icons'
 import Chart from 'chart.js/auto'
 import { API_BASE_URL } from '../config/api.js'
 
@@ -583,65 +576,45 @@ function Analytics() {
 
       <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
         <Col xs={24} sm={12} md={8} lg={5}>
-          <Card
-            className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-            style={{ borderRadius: '16px', border: 'none' }}
-          >
-            <FileTextOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
             <Statistic
-              title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Proposals</span>}
+              title={<span style={{ color: '#fff' }}>Total Proposals</span>}
               value={proposalCount}
               valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8} lg={5}>
-          <Card
-            className="bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-            style={{ borderRadius: '16px', border: 'none' }}
-          >
-            <ProjectOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
             <Statistic
-              title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Projects</span>}
+              title={<span style={{ color: '#fff' }}>Total Projects</span>}
               value={stats.totalProjects}
               valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8} lg={5}>
-          <Card
-            className="bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-            style={{ borderRadius: '16px', border: 'none' }}
-          >
-            <AppstoreOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
             <Statistic
-              title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Technically Completed</span>}
+              title={<span style={{ color: '#fff' }}>Technically Completed</span>}
               value={stats.technicallyCompleted}
               valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8} lg={5}>
-          <Card
-            className="bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-            style={{ borderRadius: '16px', border: 'none' }}
-          >
-            <DollarCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
             <Statistic
-              title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Financially Completed</span>}
+              title={<span style={{ color: '#fff' }}>Financially Completed</span>}
               value={stats.financiallyCompleted}
               valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card
-            className="bg-gradient-to-br from-red-500 to-red-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-            style={{ borderRadius: '16px', border: 'none' }}
-          >
-            <PlayCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+          <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
             <Statistic
-              title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Ongoing Projects</span>}
+              title={<span style={{ color: '#fff' }}>Ongoing Projects</span>}
               value={stats.pendingProjects}
               valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
             />
@@ -649,17 +622,16 @@ function Analytics() {
         </Col>
       </Row>
 
-      <Card style={{ marginBottom: '24px', borderRadius: '16px' }}>
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <Title level={4} style={{ margin: 0 }}>Proposals &amp; Projects per Year</Title>
-          <div className="flex items-center gap-3 flex-wrap bg-slate-50 border border-slate-100 rounded-xl px-4 py-2">
-            <span className="text-slate-500 text-sm font-medium">From:</span>
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <Title level={4} style={{ margin: 0 }}>Proposals & Projects per Year</Title>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 500 }}>From:</span>
             <Select
               value={selectedFromYear}
               onChange={(v) => setSelectedFromYear(Number(v))}
-              size="middle"
-              style={{ width: 110 }}
-              className="rounded-lg"
+              size="large"
+              style={{ width: 120 }}
             >
               {availableYears.map((y) => (
                 <Select.Option key={y} value={y}>
@@ -667,13 +639,12 @@ function Analytics() {
                 </Select.Option>
               ))}
             </Select>
-            <span className="text-slate-500 text-sm font-medium">To:</span>
+            <span style={{ fontWeight: 500 }}>To:</span>
             <Select
               value={selectedToYear}
               onChange={(v) => setSelectedToYear(Number(v))}
-              size="middle"
-              style={{ width: 110 }}
-              className="rounded-lg"
+              size="large"
+              style={{ width: 120 }}
             >
               {availableYears.map((y) => (
                 <Select.Option key={y} value={y}>
@@ -732,15 +703,15 @@ function Analytics() {
             <div style={{ height: '350px' }}>
               <canvas ref={pie4Ref}></canvas>
             </div>
-            <div className="flex justify-center gap-4 mt-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                Converted: {conversionData?.converted_to_project || 0}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100">
-                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                Remained: {conversionData?.remained_as_proposal || 0}
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#4CAF50', borderRadius: '50%' }}></div>
+                <span>Converted: {conversionData?.converted_to_project || 0}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#F44336', borderRadius: '50%' }}></div>
+                <span>Remained: {conversionData?.remained_as_proposal || 0}</span>
+              </div>
             </div>
           </Card>
         </Col>

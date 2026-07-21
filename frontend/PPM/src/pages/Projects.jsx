@@ -139,11 +139,11 @@ const getProjectTheme = (projectNumber) => {
 
 function Projects() {
   const apiBase = API_BASE_URL
+  console.log('--- RENDERING UNIFIED PROJECTS PAGE ---')
 
   // Projects list state
   const [projectRows, setProjectRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [currentUserName, setCurrentUserName] = useState('')
   const [stageConfig, setStageConfig] = useState([])
 
   // Project details state
@@ -175,7 +175,6 @@ function Projects() {
   const [existingDocuments, setExistingDocuments] = useState([])
   const [suggestedVersion, setSuggestedVersion] = useState('1')
   const [documentVersion, setDocumentVersion] = useState('')
-  const [currentUserRole, setCurrentUserRole] = useState('')
 
   const [attachments, setAttachments] = useState([])
 
@@ -210,45 +209,80 @@ function Projects() {
   const [projectPaymentStageRows, setProjectPaymentStageRows] = useState([])
   const [projectStageTitle, setProjectStageTitle] = useState('')
 
-  // Fetch projects on mount and read current user from localStorage
-  useEffect(() => {
+  // Read user details on mount and initialize states
+  const [currentUserName, setCurrentUserName] = useState(() => {
     try {
       const rawUser = window.localStorage.getItem('ppm_user')
       if (rawUser) {
-        const parsedUser = JSON.parse(rawUser)
-        if (parsedUser && parsedUser.name) {
-          setCurrentUserName(parsedUser.name)
-        }
+        return (JSON.parse(rawUser)?.name || '').trim()
       }
-    } catch (error) {
-      console.error('Failed to read user from localStorage', error)
-    }
+    } catch (err) {}
+    return ''
+  })
 
+  const [currentUserRole, setCurrentUserRole] = useState(() => {
+    try {
+      const rawUser = window.localStorage.getItem('ppm_user')
+      if (rawUser) {
+        return (JSON.parse(rawUser)?.role || '').toLowerCase().trim()
+      }
+    } catch (err) {}
+    return ''
+  })
+
+  const [currentUserCenter, setCurrentUserCenter] = useState(() => {
+    try {
+      const rawUser = window.localStorage.getItem('ppm_user')
+      if (rawUser) {
+        return (JSON.parse(rawUser)?.center || '').trim()
+      }
+    } catch (err) {}
+    return ''
+  })
+
+  const [currentUserGroup, setCurrentUserGroup] = useState(() => {
+    try {
+      const rawUser = window.localStorage.getItem('ppm_user')
+      if (rawUser) {
+        return (JSON.parse(rawUser)?.group || '').trim()
+      }
+    } catch (err) {}
+    return ''
+  })
+
+  useEffect(() => {
     fetchProjects()
     fetchStageConfig()
     fetchProjectPaymentStageRows()
   }, [])
 
-  useEffect(() => {
-    try {
-      const rawUser = window.localStorage.getItem('ppm_user')
-      if (rawUser) {
-        const parsedUser = JSON.parse(rawUser)
-        if (parsedUser?.role) {
-          setCurrentUserRole(parsedUser.role)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to read user from localStorage', error)
-    }
-  }, [])
-
-  const isGuest = currentUserRole?.toLowerCase().trim() === 'guest'
+  const isGuest = currentUserRole === 'guest' || currentUserRole === 'role'
+  const isReadOnly = isGuest || currentUserRole === 'ch' || currentUserRole === 'center head'
 
   const fetchProjects = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${apiBase}/proposals/`)
+      let url = `${apiBase}/proposals/`
+      const rawUser = window.localStorage.getItem('ppm_user')
+      if (rawUser) {
+        const parsedUser = JSON.parse(rawUser)
+        console.log('fetchProjects parsedUser:', parsedUser)
+        const role = (parsedUser?.role || '')
+        const name = parsedUser?.name || ''
+        const center = (parsedUser?.center || '').trim()
+
+        const roleLower = role.toLowerCase().trim()
+        if (roleLower === 'scientist' || roleLower === 'gh' || roleLower === 'group head') {
+          const encodedName = encodeURIComponent(name)
+          const roleQuery = role ? `?user_role=${encodeURIComponent(roleLower)}` : ''
+          url = `${apiBase}/proposals/by-name/${encodedName}${roleQuery}`
+        } else if (roleLower === 'ch' || roleLower === 'center head') {
+          url = `${apiBase}/proposals/by-centre/${encodeURIComponent(center)}`
+        }
+      }
+
+      console.log('fetchProjects URL:', url)
+      const res = await fetch(url)
       if (!res.ok) {
         throw new Error(`Failed to fetch projects: ${res.status}`)
       }
@@ -1159,24 +1193,47 @@ function Projects() {
   }
 
   const [searchText, setSearchText] = useState('')
-  const [selectedCenter, setSelectedCenter] = useState(undefined)   // “center” field in your project objects
+  const [selectedCenter, setSelectedCenter] = useState(undefined)
+  const [selectedGroup, setSelectedGroup] = useState(undefined)
+  const [selectedCoordinator, setSelectedCoordinator] = useState(undefined)
   const [selectedProjectType, setSelectedProjectType] = useState('ALL')
 
-  // Extract unique centers-centers for the dropdown (you can adjust the field name if it’s different)
-  const centerOptions = useMemo(() => {
-    const centers = [...new Set(projectRows
-      .map(p => p.center?.trim())
-      .filter(Boolean))]
+  const isGHOrScientist = currentUserRole === 'scientist' || currentUserRole === 'gh' || currentUserRole === 'group head'
+  const isCH = currentUserRole === 'ch' || currentUserRole === 'center head'
 
+  // Extract center options (for Admin)
+  const centerOptions = useMemo(() => {
+    const centers = [...new Set(projectRows.map(p => p.center?.trim()).filter(Boolean))]
     return centers.sort().map(c => ({ label: c, value: c }))
   }, [projectRows])
 
-  // Filtered list (search + center)
+  // Extract group options (for CH)
+  const groupOptions = useMemo(() => {
+    const groups = [...new Set(projectRows.map(p => p.group?.trim()).filter(Boolean))]
+    return groups.sort().map(g => ({ label: g, value: g }))
+  }, [projectRows])
+
+  // Extract coordinator options (for GH/Scientist)
+  const coordinatorOptions = useMemo(() => {
+    const coordinators = [...new Set(projectRows.map(p => p.project_co_ordinator?.trim()).filter(Boolean))]
+    return coordinators.sort().map(c => ({ label: c, value: c }))
+  }, [projectRows])
+
+  // Extract project type options
+  const projectTypeOptions = useMemo(() => {
+    const types = [...new Set(projectRows.map(p => {
+      const num = (p.project_number || '').toString().toUpperCase()
+      return num.substring(0, 3)
+    }).filter(prefix => prefix && prefix.length >= 3))]
+    return types.sort().map(type => ({ label: type, value: type }))
+  }, [projectRows])
+
+  // Filtered list based on role
   const filteredCards = useMemo(() => {
     return (projectRows || [])
-      .filter(p => p?.project_number)                     // keep only projects that have a number
+      .filter(p => p?.project_number)
       .filter(p => {
-        // Search – checks project_number, activity and coordinator
+        // Search filter
         const searchLower = searchText.toLowerCase().trim()
         if (searchLower) {
           const inNumber = p.project_number?.toString().toLowerCase().includes(searchLower)
@@ -1185,17 +1242,25 @@ function Projects() {
           if (!(inNumber || inActivity || inCoord)) return false
         }
 
-        // Center filter
-        if (selectedCenter && p.center?.trim() !== selectedCenter) return false
+        // Role-specific filters
+        if (isGHOrScientist) {
+          if (selectedCoordinator && p.project_co_ordinator?.trim() !== selectedCoordinator) return false
+        } else if (isCH) {
+          if (selectedGroup && p.group?.trim() !== selectedGroup) return false
+        } else {
+          // Admin / Guest
+          if (selectedCenter && p.center?.trim() !== selectedCenter) return false
+        }
 
         return true
       })
-  }, [projectRows, searchText, selectedCenter])
+  }, [projectRows, searchText, selectedCenter, selectedGroup, selectedCoordinator, isGHOrScientist, isCH])
 
-  // Clear all filters
   const handleClearFilters = () => {
     setSearchText('')
     setSelectedCenter(undefined)
+    setSelectedGroup(undefined)
+    setSelectedCoordinator(undefined)
     setSelectedProjectType('ALL')
   }
 
@@ -1225,7 +1290,7 @@ function Projects() {
   }, [filteredCards])
 
   // Project type order and labels
-  const projectTypeOrder = ['ISP', 'GSP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'Other']
+  const projectTypeOrder = ['ISP', 'GSP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'SO', 'Other']
 
   const projectTypeConfig = {
     ISP: { color: 'blue', label: 'ISP Projects' },
@@ -1272,7 +1337,7 @@ function Projects() {
       },
     },
 
-    ...(!isGuest ? [{
+    ...(!isReadOnly ? [{
       title: 'Actions',
       width: 120,
       fixed: 'right',
@@ -1395,7 +1460,7 @@ function Projects() {
                           return <Tag color="blue">{position}</Tag>
                         })()} {stageName || 'Stage'}
                       </Title>
-                      {!isGuest && (
+                      {!isReadOnly && (
                         <Space>
                           {canUpload && (
                             <Button size="small" type="primary" icon={<UploadOutlined />} onClick={() => handleOpenUploadModal(stage)}>
@@ -1685,7 +1750,7 @@ function Projects() {
                             value={projectStageTitle}
                             onChange={(e) => setProjectStageTitle(e.target.value)}
                           /> */}
-                          {!isGuest && (
+                          {!isReadOnly && (
                             <Button
                               type="primary"
                               size="small"
@@ -1751,7 +1816,7 @@ function Projects() {
                     )}
 
                     <div>
-                      {!isGuest && (
+                      {!isReadOnly && (
                         <div className="flex justify-between items-center mb-3">
                           {canAddPayments && (
                             <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => handleOpenPaymentModal(stage)}>
@@ -2664,7 +2729,7 @@ function Projects() {
     <div className="rounded-3xl bg-white p-6 shadow-sm">
       <Title level={3}>Projects</Title>
 
-      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+      <div className="mb-6 flex flex-wrap gap-4 items-center">
         <Input.Search
           placeholder="Search by project number, activity or coordinator..."
           allowClear
@@ -2676,17 +2741,43 @@ function Projects() {
           style={{ width: 420, maxWidth: '100%' }}
         />
 
-        <Select
-          placeholder="Filter by centre"
-          allowClear
-          size="large"
-          style={{ width: 240 }}
-          options={centerOptions}
-          value={selectedCenter}
-          onChange={setSelectedCenter}
-        />
+        {!(isGHOrScientist || isCH) && (
+          <Select
+            placeholder="Filter by centre"
+            allowClear
+            size="large"
+            style={{ width: 240 }}
+            options={centerOptions}
+            value={selectedCenter}
+            onChange={setSelectedCenter}
+          />
+        )}
 
-        {(searchText || selectedCenter) && (
+        {isCH && (
+          <Select
+            placeholder="Filter by group"
+            allowClear
+            size="large"
+            style={{ width: 240 }}
+            options={groupOptions}
+            value={selectedGroup}
+            onChange={setSelectedGroup}
+          />
+        )}
+
+        {isGHOrScientist && (
+          <Select
+            placeholder="Filter by coordinator"
+            allowClear
+            size="large"
+            style={{ width: 240 }}
+            options={coordinatorOptions}
+            value={selectedCoordinator}
+            onChange={setSelectedCoordinator}
+          />
+        )}
+
+        {(searchText || selectedCenter || selectedGroup || selectedCoordinator || selectedProjectType !== 'ALL') && (
           <Button type="default" size="large" onClick={handleClearFilters}>
             Clear Filters
           </Button>

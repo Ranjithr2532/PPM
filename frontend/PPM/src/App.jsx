@@ -6,9 +6,7 @@ import Configuration from './pages/Configuration'
 import Projects from './pages/Projects'
 import MasterProposals from './pages/MasterProposals'
 import GHProposals from './pages/GHproposals'
-import GHProjects from './pages/GHprojects'
 import CHProposals from './pages/CHproposals'
-import CHProjects from './pages/CHprojects'
 import Login from './pages/Login'
 import CreateLogin from './pages/CreateLogin'
 import Sidebar from './components/Sidebar'
@@ -80,7 +78,7 @@ function RoleProtectedLayout({ basePath }) {
   // Select correct page components based on the current route base path.
   // This ensures /admin uses the admin Analytics page instead of GH analytics.
   let ProposalsComponent = GHProposals
-  let ProjectsComponent = GHProjects
+  let ProjectsComponent = Projects
   let AnalyticsComponent = Ghanalytics
 
   if (basePath === 'admin') {
@@ -89,12 +87,12 @@ function RoleProtectedLayout({ basePath }) {
     AnalyticsComponent = Analytics
   } else if (basePath === 'ch') {
     ProposalsComponent = CHProposals
-    ProjectsComponent = CHProjects
+    ProjectsComponent = Projects
     AnalyticsComponent = Centerheadanalytics
   } else if (basePath === 'scientist') {
     // Scientist now has its own dedicated component
     ProposalsComponent = ScientistProposals
-    ProjectsComponent = GHProjects
+    ProjectsComponent = Projects
     AnalyticsComponent = Scientistanalytics
   } else if (basePath === 'director') {
     ProposalsComponent = DirectorProposals
