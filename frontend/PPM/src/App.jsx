@@ -1,7 +1,6 @@
 import { Layout } from 'antd'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Proposals from './pages/Proposals'
-import Analytics from './pages/Analytics'
 import Configuration from './pages/Configuration'
 import Projects from './pages/Projects'
 import MasterProposals from './pages/MasterProposals'
@@ -12,11 +11,9 @@ import CreateLogin from './pages/CreateLogin'
 import Sidebar from './components/Sidebar'
 import ScientistProposals from './pages/ScientistProposals'
 import DirectorProposals from './pages/Directorproposals'
-import DirectorAnalytics from './pages/directoranalytics'
 import FinancialAnalytics from './pages/financialanalytics'
-import Centerheadanalytics from './pages/chprojectanalytics'
-import Ghanalytics from './pages/ghanalytics'
-import Scientistanalytics from './pages/scientistanalytics'
+import Analytics from './pages/Analytics'
+
 
 
 
@@ -60,14 +57,14 @@ function RoleProtectedLayout({ basePath }) {
   }
 
   const user = getStoredUser()
- const userRole = (user?.role || '').toLowerCase().trim()
- const normalizedUserRole = userRole === 'role' ? 'guest' : userRole
+  const userRole = (user?.role || '').toLowerCase().trim()
+  const normalizedUserRole = userRole === 'role' ? 'guest' : userRole
 
   // Normalize role: only allow 'admin', 'guest', 'gh', 'ch', 'scientist', 'director' — default to 'gh' if unknown
   const normalizedRole =
-  ['admin', 'guest', 'gh', 'ch', 'scientist', 'director'].includes(normalizedUserRole)
-    ? normalizedUserRole
-    : 'gh'
+    ['admin', 'guest', 'gh', 'ch', 'scientist', 'director'].includes(normalizedUserRole)
+      ? normalizedUserRole
+      : 'gh'
   // If user is trying to access a base path that doesn't match their role → redirect
   if (normalizedRole !== basePath) {
     return <Navigate to={`/${normalizedRole}/proposals`} replace />
@@ -76,10 +73,9 @@ function RoleProtectedLayout({ basePath }) {
   const isAdmin = normalizedRole === 'admin' || normalizedRole === 'guest'
 
   // Select correct page components based on the current route base path.
-  // This ensures /admin uses the admin Analytics page instead of GH analytics.
   let ProposalsComponent = GHProposals
   let ProjectsComponent = Projects
-  let AnalyticsComponent = Ghanalytics
+  let AnalyticsComponent = Analytics
 
   if (basePath === 'admin') {
     ProposalsComponent = Proposals
@@ -88,16 +84,15 @@ function RoleProtectedLayout({ basePath }) {
   } else if (basePath === 'ch') {
     ProposalsComponent = CHProposals
     ProjectsComponent = Projects
-    AnalyticsComponent = Centerheadanalytics
+    AnalyticsComponent = Analytics
   } else if (basePath === 'scientist') {
-    // Scientist now has its own dedicated component
     ProposalsComponent = ScientistProposals
     ProjectsComponent = Projects
-    AnalyticsComponent = Scientistanalytics
+    AnalyticsComponent = Analytics
   } else if (basePath === 'director') {
     ProposalsComponent = DirectorProposals
     // ProjectsComponent = Projects
-    AnalyticsComponent = DirectorAnalytics
+    AnalyticsComponent = Analytics
   } else if (basePath === 'guest') {
     ProposalsComponent = Proposals
     ProjectsComponent = Projects
@@ -129,17 +124,17 @@ function RoleProtectedLayout({ basePath }) {
               <Route path="projects" element={<ProjectsComponent />} />
             )}
 
-            <Route path='gh-master-proposals' element={<GhMasterProposals/>}/>
-            <Route path='gh-notification' element={<GhNotification/>}/>
+            <Route path='gh-master-proposals' element={<GhMasterProposals />} />
+            <Route path='gh-notification' element={<GhNotification />} />
 
             {/* Only admins can access configuration */}
             {isAdmin && (
               <>
-              <Route path="overall-analytics" element={<DirectorAnalytics />} />
-              <Route path="configuration" element={<Configuration />} />
-              <Route path="notification" element={<AdminNotification />} />
-              <Route path="access-control" element={<UserAccess/>}/>
-              <Route path="customers" element={<Customers/>}/>
+                <Route path="overall-analytics" element={<Analytics />} />
+                <Route path="configuration" element={<Configuration />} />
+                <Route path="notification" element={<AdminNotification />} />
+                <Route path="access-control" element={<UserAccess />} />
+                <Route path="customers" element={<Customers />} />
               </>
             )}
 
