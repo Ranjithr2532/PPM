@@ -388,6 +388,11 @@ export default function Allproposals() {
   })
   const [userRole, setUserRole] = useState(() => {
     try {
+      const path = window.location.pathname.toLowerCase()
+      if (path.startsWith('/gh')) return 'gh'
+      if (path.startsWith('/ch')) return 'ch'
+      if (path.startsWith('/scientist')) return 'scientist'
+
       const rawUser = window.localStorage.getItem('ppm_user')
       if (rawUser) {
         const parsedUser = JSON.parse(rawUser)
@@ -513,9 +518,11 @@ export default function Allproposals() {
         setCurrentUserName(name)
         setCurrentUserCenter(parsedUser.center || '')
         setCurrentUserGroup(group)
-        const parsedRole = (parsedUser.role || parsedUser.dbRole || '').toLowerCase()
-        setUserRole(parsedRole)
-        role = parsedRole
+      const path = window.location.pathname.toLowerCase()
+      if (path.startsWith('/gh')) role = 'gh'
+      else if (path.startsWith('/ch')) role = 'ch'
+      else if (path.startsWith('/scientist')) role = 'scientist'
+      setUserRole(role)
       }
 
       let url = ''
