@@ -1,6 +1,7 @@
 from sqlalchemy import Column, DateTime, ARRAY, ForeignKey, Integer, String, func , Boolean , TIMESTAMP, JSON, Numeric
 from sqlalchemy.orm import relationship
 from db import Base
+from datetime import datetime
 
 
 
@@ -75,18 +76,34 @@ class Remarks(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-    
+    # Sender & Recipient Information
     from_ = Column("from_", String, nullable=True)
     to = Column(String, nullable=True)
 
-    updated_at = Column(DateTime(timezone=False), nullable=True)
-
+    # Associated Proposal/Project
     project_id = Column(Integer, nullable=True)
+
+    # Message Content & Sent Timestamp
     remarks_description = Column(String, nullable=True)
-    respond_to_remarks = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=True)
+    updated_at = Column(DateTime(timezone=False), onupdate=datetime.utcnow, nullable=True)
+
+    # Message Delivery & Read Status (WhatsApp Style: Sent -> Delivered -> Read)
+    is_delivered = Column(Boolean, nullable=False, default=True, server_default='true')
+    delivered_at = Column(DateTime(timezone=False), nullable=True)
     message_seen = Column(Boolean, nullable=False, default=False, server_default='false')
+    message_seen_at = Column(DateTime(timezone=False), nullable=True)
+
+    # Reply Details & Replyer Info
+    respond_to_remarks = Column(String, nullable=True)
     replyer = Column(String, nullable=True)
+    replied_at = Column(DateTime(timezone=False), nullable=True)
+
+    # Reply Read Status (WhatsApp Style Read Receipts for Reply)
+    reply_delivered = Column(Boolean, nullable=False, default=True, server_default='true')
+    reply_delivered_at = Column(DateTime(timezone=False), nullable=True)
     reply_seen = Column(Boolean, nullable=False, default=False, server_default='false')
+    reply_seen_at = Column(DateTime(timezone=False), nullable=True)
 
 class ProjectPaymentStages(Base):
     __tablename__ = "project_payment_stages"

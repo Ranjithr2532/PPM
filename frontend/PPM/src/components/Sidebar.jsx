@@ -6,7 +6,8 @@ import {
   BarChartOutlined,
   BellOutlined,
   UsergroupAddOutlined,
-  TeamOutlined
+  TeamOutlined,
+  MessageOutlined
 } from '@ant-design/icons'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -49,6 +50,8 @@ function Sidebar() {
       ? 'access-control'
       : section === 'customers'
       ? 'customers'
+      : section === 'chats'
+      ? 'chats'
       : 'proposals'
 
   let userName = ''
@@ -215,11 +218,13 @@ function Sidebar() {
               else if (info.key === 'access-control') navigate(`${prefix}/access-control`)
               else if (info.key === 'customers') navigate(`${prefix}/customers`)
               else if (info.key === 'overall-analytics') navigate(`${prefix}/overall-analytics`)
+              else if (info.key === 'chats') navigate(`${prefix}/chats`)
               
               else navigate(`${prefix}/proposals`)
             }}
             items={[
               { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
+              { key: 'chats', icon: <MessageOutlined />, label: 'Chats' },
               ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
 
               ...(isGHOrScientist
