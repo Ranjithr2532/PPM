@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar'
 // import DirectorProposals from './pages/Directorproposals'
 // import FinancialAnalytics from './pages/financialanalytics'
 import Analytics from './pages/Analytics'
+import ChatsPage from './pages/ChatsPage'
 
 
 
@@ -112,6 +113,7 @@ function RoleProtectedLayout({ basePath }) {
         >
           <Routes>
             <Route path="proposals" element={<ProposalsComponent />} />
+            <Route path="chats" element={<ChatsPage />} />
             {isAdmin && (
               <Route path="master-proposals" element={<MasterProposals />} />
             )}
