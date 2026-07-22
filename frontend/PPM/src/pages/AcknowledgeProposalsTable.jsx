@@ -74,7 +74,7 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
     return pendingProposals.filter((p) => {
       const matchesSearch = searchText
         ? [p.customer_name, p.quote_reference, p.quotation_given_by_name]
-            .some(val => (val || '').toString().toLowerCase().includes(searchText.toLowerCase()))
+          .some(val => (val || '').toString().toLowerCase().includes(searchText.toLowerCase()))
         : true
 
       const matchesCustomerType = customerTypeFilter === 'ALL'
@@ -496,7 +496,7 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
             style={{ width: 260 }}
             className="rounded-lg"
           />
-          <Select
+          {/* <Select
             placeholder="Filter Customer Type"
             value={customerTypeFilter}
             onChange={setCustomerTypeFilter}
@@ -507,7 +507,7 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
               { label: 'Government (Govt)', value: 'Govt' },
               { label: 'Private', value: 'Private' }
             ]}
-          />
+          /> */}
         </div>
       </div>
 
