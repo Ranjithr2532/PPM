@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any, List
 from datetime import datetime
 
 class RemarksBase(BaseModel):
@@ -25,6 +25,11 @@ class RemarksBase(BaseModel):
     reply_seen: Optional[bool] = False
     reply_seen_at: Optional[datetime] = None
 
+    # Attachment fields
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    attachment_type: Optional[str] = None
+
 class RemarksCreate(RemarksBase):
     pass
 
@@ -43,6 +48,86 @@ class TransitionResponse(RemarksBase):
     id: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------
+# GROUP CHAT SCHEMAS
+# ---------------------------------------------------------
+class GroupCreate(BaseModel):
+    name: str
+
+
+class GroupResponse(BaseModel):
+    id: int
+    name: str
+    code: Optional[str] = None
+    head: Optional[str] = None
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
+    unread_count: Optional[int] = 0
+
+    class Config:
+        from_attributes = True
+
+
+class GroupMemberCreate(BaseModel):
+    group_id: int
+    user_id: int
+
+
+class GroupMemberResponse(BaseModel):
+    id: int
+    group_id: int
+    user_id: int
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_role: Optional[str] = None
+    joined_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GroupMessageCreate(BaseModel):
+    group_id: int
+    sender_id: int
+    message: Optional[str] = None
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    attachment_type: Optional[str] = None
+
+
+class GroupMessageResponse(BaseModel):
+    id: int
+    group_id: int
+    sender_id: int
+    sender_name: Optional[str] = None
+    sender_role: Optional[str] = None
+    message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    attachment_type: Optional[str] = None
+    seen_by: Optional[List[Any]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MessageSeenCreate(BaseModel):
+    message_id: int
+    user_id: int
+
+
+class MessageSeenResponse(BaseModel):
+    id: int
+    message_id: int
+    user_id: int
+    user_name: Optional[str] = None
+    seen_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -105,6 +105,12 @@ class Remarks(Base):
     reply_seen = Column(Boolean, nullable=False, default=False, server_default='false')
     reply_seen_at = Column(DateTime(timezone=False), nullable=True)
 
+    # Attachment fields (documents & photos)
+    attachment_url = Column(String, nullable=True)
+    attachment_name = Column(String, nullable=True)
+    attachment_type = Column(String, nullable=True)
+
+
 class ProjectPaymentStages(Base):
     __tablename__ = "project_payment_stages"
 
@@ -326,3 +332,48 @@ class DynamicTable(Base):
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# -------------------------------------------------
+# CHAT MESSAGE GROUPS, MEMBERS & MESSAGES TABLES
+# -------------------------------------------------
+class MessageGroup(Base):
+    __tablename__ = "message_groups"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
+    updated_at = Column(DateTime(timezone=False), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("message_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    joined_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("message_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    message = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
+
+    # Attachment fields (documents & photos)
+    attachment_url = Column(String, nullable=True)
+    attachment_name = Column(String, nullable=True)
+    attachment_type = Column(String, nullable=True)
+
+
+class MessageSeen(Base):
+    __tablename__ = "message_seen"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    seen_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
