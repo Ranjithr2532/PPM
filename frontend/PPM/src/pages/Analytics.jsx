@@ -1697,7 +1697,7 @@ function Analytics() {
   const getCoordinator = useCallback((item) => {
     const c = (item.project_co_ordinator || '').trim()
     if (c) return c
-    return (item.quotation_given_by_name || '').trim() || 'Unknown'
+    return (item.quotation_given_by_name || '').trim() || 'Pending'
   }, [])
 
   const filterForDrill = useCallback(
@@ -1746,8 +1746,8 @@ function Analytics() {
     items.forEach((item) => {
       // For coordinator dimension, use the effective coordinator (with fallback)
       const key = dimension === 'project_co_ordinator'
-        ? (getCoordinator(item) || 'Unknown')
-        : String(item[dimension] || 'Unknown').trim() || 'Unknown'
+        ? (getCoordinator(item) || 'Pending')
+        : String(item[dimension] || 'Pending').trim() || 'Pending'
       totals[key] = (totals[key] || 0) + (chartMetric === 'amount' ? getFinancialValue(item) : 1)
     })
     const entries = Object.entries(totals).sort((a, b) => b[1] - a[1])
@@ -1881,7 +1881,7 @@ function Analytics() {
         // For projects (has project_number), use project_co_ordinator
         const isProject = item.project_number && String(item.project_number).trim() !== ''
         const coordinatorField = isProject ? 'project_co_ordinator' : 'quotation_given_by_name'
-        const key = String(item[coordinatorField] || 'Unknown').trim() || 'Unknown'
+        const key = String(item[coordinatorField] || 'Pending').trim() || 'UnPendingknown'
         totals[key] = (totals[key] || 0) + (chartMetric === 'amount' ? getFinancialValue(item) : 1)
       })
       const entries = Object.entries(totals).sort((a, b) => b[1] - a[1])
@@ -1920,7 +1920,7 @@ function Analytics() {
       const projectCodes = {}
       filteredItems.forEach((item) => {
         const code = getProjectCode(item.project_number)
-        const key = code || 'Unknown'
+        const key = code || 'Pending'
         projectCodes[key] = (projectCodes[key] || 0) + (chartMetric === 'amount' ? getFinancialValue(item) : 1)
       })
       const entries = Object.entries(projectCodes).sort((a, b) => b[1] - a[1])
@@ -2103,17 +2103,28 @@ function Analytics() {
       }
 
       const dimension = chartData.dimension
-      if (dimension === 'trend') {
-        // No drilling for trend charts
+
+      // universal guard: Pending bucket always opens the modal, no matter which
+      // dimension/drill-level we're currently on
+      if (label === 'Pending') {
+        setSelectedProjectName(selectedProjectName || '')
+        setNotConvertedModalVisible(true)
         return
       }
+
+      if (dimension === 'trend') {
+        return
+      }
+
       if (dimension === 'category') {
         const categoryKey = categoryKeyFromLabel(label)
+
+        if (categoryKey === 'proposals') {
+          setNotConvertedModalVisible(true)
+          return
+        }
+
         if (selectedProjectName && drillLevel === 'category') {
-          if (categoryKey === 'proposals') {
-            setNotConvertedModalVisible(true)
-            return
-          }
           setSelectedCategory(categoryKey)
           setDrillLevel('project_code')
           setSelectedProjectCode('')
@@ -2122,16 +2133,12 @@ function Analytics() {
 
         setSelectedCategory(categoryKey)
         if (userRole === 'scientist') {
-          // Scientist drills directly to project_code (data scoped to only their own name)
           setDrillLevel('project_code')
         } else if (userRole === 'gh') {
-          // GH sees all scientists in their group → drill to coordinator first
           setDrillLevel('coordinator')
         } else if (userRole === 'ch') {
-          // CH drills to group level first
           setDrillLevel('group')
         } else {
-          // Admin/Director/Guest drill to centre level
           setDrillLevel('center')
         }
         setSelectedCenter('')
@@ -2140,6 +2147,7 @@ function Analytics() {
         setSelectedProjectCode('')
         return
       }
+
       if (dimension === 'center') {
         setSelectedCenter(label)
         setDrillLevel('group')
@@ -2148,6 +2156,7 @@ function Analytics() {
         setSelectedProjectCode('')
         return
       }
+
       if (dimension === 'group') {
         setSelectedGroup(label)
         setDrillLevel('coordinator')
@@ -2155,6 +2164,7 @@ function Analytics() {
         setSelectedProjectCode('')
         return
       }
+
       if (dimension === 'project_co_ordinator') {
         if (!selectedCategory || selectedCategory === 'all') {
           setSelectedProjectName(label)
@@ -2172,6 +2182,7 @@ function Analytics() {
         setDrillLevel('project_code')
         return
       }
+
       if (dimension === 'project_code') {
         setSelectedProjectCode(label)
         setDrillLevel('project_name')
@@ -2180,8 +2191,6 @@ function Analytics() {
     },
     [categoryKeyFromLabel, chartData, selectedCategory, selectedProjectName, drillLevel, userRole],
   )
-
-
 
   // Get unique centers for filter
   const uniqueCentres = useMemo(() => {
@@ -2592,7 +2601,10 @@ function Analytics() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
                     <Card
                       className="bg-gradient-to-br from-slate-500 to-slate-700 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === null ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => setStatusFilter(null)}
                     >
                       <FileTextOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
@@ -2604,7 +2616,10 @@ function Analytics() {
                     </Card>
                     <Card
                       className="bg-gradient-to-br from-red-500 to-red-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === 'proposals' ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => {
                         setStatusFilter('proposals')
                         setProjectNumberFilter([])
@@ -2619,7 +2634,10 @@ function Analytics() {
                     </Card>
                     <Card
                       className="bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === 'totalProjects' ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => setStatusFilter('totalProjects')}
                     >
                       <CheckCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
@@ -2643,7 +2661,10 @@ function Analytics() {
                     </Card>
                     <Card
                       className="bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === 'technicallyCompleted' ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => setStatusFilter('technicallyCompleted')}
                     >
                       <AppstoreOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
@@ -2667,7 +2688,10 @@ function Analytics() {
                     </Card>
                     <Card
                       className="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === 'financiallyNotCompleted' ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => setStatusFilter('financiallyNotCompleted')}
                     >
                       <StopOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
@@ -2691,7 +2715,10 @@ function Analytics() {
                     </Card>
                     <Card
                       className="bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === 'financiallyCompleted' ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => setStatusFilter('financiallyCompleted')}
                     >
                       <DollarCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
@@ -2715,7 +2742,10 @@ function Analytics() {
                     </Card>
                     <Card
                       className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                      style={{ borderRadius: '16px', border: 'none' }}
+                      style={{
+                        borderRadius: '16px',
+                        border: statusFilter === 'pendingProjects' ? '7px solid #06b6d4' : '7px solid transparent'
+                      }}
                       onClick={() => setStatusFilter('pendingProjects')}
                     >
                       <PlayCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />

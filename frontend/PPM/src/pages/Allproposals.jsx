@@ -455,6 +455,11 @@ export default function Allproposals() {
 
   const [unrespondedQueryCounts, setUnrespondedQueryCounts] = useState({})
 
+  // "Reason Required" popup state
+  const [reasonPopupOpen, setReasonPopupOpen] = useState(false)
+  const [reasonInputs, setReasonInputs] = useState({})
+  const [savingReasonIds, setSavingReasonIds] = useState({})
+
   const [chatModalOpen, setChatModalOpen] = useState(false)
   const [chatProject, setChatProject] = useState(null)
   const [chatMessages, setChatMessages] = useState([])
@@ -1359,6 +1364,322 @@ export default function Allproposals() {
     }
   }
 
+  // Open/Close Coordinator Add Modal
+  const openCoordinatorAddModal = () => {
+    coordinatorForm.resetFields()
+
+    if (currentUserName) {
+      coordinatorForm.setFieldsValue({
+        quotation_given_by_name: currentUserName,
+        quotation_given_by_department: currentUserCenter ? currentUserCenter.toUpperCase() : '',
+        center: currentUserCenter || '',
+        group: currentUserGroup || '',
+      })
+    }
+
+    setCoordinatorModalOpen(true)
+  }
+
+  const closeCoordinatorModal = () => {
+    setCoordinatorModalOpen(false)
+    coordinatorForm.resetFields()
+    setCustomerOptions([])
+  }
+
+  // Search customers by name
+  const searchCustomers = useCallback(async (searchValue) => {
+    if (!searchValue || searchValue.trim().length < 2) {
+      setCustomerOptions([])
+      return
+    }
+
+    const normalized = searchValue.trim().toLowerCase()
+
+    // Ensure we have the full list fetched
+    let customerList = allCustomerSuggestions
+    if (!customerList.length) {
+      customerList = await fetchCustomerSuggestions()
+    }
+
+    const matches = (customerList || [])
+      .filter((customer) => {
+        const customerName = (customer.name || '').toString().trim().toLowerCase()
+        return customerName.includes(normalized)
+      })
+      .slice(0, 20) // Limit to 20 results
+      .map((customer) => ({
+        value: customer.name,
+        label: customer.name,
+        ...customer,
+      }))
+
+    setCustomerOptions(matches)
+  },
+    [allCustomerSuggestions, fetchCustomerSuggestions],
+  )
+
+  const handleCustomerSelect = useCallback(
+    (value, option) => {
+      if (!option) return
+
+      coordinatorForm.setFieldsValue({
+        customer_name: option.name,
+        customer_type: option.customer_type || '',
+      })
+
+      // Set address, phone, and email options for the selected customer
+      const addresses = Array.isArray(option.addresses) ? option.addresses : []
+      setAddressOptions(addresses.map((a) => ({ value: a, label: a })))
+
+      const phones = []
+      if (option.phone_no) phones.push(option.phone_no)
+      if (option.alternate_contact_details) phones.push(option.alternate_contact_details)
+      setPhoneOptions(Array.from(new Set(phones)).map((p) => ({ value: p, label: p })))
+
+      const emails = []
+      if (option.email) emails.push(option.email)
+      setEmailOptions(Array.from(new Set(emails)).map((e) => ({ value: e, label: e })))
+    },
+    [coordinatorForm],
+  )
+
+  const searchAddresses = useCallback(
+    async (searchValue) => {
+      if (!searchValue || !searchValue.trim()) {
+        setAddressOptions([])
+        return
+      }
+
+      const currentName = coordinatorForm.getFieldValue('customer_name')?.trim()
+      if (!currentName) {
+        setAddressOptions([])
+        return
+      }
+
+      try {
+        const normalized = searchValue.trim().toLowerCase()
+
+        // Find the selected customer in allCustomerSuggestions
+        const selectedCustomer = allCustomerSuggestions.find(
+          (customer) => customer.name === currentName
+        )
+
+        if (selectedCustomer && selectedCustomer.addresses) {
+          const addresses = Array.isArray(selectedCustomer.addresses)
+            ? selectedCustomer.addresses
+            : [selectedCustomer.addresses].filter(Boolean)
+
+          const matches = addresses
+            .filter((a) => a?.toLowerCase().includes(normalized))
+            .slice(0, 20)
+          setAddressOptions(matches.map((a) => ({ value: a, label: a })))
+        }
+      } catch (error) {
+        console.error('Address search error:', error)
+        setAddressOptions([])
+      }
+    },
+    [coordinatorForm, allCustomerSuggestions],
+  )
+
+  const searchEmails = useCallback(
+    async (searchValue) => {
+      if (!searchValue || !searchValue.trim()) {
+        setEmailOptions([])
+        return
+      }
+
+      const normalized = searchValue.trim().toLowerCase()
+
+      // Ensure we have the full list fetched
+      let customerList = allCustomerSuggestions
+      if (!customerList.length) {
+        customerList = await fetchCustomerSuggestions()
+      }
+
+      const matches = (customerList || [])
+        .map((customer) => customer.email)
+        .filter((e) => e && e.toLowerCase().includes(normalized))
+        .slice(0, 20)
+
+      setEmailOptions(matches.map((e) => ({ value: e, label: e })))
+    },
+    [allCustomerSuggestions, fetchCustomerSuggestions],
+  )
+
+  const searchPhones = useCallback(
+    async (searchValue) => {
+      if (!searchValue || !searchValue.trim()) {
+        setPhoneOptions([])
+        return
+      }
+
+      const normalized = searchValue.trim().toLowerCase()
+
+      // Ensure we have the full list fetched
+      let customerList = allCustomerSuggestions
+      if (!customerList.length) {
+        customerList = await fetchCustomerSuggestions()
+      }
+
+      const matches = (customerList || [])
+        .flatMap((customer) => {
+          const phones = []
+          if (customer.phone_no) phones.push(customer.phone_no)
+          if (customer.alternate_contact_details) phones.push(customer.alternate_contact_details)
+          return phones
+        })
+        .filter((p) => p && p.toLowerCase().includes(normalized))
+        .slice(0, 20)
+
+      setPhoneOptions(matches.map((p) => ({ value: p, label: p })))
+    },
+    [allCustomerSuggestions, fetchCustomerSuggestions],
+  )
+
+  const handleCoordinatorSubmit = async (values) => {
+    setCoordinatorSubmitLoading(true)
+
+    // Helper to get API name if different
+    const getApiName = (fieldName) => {
+      const apiMap = {
+        'revised_negotiated': 'revised/negotiated',
+        'revised_negotiated_quote_date': 'revised/negotiated_quote_date',
+        'revised_negotiated_quote_amount': 'revised/negotiated_quote_amount',
+      }
+      return apiMap[fieldName] || fieldName
+    }
+
+    const payload = {}
+    COORDINATOR_ADD_FIELDS.forEach((fieldName) => {
+      const apiName = getApiName(fieldName)
+      payload[apiName] = values[fieldName] ?? ''
+    })
+
+    // Add user information and set project_coordinator
+    payload.project_coordinator = values.quotation_given_by_name || currentUserName || ''
+    payload.center = currentUserCenter || ''
+    payload.group = currentUserGroup || ''
+
+    // Add complete user data
+    const rawUser = window.localStorage.getItem('ppm_user')
+    if (rawUser) {
+      const parsedUser = JSON.parse(rawUser)
+      payload.user_id = parsedUser.id || 0
+      payload.user_name = parsedUser.name || ''
+      payload.user_email = parsedUser.email || ''
+      payload.user_role = parsedUser.role || ''
+      payload.user_center = parsedUser.center || ''
+      payload.user_group = parsedUser.group || ''
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/proposals/add-proposal-coordinator`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody.detail || 'Failed to create proposal')
+      }
+
+      const result = await response.json()
+      const newProjectId = result?.proposal_id
+      if (newProjectId) {
+        openUploadModalForProject(newProjectId)
+      }
+
+      message.success('Proposal created successfully')
+      closeCoordinatorModal()
+      await fetchProposals()
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to create proposal')
+    } finally {
+      setCoordinatorSubmitLoading(false)
+    }
+  }
+
+  // Proposals marked "No" that still need an "if_not_reason" filled in
+  const notConvertedNoReasonList = useMemo(
+    () => tableData.filter((item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason)),
+    [tableData],
+  )
+
+  const openReasonPopup = () => {
+    const initialInputs = {}
+    notConvertedNoReasonList.forEach((item) => {
+      initialInputs[item.id] = ''
+    })
+    setReasonInputs(initialInputs)
+    setReasonPopupOpen(true)
+  }
+
+  const handleSaveReason = async (record, reasonText) => {
+    const trimmedReason = (reasonText || '').trim()
+    if (!trimmedReason) {
+      message.error('Please enter a reason before saving')
+      return
+    }
+    setSavingReasonIds((prev) => ({ ...prev, [record.id]: true }))
+    try {
+      const payload = {
+        project_id: record.id,
+        extended_delivery_date: record.extended_delivery_date || '',
+        co_ordinator_remarks: record.co_ordinator_remarks || '',
+        technical_completed_year: record.technical_completed_year || null,
+        closer_report: record.closer_report || '',
+        updated_by: currentUserName || record.updated_by || '',
+        if_not_reason: trimmedReason,
+        proposal_status: record.proposal_status || '',
+      }
+
+      const response = await fetch(`${API_BASE_URL}/proposals/coordinator-update`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody.detail || 'Failed to save reason')
+      }
+
+      message.success('Reason saved successfully')
+
+      // Reflect the change locally
+      const updateRecord = (list) =>
+        list.map((it) => (it.id === record.id ? { ...it, if_not_reason: trimmedReason } : it))
+
+      setTableData(updateRecord)
+      setFilteredData(updateRecord)
+      setOriginalTableData(updateRecord)
+
+      setReasonInputs((prev) => {
+        const next = { ...prev }
+        delete next[record.id]
+        return next
+      })
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to save reason')
+    } finally {
+      setSavingReasonIds((prev) => {
+        const next = { ...prev }
+        delete next[record.id]
+        return next
+      })
+    }
+  }
+
   const statistics = useMemo(() => {
     const totalProposals = tableData.filter((item) => !item.project_number?.trim()).length
     const totalProjects = tableData.filter((item) => item.project_number?.trim()).length
@@ -1653,7 +1974,7 @@ export default function Allproposals() {
         {
           key: 'actions',
           title: 'Actions',
-          width: 100,
+          width: 120,
           render: (_, record) => (
             <Space size="small">
               <Button
@@ -1683,6 +2004,32 @@ export default function Allproposals() {
                   </span>
                 )}
               </Space>
+              {userRole === 'scientist' && (
+                <Dropdown
+                  menu={{
+                    items: [
+                      {
+                        key: 'costEstimation',
+                        label: 'Cost Estimation Generator',
+                        onClick: (e) => {
+                          e.domEvent.stopPropagation()
+                          setSelectedProposalForCostEstimation(record)
+                          setCostEstimationModalOpen(true)
+                        },
+                      },
+                    ],
+                  }}
+                  trigger={['click']}
+                >
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<FileOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Generate/Estimate Cost"
+                  />
+                </Dropdown>
+              )}
             </Space>
           ),
         },
@@ -1738,7 +2085,7 @@ export default function Allproposals() {
       {
         key: 'actions',
         title: 'Actions',
-        width: 100,
+        width: 120,
         render: (_, record) => (
           <Space size="small">
             <Button
@@ -1768,11 +2115,37 @@ export default function Allproposals() {
                 </span>
               )}
             </Space>
+            {userRole === 'scientist' && (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'costEstimation',
+                      label: 'Cost Estimation Generator',
+                      onClick: (e) => {
+                        e.domEvent.stopPropagation()
+                        setSelectedProposalForCostEstimation(record)
+                        setCostEstimationModalOpen(true)
+                      },
+                    },
+                  ],
+                }}
+                trigger={['click']}
+              >
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<FileOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Generate/Estimate Cost"
+                />
+              </Dropdown>
+            )}
           </Space>
         ),
       },
     ]
-  }, [openDetailModal, openChatModal, statusFilter, currentUserName, currentUserGroup, isGhRole])
+  }, [openDetailModal, openChatModal, statusFilter, currentUserName, currentUserGroup, isGhRole, userRole])
 
   return (
     <>
@@ -1787,7 +2160,27 @@ export default function Allproposals() {
                 }
                 .blink-chat-btn {
                 }
+                @keyframes blinkReasonBtn {
+                  0%, 100% { opacity: 1; }
+                  50% { opacity: 0.45; }
+                }
+                .blink-reason-btn {
+                  animation: blinkReasonBtn 1.1s ease-in-out infinite;
+                }
               `}</style>
+              {userRole === 'scientist' && (
+                <div className="flex justify-end">
+                  <Button
+                    danger
+                    type="primary"
+                    disabled={!statistics.convertedNo}
+                    onClick={openReasonPopup}
+                    className={statistics.convertedNo ? 'blink-reason-btn' : ''}
+                  >
+                    Reason Required ({statistics.convertedNo})
+                  </Button>
+                </div>
+              )}
               {(() => {
                 const handleStatusCardClick = (val) => {
                   setStatusFilter(val)
@@ -1938,6 +2331,17 @@ export default function Allproposals() {
                           className={showUnacknowledgedOnly ? 'shadow-md hover:shadow-lg' : ''}
                         >
                           ⚠️ Unacknowledged
+                        </Button>
+                      )}
+                      {userRole === 'scientist' && (
+                        <Button
+                          type="primary"
+                          size="large"
+                          icon={<PlusOutlined />}
+                          onClick={openCoordinatorAddModal}
+                          className="bg-gradient-to-r from-green-500 to-green-600 border-none shadow-md hover:shadow-lg"
+                        >
+                          Add Proposal
                         </Button>
                       )}
                     </div>
@@ -2372,6 +2776,476 @@ export default function Allproposals() {
           </div>
         </div>
       </Modal>
+
+      {/* Reason Required Popup */}
+      <Modal
+        title={`Proposals Needing a Reason (${notConvertedNoReasonList.length})`}
+        open={reasonPopupOpen}
+        onCancel={() => setReasonPopupOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setReasonPopupOpen(false)}>Close</Button>,
+        ]}
+        width={1000}
+        maskClosable={false}
+      >
+        <Table
+          rowKey="id"
+          dataSource={notConvertedNoReasonList}
+          pagination={false}
+          size="small"
+          columns={[
+            {
+              title: 'SL No',
+              key: 'sl_no',
+              width: 60,
+              render: (_, __, index) => index + 1,
+            },
+            {
+              title: 'Customer Name',
+              dataIndex: 'customer_name',
+              key: 'customer_name',
+              width: 180,
+              render: (value) => wrapWithTooltip(value || '-', 25),
+            },
+            {
+              title: 'Project Name',
+              key: 'project_name',
+              width: 200,
+              render: (_, record) => {
+                const projectName = record.activity && record.activity.trim() !== ''
+                  ? record.activity
+                  : (record.quote_description || '-')
+                return wrapWithTooltip(projectName, 30)
+              },
+            },
+            {
+              title: 'Disclaimeres made in reason required',
+              key: 'if_not_reason',
+              render: (_, record) => (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <TextArea
+                    rows={2}
+                    placeholder="Enter reason..."
+                    value={reasonInputs[record.id] ?? ''}
+                    onChange={(e) =>
+                      setReasonInputs((prev) => ({ ...prev, [record.id]: e.target.value }))
+                    }
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={!!savingReasonIds[record.id]}
+                    disabled={!reasonInputs[record.id]?.trim()}
+                    onClick={() => handleSaveReason(record, reasonInputs[record.id])}
+                  >
+                    Save
+                  </Button>
+                </div>
+              ),
+            },
+          ]}
+          locale={{ emptyText: 'All proposals have a reason recorded.' }}
+        />
+      </Modal>
+
+      {/* Add Proposal Modal (Coordinator) */}
+      <Modal
+        title="Add Proposal (Coordinator)"
+        open={coordinatorModalOpen}
+        onCancel={closeCoordinatorModal}
+        width={1100}
+        okText="Submit"
+        confirmLoading={coordinatorSubmitLoading}
+        onOk={() => coordinatorForm.submit()}
+        maskClosable={false}
+      >
+        <Form form={coordinatorForm} layout="vertical" onFinish={handleCoordinatorSubmit}>
+          <Row gutter={[16, 16]}>
+            {COORDINATOR_ADD_FIELDS.filter((fieldName) => {
+              if (userRole === 'scientist') {
+                return !['quotation_given_by_department', 'center', 'group'].includes(fieldName)
+              }
+              return true
+            }).map((fieldName) => {
+              const field = ALL_FIELDS.find((f) => f.name === fieldName)
+              if (!field) return null
+
+              const isDate = ['enquiry_date', 'quote_date', 'revised_negotiated_quote_date'].includes(fieldName)
+              const isTextArea = field.input === 'textarea'
+              const isCustomerType = fieldName === 'customer_type'
+              const isRequestType = fieldName === 'request_type'
+              const isProposalStatus = fieldName === 'proposal_status'
+              const isReadOnlyName = fieldName === 'quotation_given_by_name'
+              const isReadOnlyDept = fieldName === 'quotation_given_by_department'
+              const isReadOnlyCenter = fieldName === 'center'
+              const isReadOnlyGroup = fieldName === 'group'
+              const isCustomerName = fieldName === 'customer_name'
+              const isAddressField = fieldName === 'address'
+              const isEmailField = fieldName === 'email'
+              const isPhoneField = fieldName === 'phone_no'
+
+              return (
+                <Col span={12} key={fieldName}>
+                  <Form.Item
+                    name={fieldName}
+                    label={field.label}
+                    rules={field.required ? [{ required: true, message: `Please enter ${field.label}` }] : []}
+                  >
+                    {isDate ? (
+                      <DatePicker style={{ width: '100%' }} format={DISPLAY_DATE_FORMAT} />
+                    ) : isCustomerType ? (
+                      <Select placeholder="Select Customer Type">
+                        {CUSTOMER_TYPE_OPTIONS.map((opt) => (
+                          <Select.Option key={opt} value={opt}>{opt}</Select.Option>
+                        ))}
+                      </Select>
+                    ) : isRequestType ? (
+                      <Select placeholder="Select Request Type">
+                        {REQUEST_TYPE_OPTIONS.map((opt) => (
+                          <Select.Option key={opt} value={opt}>{opt}</Select.Option>
+                        ))}
+                      </Select>
+                    ) : isProposalStatus ? (
+                      <Select
+                        mode="tags"
+                        showSearch
+                        allowClear
+                        placeholder="Select or type Proposal Status"
+                      >
+                        <Select.Option value="Submitted">Submitted</Select.Option>
+                        <Select.Option value="Accepted">Accepted</Select.Option>
+                        <Select.Option value="Rejected">Rejected</Select.Option>
+                        <Select.Option value="Awaiting">Awaiting</Select.Option>
+                      </Select>
+                    ) : isReadOnlyName || isReadOnlyDept || isReadOnlyCenter || isReadOnlyGroup ? (
+                      <Input disabled />
+                    ) : isCustomerName ? (
+                      <AutoComplete
+                        onSearch={searchCustomers}
+                        onSelect={handleCustomerSelect}
+                        options={customerOptions}
+                        placeholder="Search existing customers..."
+                        style={{ width: '100%' }}
+                        allowClear
+                      >
+                        <Input />
+                      </AutoComplete>
+                    ) : isAddressField ? (
+                      <AutoComplete
+                        options={addressOptions}
+                        onSearch={searchAddresses}
+                        placeholder="Type or select address..."
+                        style={{ width: '100%' }}
+                        allowClear
+                        onSelect={(value) => coordinatorForm.setFieldsValue({ address: value })}
+                      >
+                        <Input />
+                      </AutoComplete>
+                    ) : isEmailField ? (
+                      <AutoComplete
+                        options={emailOptions}
+                        onSearch={searchEmails}
+                        placeholder="Type or select email..."
+                        style={{ width: '100%' }}
+                        allowClear
+                      >
+                        <Input />
+                      </AutoComplete>
+                    ) : isPhoneField ? (
+                      <AutoComplete
+                        options={phoneOptions}
+                        onSearch={searchPhones}
+                        placeholder="Type or select phone..."
+                        style={{ width: '100%' }}
+                        allowClear
+                      >
+                        <Input />
+                      </AutoComplete>
+                    ) : isTextArea ? (
+                      <TextArea rows={3} />
+                    ) : (
+                      <Input placeholder={`Enter ${field.label}`} />
+                    )}
+                  </Form.Item>
+                </Col>
+              )
+            })}
+          </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={
+          <div className="flex flex-col">
+            <span className="text-lg font-semibold text-slate-800">
+              Upload Project Documents
+            </span>
+            <span className="text-xs text-slate-400">
+              Upload enquiry and/or proposal documents with version tracking
+            </span>
+          </div>
+        }
+        open={uploadModalVisible}
+        onCancel={closeUploadModal}
+        width={900}
+        styles={{ body: { padding: "16px" } }}
+        footer={[
+          <Button key="cancel" onClick={closeUploadModal}>
+            Cancel
+          </Button>,
+          <Button
+            key="upload-selected"
+            type="primary"
+            loading={uploading}
+            className="px-6"
+            onClick={handleUploadBothDocuments}
+          >
+            Upload Documents
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4">
+          {/* Info Banner */}
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm text-blue-700">
+            You can upload either one or both documents. Versions are automatically managed.
+          </div>
+
+          {/* Upload Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+            {/* Enquiry Upload */}
+            <div className="rounded-lg border border-slate-200 p-3 bg-white w-full overflow-hidden">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-slate-700 mb-0">
+                  Enquiry Document
+                </p>
+                <Tooltip title="Add attachments">
+                  <label
+                    htmlFor="enquiry-attachment-input"
+                    className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
+                  >
+                    <PlusOutlined style={{ fontSize: 12 }} />
+                  </label>
+                </Tooltip>
+                <input
+                  id="enquiry-attachment-input"
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || [])
+                    if (files.length) {
+                      setEnquiryAttachments((prev) => [...prev, ...files])
+                    }
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+
+              <p className="text-xs text-slate-500 mb-2">
+                Latest uploaded version: v{latestEnquiryVersion} | Next: v{latestEnquiryVersion + 1}
+              </p>
+
+              <div className="flex justify-center">
+                <Dragger
+                  multiple={false}
+                  maxCount={1}
+                  className="!p-4 !border-dashed !border-blue-300 rounded-lg"
+                  style={{ width: "260px" }}
+                  beforeUpload={(file) => {
+                    setEnquiryFileToUpload(file)
+                    return false
+                  }}
+                  onRemove={() => setEnquiryFileToUpload(null)}
+                  fileList={
+                    enquiryFileToUpload
+                      ? [{
+                        uid: enquiryFileToUpload.uid || enquiryFileToUpload.name,
+                        name: getDisplayFileName(enquiryFileToUpload.name),
+                        status: "done",
+                        originFileObj: enquiryFileToUpload,
+                      }]
+                      : []
+                  }
+                >
+                  <div className="flex flex-col items-center text-center">
+                    <InboxOutlined className="text-xl text-blue-500 mb-1" />
+                    <p className="text-sm font-medium text-slate-700 mb-0">Upload</p>
+                    <p className="text-xs text-slate-400 mb-0">PDF, DOC, DOCX</p>
+                  </div>
+                </Dragger>
+              </div>
+
+              {enquiryAttachments.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {enquiryAttachments.map((file, index) => (
+                    <Tag
+                      key={`${file.name}-${index}`}
+                      closable
+                      onClose={() => setEnquiryAttachments((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      {getDisplayFileName(file.name, 24)}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Proposal Upload */}
+            <div className="rounded-lg border border-slate-200 p-3 bg-white w-full overflow-hidden">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-slate-700 mb-0">
+                  Proposal Document
+                </p>
+                <Tooltip title="Add attachments">
+                  <label
+                    htmlFor="proposal-attachment-input"
+                    className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
+                  >
+                    <PlusOutlined style={{ fontSize: 12 }} />
+                  </label>
+                </Tooltip>
+                <input
+                  id="proposal-attachment-input"
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || [])
+                    if (files.length) {
+                      setProposalAttachments((prev) => [...prev, ...files])
+                    }
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+
+              <p className="text-xs text-slate-500 mb-2">
+                Latest uploaded version: v{latestProposalVersion} | Next: v{latestProposalVersion + 1}
+              </p>
+
+              <div className="flex justify-center">
+                <Dragger
+                  multiple={false}
+                  maxCount={1}
+                  className="!p-4 !border-dashed !border-blue-300 rounded-lg"
+                  style={{ width: "260px" }}
+                  beforeUpload={(file) => {
+                    setProposalFileToUpload(file)
+                    return false
+                  }}
+                  onRemove={() => setProposalFileToUpload(null)}
+                  fileList={
+                    proposalFileToUpload
+                      ? [{
+                        uid: proposalFileToUpload.uid || proposalFileToUpload.name,
+                        name: getDisplayFileName(proposalFileToUpload.name),
+                        status: "done",
+                        originFileObj: proposalFileToUpload,
+                      }]
+                      : []
+                  }
+                >
+                  <div className="flex flex-col items-center text-center">
+                    <InboxOutlined className="text-xl text-blue-500 mb-1" />
+                    <p className="text-sm font-medium text-slate-700 mb-0">Upload</p>
+                    <p className="text-xs text-slate-400 mb-0">PDF, DOC, DOCX</p>
+                  </div>
+                </Dragger>
+              </div>
+
+              {proposalAttachments.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {proposalAttachments.map((file, index) => (
+                    <Tag
+                      key={`${file.name}-${index}`}
+                      closable
+                      onClose={() => setProposalAttachments((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      {getDisplayFileName(file.name, 24)}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between w-full">
+            <p className="text-xs text-slate-500">
+              Version auto-increments by default.
+            </p>
+            <Button type="link" onClick={() => setShowVersionEditor((prev) => !prev)}>
+              {showVersionEditor ? 'Hide Version Change' : 'Change Version'}
+            </Button>
+          </div>
+
+          {showVersionEditor && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Enquiry Version</label>
+                <Input
+                  value={enquiryVersionInput}
+                  onChange={(e) => setEnquiryVersionInput(e.target.value)}
+                  placeholder={`Default: ${latestEnquiryVersion + 1}`}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Proposal Version</label>
+                <Input
+                  value={proposalVersionInput}
+                  onChange={(e) => setProposalVersionInput(e.target.value)}
+                  placeholder={`Default: ${latestProposalVersion + 1}`}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Section */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+            {/* Description */}
+            <div className="md:col-span-2 w-full">
+              <label className="text-xs text-slate-500 mb-1 block">
+                Description (Optional)
+              </label>
+              <TextArea
+                placeholder="Add a short description about the documents..."
+                value={uploadDescription}
+                onChange={(e) => setUploadDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            {/* Uploaded By */}
+            <div className="w-full">
+              <label className="text-xs text-slate-500 mb-1 block">
+                Uploaded By
+              </label>
+              <Input
+                value={uploadedBy}
+                disabled
+                className="bg-slate-100 w-full"
+              />
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <CostEstimationModal
+        key={selectedProposalForCostEstimation?.id}
+        open={costEstimationModalOpen}
+        onClose={() => {
+          setCostEstimationModalOpen(false);
+          setSelectedProposalForCostEstimation(null);
+        }}
+        title={
+          selectedProposalForCostEstimation?.activity ||
+          selectedProposalForCostEstimation?.project_number ||
+          selectedProposalForCostEstimation?.quote_description ||
+          (selectedProposalForCostEstimation?.id ? `Proposal No ${selectedProposalForCostEstimation.id}` : "Cost Estimation")
+        }
+        createdBy={currentUserName}
+        projectId={selectedProposalForCostEstimation?.id}
+      />
     </>
   )
 }

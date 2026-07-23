@@ -510,11 +510,7 @@ def get_proposals_by_name(
             db.query(Proposal)
             .filter(
                 or_(*conditions) if conditions else True,
-                or_(
-                    Proposal.is_acknowledged == True,
-                    Proposal.is_acknowledged.is_(None),
-                    Proposal.is_acknowledged == False,
-                )
+                Proposal.is_acknowledged == True
             )
             .distinct(Proposal.id)
             .all()

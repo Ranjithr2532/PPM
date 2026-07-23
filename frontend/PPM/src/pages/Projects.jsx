@@ -1346,7 +1346,7 @@ function Projects() {
       },
     },
 
-    ...(!isReadOnly ? [{
+    ...(currentUserRole === 'admin' ? [{
       title: 'Actions',
       width: 120,
       fixed: 'right',

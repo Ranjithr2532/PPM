@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Typography, message, Select } from 'antd'
+import { Layout, Menu, Button, Typography, message, Select, Badge } from 'antd'
 import {
   ProfileOutlined,
   SettingOutlined,
@@ -236,18 +236,11 @@ function Sidebar() {
                         <span>
                           Notification
                           {notificationCount > 0 && (
-                            <span
-                              style={{
-                                backgroundColor: '#ff4d4f',
-                                borderRadius: '50%',
-                                color: 'white',
-                                padding: '0 6px',
-                                marginLeft: '8px',
-                                fontSize: '12px',
-                              }}
-                            >
-                              {notificationCount}
-                            </span>
+                            <Badge
+                              count={notificationCount}
+                              style={{ backgroundColor: '#ff4d4f', marginLeft: '8px' }}
+                              size="small"
+                            />
                           )}
                         </span>
                       ),
@@ -264,20 +257,12 @@ function Sidebar() {
                         <span>
                           Acknowledge Proposals
                           {unacknowledgedCount > 0 && (
-                            <span
-                              style={{
-                                backgroundColor: '#ff4d4f',
-                                borderRadius: '50%',
-                                color: 'white',
-                                padding: '0 4px',
-                                marginLeft: '4px',
-                                fontSize: '10px',
-                                lineHeight: '14px',
-                                display: 'inline-block',
-                              }}
-                            >
-                              {unacknowledgedCount}
-                            </span>
+                            <Badge
+                              count={unacknowledgedCount}
+                              overflowCount={999}
+                              style={{ backgroundColor: '#ff4d4f', marginLeft: '8px' }}
+                              size="small"
+                            />
                           )}
                         </span>
                       ),
@@ -315,16 +300,11 @@ function Sidebar() {
                         <span>
                           Notification
                           {notificationCount > 0 && (
-                            <span style={{
-                              backgroundColor: '#ff4d4f',
-                              borderRadius: '50%',
-                              color: 'white',
-                              padding: '0 6px',
-                              marginLeft: '8px',
-                              fontSize: '12px'
-                            }}>
-                              {notificationCount}
-                            </span>
+                            <Badge
+                              count={notificationCount}
+                              style={{ backgroundColor: '#ff4d4f', marginLeft: '8px' }}
+                              size="small"
+                            />
                           )}
                         </span>
                       ),

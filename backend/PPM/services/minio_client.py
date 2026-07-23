@@ -54,8 +54,16 @@ async def upload_file_to_minio(
 
     if object_name is None:
         from uuid import uuid4
+        import re
 
-        sanitized_name = file.filename.replace(" ", "_")
+        # Extract base and extension
+        base, ext = os.path.splitext(file.filename)
+        # Keep only alphanumeric, hyphen, underscore, and dots in base name
+        sanitized_base = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', base)
+        # Replace multiple contiguous underscores with a single underscore
+        sanitized_base = re.sub(r'_{2,}', '_', sanitized_base)
+        sanitized_name = sanitized_base + ext
+
         object_name = f"documents/{uuid4().hex}_{sanitized_name}"
 
     try:
