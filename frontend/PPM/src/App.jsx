@@ -113,7 +113,9 @@ function RoleProtectedLayout({ basePath }) {
         >
           <Routes>
             <Route path="proposals" element={<ProposalsComponent />} />
-            <Route path="chats" element={<ChatsPage />} />
+            {normalizedRole !== 'guest' && normalizedRole !== 'ch' && normalizedRole !== 'director' && (
+              <Route path="chats" element={<ChatsPage />} />
+            )}
             {isAdmin && (
               <Route path="master-proposals" element={<MasterProposals />} />
             )}

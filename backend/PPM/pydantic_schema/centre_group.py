@@ -34,8 +34,8 @@ class CentreResponse(CentreBase):
 class GroupBase(BaseModel):
     name: str
     head: Optional[str] = None
-    code: str
-    centre_id: int
+    code: Optional[str] = None
+    centre_id: Optional[int] = None
 
 
 class GroupCreate(GroupBase):
