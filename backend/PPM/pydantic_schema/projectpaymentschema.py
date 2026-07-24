@@ -35,7 +35,7 @@ class ProjectPaymentStageResponse(ProjectPaymentStageBase):
     id: int
 
     class Config:
-        orm_mode = True   
+        from_attributes = True
 
 class ProjectPaymentStageListResponse(BaseModel):
     data: list[ProjectPaymentStageResponse]

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   PlusOutlined,
   SearchOutlined,
@@ -49,6 +50,9 @@ import '../App.css'
 import { API_BASE_URL } from '../config/api.js'
 import { DISPLAY_DATE_FORMAT, formatDate, formatIndianNumber } from '../config/date.js'
 import { CostEstimationModal } from './CostBreakDownAction'
+import messagingImg from '../assets/messaging.png'
+import FloatingChatsWidget from '../components/FloatingChatsWidget'
+import TopChatNotificationBar from '../components/TopChatNotificationBar'
 
 dayjs.extend(isSameOrAfter)
 dayjs.extend(isSameOrBefore)
@@ -249,82 +253,6 @@ const getThreadEvents = (queries, thread, record, currentUserName, isGhRole) => 
   return events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
 }
 
-const getThreadUnseenCount = (record, currentUserName, currentUserGroup, thread, isGhRole) => {
-  if (!record || !record.queries) return 0
-
-  if (isGhRole) {
-    const myGroupName = normalizeName(currentUserGroup || 'group head')
-    const piName = normalizeName(getPiName(record))
-    const sender = thread === 'admin' ? 'admin' : piName
-
-    return record.queries.filter((q) => {
-      const isFromSender = normalizeName(q.from_) === normalizeName(sender)
-      const isToMe = thread === 'admin'
-        ? (normalizeName(q.to) === myGroupName || normalizeName(q.to) === 'group head' || normalizeName(q.to) === piName)
-        : (normalizeName(q.to) === myGroupName || normalizeName(q.to) === 'group head')
-
-      if (isFromSender && isToMe && q.message_seen === false) {
-        return true
-      }
-
-      const isToSender = normalizeName(q.to) === normalizeName(sender)
-      const isFromMe = thread === 'admin'
-        ? (normalizeName(q.from_) === myGroupName || normalizeName(q.from_) === 'group head' || normalizeName(q.from_) === piName)
-        : (normalizeName(q.from_) === myGroupName || normalizeName(q.from_) === 'group head')
-
-      if (isFromMe && isToSender && q.respond_to_remarks && q.reply_seen === false) {
-        return true
-      }
-      return false
-    }).length
-  } else {
-    const myName = normalizeName(currentUserName || '')
-    const myGroupName = normalizeName(record.group || '')
-    const sender = thread === 'admin' ? 'admin' : myGroupName
-
-    return record.queries.filter((q) => {
-      const isFromSender = normalizeName(q.from_) === normalizeName(sender) || (sender !== 'admin' && normalizeName(q.from_) === 'group head')
-      const isToMe = normalizeName(q.to) === myName
-
-      if (isFromSender && isToMe && q.message_seen === false) {
-        return true
-      }
-
-      const isToSender = normalizeName(q.to) === normalizeName(sender) || (sender !== 'admin' && normalizeName(q.to) === 'group head')
-      const isFromMe = normalizeName(q.from_) === myName
-
-      if (isFromMe && isToSender && q.respond_to_remarks && q.reply_seen === false) {
-        return true
-      }
-      return false
-    }).length
-  }
-}
-
-const countUnseenReplies = (record, currentUserName, currentUserGroup, isGhRole) => {
-  if (isGhRole) {
-    return getThreadUnseenCount(record, currentUserName, currentUserGroup, 'admin', true) + getThreadUnseenCount(record, currentUserName, currentUserGroup, 'pi', true)
-  }
-  return getThreadUnseenCount(record, currentUserName, currentUserGroup, 'admin', false) + getThreadUnseenCount(record, currentUserName, currentUserGroup, 'gh', false)
-}
-
-const isPendingReply = (record, currentUserName, currentUserGroup, isGhRole) => {
-  const queries = record.queries || []
-  if (isGhRole) {
-    const myGroupName = normalizeName(currentUserGroup || 'group head')
-    return queries.some((q) => {
-      const isToMe = normalizeName(q.to) === myGroupName || normalizeName(q.to) === 'group head'
-      return isToMe && !q.respond_to_remarks
-    })
-  } else {
-    const myName = normalizeName(currentUserName || '')
-    const myGroupName = normalizeName(record?.group || '')
-    return queries.some((q) => {
-      const isFromSender = normalizeName(q.from_) === 'admin' || normalizeName(q.from_) === myGroupName || normalizeName(q.from_) === 'group head'
-      return isFromSender && normalizeName(q.to) === myName && !q.respond_to_remarks
-    })
-  }
-}
 
 const isProposalNotConverted = (proposalsConverted, ifNotReason) => {
   if (!proposalsConverted) return false
@@ -335,8 +263,27 @@ const isProposalNotConverted = (proposalsConverted, ifNotReason) => {
 }
 
 export default function Allproposals() {
+  const navigate = useNavigate()
+  const [floatingChatOpen, setFloatingChatOpen] = useState(false)
+  const [selectedNotificationTarget, setSelectedNotificationTarget] = useState(null)
+  const [unreadChatCount, setUnreadChatCount] = useState(0)
   const [form] = Form.useForm()
   const [coordinatorForm] = Form.useForm()
+
+  const handleNavigateToChats = () => {
+    const currentPath = window.location.pathname.toLowerCase()
+    if (currentPath.includes('/admin')) {
+      navigate('/admin/chats')
+    } else if (currentPath.includes('/scientist')) {
+      navigate('/scientist/chats')
+    } else if (currentPath.includes('/gh')) {
+      navigate('/gh/chats')
+    } else if (currentPath.includes('/ch')) {
+      navigate('/ch/chats')
+    } else {
+      navigate('/chats')
+    }
+  }
 
   const [tableData, setTableData] = useState([])
   const [filteredData, setFilteredData] = useState([])
@@ -421,9 +368,40 @@ export default function Allproposals() {
 
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0)
   const [showUnacknowledgedOnly, setShowUnacknowledgedOnly] = useState(false)
-  const [showNewMessagesOnly, setShowNewMessagesOnly] = useState(false)
-  const [showPendingReplyOnly, setShowPendingReplyOnly] = useState(false)
   const [originalTableData, setOriginalTableData] = useState([])
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const raw = localStorage.getItem('ppm_user')
+      const parsed = raw ? JSON.parse(raw) : {}
+      const uName = parsed.name || currentUserName
+      const uRole = userRole
+      const uGrp = parsed.group || currentUserGroup
+
+      if (!uName) return
+
+      const [groupRes, proposalRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(uName)}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(uName)}&user_role=${encodeURIComponent(uRole)}&user_group=${encodeURIComponent(uGrp)}`).then(r => r.ok ? r.json() : { unread_count: 0 }).catch(() => ({ unread_count: 0 }))
+      ])
+
+      const groupList = Array.isArray(groupRes) ? groupRes : []
+      const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
+      const proposalUnread = proposalRes?.unread_count || 0
+      setUnreadChatCount(groupUnread + proposalUnread)
+    } catch (e) {
+      console.error('Error fetching unread count:', e)
+    }
+  }, [currentUserName, userRole, currentUserGroup])
+
+  useEffect(() => {
+    fetchUnreadCount()
+    const handleChatUpdated = () => fetchUnreadCount()
+    window.addEventListener('ppm-chat-updated', handleChatUpdated)
+    return () => {
+      window.removeEventListener('ppm-chat-updated', handleChatUpdated)
+    }
+  }, [fetchUnreadCount])
 
   const [stageConfig, setStageConfig] = useState([])
   const [docsModalVisible, setDocsModalVisible] = useState(false)
@@ -488,13 +466,6 @@ export default function Allproposals() {
     }
   }, [chatEvents, chatModalOpen])
 
-  const unreadChatsCount = useMemo(() => {
-    return tableData.filter((item) => countUnseenReplies(item, currentUserName, currentUserGroup, isGhRole) > 0).length
-  }, [tableData, currentUserName, currentUserGroup, isGhRole])
-
-  const pendingReplyCount = useMemo(() => {
-    return tableData.filter((item) => isPendingReply(item, currentUserName, currentUserGroup, isGhRole)).length
-  }, [tableData, currentUserName, currentUserGroup, isGhRole])
 
   const mapApiToUi = (item) => {
     const mapped = { ...item }
@@ -523,11 +494,11 @@ export default function Allproposals() {
         setCurrentUserName(name)
         setCurrentUserCenter(parsedUser.center || '')
         setCurrentUserGroup(group)
-      const path = window.location.pathname.toLowerCase()
-      if (path.startsWith('/gh')) role = 'gh'
-      else if (path.startsWith('/ch')) role = 'ch'
-      else if (path.startsWith('/scientist')) role = 'scientist'
-      setUserRole(role)
+        const path = window.location.pathname.toLowerCase()
+        if (path.startsWith('/gh')) role = 'gh'
+        else if (path.startsWith('/ch')) role = 'ch'
+        else if (path.startsWith('/scientist')) role = 'scientist'
+        setUserRole(role)
       }
 
       let url = ''
@@ -752,7 +723,10 @@ export default function Allproposals() {
 
   const fetchAllQueryCounts = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/Remarkss/`, {
+      const uName = currentUser?.name || currentUser?.username || ''
+      const uRole = currentUser?.role || ''
+      const uGrp = currentUser?.group || currentUser?.group_name || ''
+      const response = await fetch(`${API_BASE_URL}/Remarkss/?unread_only=true&user_name=${encodeURIComponent(uName)}&user_role=${encodeURIComponent(uRole)}&user_group=${encodeURIComponent(uGrp)}`, {
         headers: { accept: 'application/json' },
       })
       if (!response.ok) return
@@ -1827,16 +1801,8 @@ export default function Allproposals() {
       })
     }
 
-    if (showNewMessagesOnly) {
-      filtered = filtered.filter((item) => countUnseenReplies(item, currentUserName, currentUserGroup, isGhRole) > 0)
-    }
-
-    if (showPendingReplyOnly) {
-      filtered = filtered.filter((item) => isPendingReply(item, currentUserName, currentUserGroup, isGhRole))
-    }
-
     setFilteredData(filtered)
-  }, [searchText, orderDateRange, enquiryDateRange, statusFilter, projectCodePrefix, projectNumberFilter, tableData, showNewMessagesOnly, currentUserName, currentUserGroup, isGhRole, showPendingReplyOnly])
+  }, [searchText, orderDateRange, enquiryDateRange, statusFilter, projectCodePrefix, projectNumberFilter, tableData])
 
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
@@ -1984,26 +1950,6 @@ export default function Allproposals() {
                 onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
                 title="More Details"
               />
-              <Space size={4}>
-                <Badge count={countUnseenReplies(record, currentUserName, currentUserGroup, isGhRole)} size="small" offset={[-2, 2]}>
-                  <Button
-                    size="small"
-                    type="link"
-                    icon={<MessageOutlined />}
-                    onClick={(e) => { e.stopPropagation(); openChatModal(record, 'admin') }}
-                    style={{ color: countUnseenReplies(record, currentUserName, currentUserGroup, isGhRole) > 0 ? '#ff4d4f' : '#1890ff' }}
-                    title="Chat"
-                  />
-                </Badge>
-                {isPendingReply(record, currentUserName, currentUserGroup, isGhRole) && (
-                  <span title="Reply Needed" style={{ cursor: 'pointer', fontSize: '14px' }} onClick={(e) => {
-                    e.stopPropagation()
-                    openChatModal(record, 'admin')
-                  }}>
-                    ⚠️
-                  </span>
-                )}
-              </Space>
               {userRole === 'scientist' && (
                 <Dropdown
                   menu={{
@@ -2095,26 +2041,6 @@ export default function Allproposals() {
               onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
               title="More Details"
             />
-            <Space size={4}>
-              <Badge count={countUnseenReplies(record, currentUserName, currentUserGroup, isGhRole)} size="small" offset={[-2, 2]}>
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<MessageOutlined />}
-                  onClick={(e) => { e.stopPropagation(); openChatModal(record, 'admin') }}
-                  style={{ color: countUnseenReplies(record, currentUserName, currentUserGroup, isGhRole) > 0 ? '#ff4d4f' : '#1890ff' }}
-                  title="Chat"
-                />
-              </Badge>
-              {isPendingReply(record, currentUserName, currentUserGroup, isGhRole) && (
-                <span title="Reply Needed" style={{ cursor: 'pointer', fontSize: '14px' }} onClick={(e) => {
-                  e.stopPropagation()
-                  openChatModal(record, 'admin')
-                }}>
-                  ⚠️
-                </span>
-              )}
-            </Space>
             {userRole === 'scientist' && (
               <Dropdown
                 menu={{
@@ -2168,6 +2094,12 @@ export default function Allproposals() {
                   animation: blinkReasonBtn 1.1s ease-in-out infinite;
                 }
               `}</style>
+              <TopChatNotificationBar
+                onOpenChat={(targetItem) => {
+                  setSelectedNotificationTarget(targetItem)
+                  setFloatingChatOpen(true)
+                }}
+              />
               {userRole === 'scientist' && (
                 <div className="flex justify-end">
                   <Button
@@ -2184,8 +2116,6 @@ export default function Allproposals() {
               {(() => {
                 const handleStatusCardClick = (val) => {
                   setStatusFilter(val)
-                  setShowNewMessagesOnly(false)
-                  setShowPendingReplyOnly(false)
                 }
                 return (
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -2297,30 +2227,22 @@ export default function Allproposals() {
                       <p className="text-slate-500 text-sm">Showing {filteredData.length} records</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        type={showNewMessagesOnly ? 'primary' : 'default'}
-                        size="large"
-                        onClick={() => {
-                          setShowNewMessagesOnly(!showNewMessagesOnly)
-                          setShowPendingReplyOnly(false)
-                        }}
-                        className={showNewMessagesOnly ? 'shadow-md hover:shadow-lg' : (unreadChatsCount > 0 ? 'blink-chat-btn' : '')}
-                        style={showNewMessagesOnly ? {} : (unreadChatsCount > 0 ? {} : { borderColor: '#1890ff', color: '#1890ff' })}
-                      >
-                        💬 Unread Chats ({unreadChatsCount})
-                      </Button>
-                      <Button
-                        type={showPendingReplyOnly ? 'primary' : 'default'}
-                        size="large"
-                        onClick={() => {
-                          setShowPendingReplyOnly(!showPendingReplyOnly)
-                          setShowNewMessagesOnly(false)
-                        }}
-                        className={showPendingReplyOnly ? 'shadow-md hover:shadow-lg' : ''}
-                        style={showPendingReplyOnly ? {} : { borderColor: '#fa8c16', color: '#fa8c16' }}
-                      >
-                        ⚠️ Reply Needed ({pendingReplyCount})
-                      </Button>
+                      <Tooltip title="PPM MESSAGING">
+                        <Badge count={unreadChatCount} overflowCount={99} offset={[-4, 4]}>
+                          <Button
+                            type="text"
+                            size="large"
+                            onClick={() => setFloatingChatOpen(prev => !prev)}
+                            style={{ padding: '2px 6px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'transparent', height: 'auto' }}
+                            className="hover:bg-slate-100 transition-colors rounded-xl border-none shadow-none group py-1"
+                          >
+                            <img src={messagingImg} alt="PPM Chat" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                            <span className="text-[10px] font-bold tracking-wide text-slate-700 group-hover:text-emerald-700 transition-colors -mt-0.5">
+                              PPM Chat
+                            </span>
+                          </Button>
+                        </Badge>
+                      </Tooltip>
                       {statusFilter === 'proposals' && (
                         <Button
                           type={showUnacknowledgedOnly ? 'primary' : 'default'}
@@ -2685,97 +2607,6 @@ export default function Allproposals() {
         </Modal>
       )}
 
-      {/* Chat / Queries Modal */}
-      <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
-            <span>Project Discussion & Queries</span>
-            <Segmented
-              options={[
-                { label: 'Admin Chat', value: 'admin' },
-                { label: isGhRole ? 'Scientist Chat' : 'GH Chat', value: isGhRole ? 'pi' : 'gh' },
-              ]}
-              value={chatThread}
-              onChange={switchChatThread}
-            />
-          </div>
-        }
-        open={chatModalOpen}
-        onCancel={closeChatModal}
-        footer={null}
-        width={650}
-      >
-        <div style={{ height: 400, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px', background: '#f5f5f5', borderRadius: 8 }}>
-            <Spin spinning={chatLoading}>
-              {chatEvents.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#8c8c8c', marginTop: 40 }}>
-                  No messages in this thread yet.
-                </div>
-              ) : (
-                chatEvents.map((evt) => {
-                  const isMine =
-                    normalizeName(evt.from_) === normalizeName(currentUserName) ||
-                    (isGhRole && (normalizeName(evt.from_) === normalizeName(currentUserGroup) || normalizeName(evt.from_) === 'group head'))
-
-                  return (
-                    <div
-                      key={evt.id}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: isMine ? 'flex-end' : 'flex-start',
-                        marginBottom: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          maxWidth: '75%',
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          background: isMine ? '#1890ff' : '#ffffff',
-                          color: isMine ? '#ffffff' : '#000000',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                        }}
-                      >
-                        <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 2 }}>{evt.from_}</div>
-                        <div>{evt.content}</div>
-                        <div style={{ fontSize: 10, opacity: 0.6, textAlign: 'right', marginTop: 4 }}>
-                          {formatDate(evt.timestamp)}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-              <div ref={messagesEndRef} />
-            </Spin>
-          </div>
-
-          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-            <TextArea
-              rows={2}
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Type your message..."
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault()
-                  handleSendChatMessage()
-                }
-              }}
-            />
-            <Button
-              type="primary"
-              onClick={handleSendChatMessage}
-              loading={chatSending}
-              style={{ height: 'auto' }}
-            >
-              Send
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Reason Required Popup */}
       <Modal
@@ -3245,6 +3076,16 @@ export default function Allproposals() {
         }
         createdBy={currentUserName}
         projectId={selectedProposalForCostEstimation?.id}
+      />
+
+      <FloatingChatsWidget
+        open={floatingChatOpen}
+        onClose={() => {
+          setFloatingChatOpen(false)
+          setSelectedNotificationTarget(null)
+        }}
+        onUnreadCountChange={setUnreadChatCount}
+        targetChatItem={selectedNotificationTarget}
       />
     </>
   )

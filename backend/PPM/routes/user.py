@@ -8,6 +8,9 @@ from pydantic import BaseModel, EmailStr
 from models.model import OTP
 from datetime import datetime, timedelta
 
+from security.security import create_access_token, verify_password
+from security.auth import get_current_user
+
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -69,7 +72,7 @@ def generate_otp():
     return ''.join(random.choices(string.digits, k=6))
 
 @router.post("/request-otp")
-async def request_otp(request: EmailRequest, db: Session = Depends(get_db)):
+async def request_otp(request: EmailRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     try:
         # Validate email format (already done by EmailStr)
         # Check if user exists with this email
@@ -108,7 +111,7 @@ async def request_otp(request: EmailRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/verify-otp")
-async def verify_otp(verification: OTPVerification, db: Session = Depends(get_db)):
+async def verify_otp(verification: OTPVerification, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     try:
         # Find the latest unused OTP for this email
         otp_record = (
@@ -151,7 +154,7 @@ async def verify_otp(verification: OTPVerification, db: Session = Depends(get_db
 
 # CREATE
 @router.post("/", response_model=UserResponse)
-def create_user(request: UserCreate, db: Session = Depends(get_db)):
+def create_user(request: UserCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     existing = db.query(User).filter(User.email == request.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
@@ -184,11 +187,36 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if user.password != request.password:
+    is_valid = False
+    if user.password and (user.password.startswith("$2b$") or user.password.startswith("$2a$")):
+        is_valid = verify_password(request.password, user.password)
+    else:
+        is_valid = (user.password == request.password)
+
+    if not is_valid:
         raise HTTPException(status_code=401, detail="Incorrect password")
 
-    # Return all user fields in the response
-    user_dict = {
+    user_payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "role": user.role,
+        "group": user.group,
+        "center": user.center,
+    }
+    access_token = create_access_token(data=user_payload)
+
+    # Return JWT token + user details
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "center": user.center,
+            "group": user.group,
+        },
         "id": user.id,
         "name": user.name,
         "email": user.email,
@@ -197,18 +225,17 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
         "group": user.group,
         "message": "Login successful"
     }
-    return user_dict
 
 
 # GET ALL
 @router.get("/", response_model=list[UserResponse])
-def get_all_users(db: Session = Depends(get_db)):
+def get_all_users(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     return db.query(User).all()
 
 
 # GET BY ID
 @router.get("/{id}", response_model=UserResponse)
-def get_user(id: int, db: Session = Depends(get_db)):
+def get_user(id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     user = db.query(User).filter(User.id == id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -217,7 +244,7 @@ def get_user(id: int, db: Session = Depends(get_db)):
 
 # DELETE
 @router.delete("/{id}")
-def delete_user(id: int, db: Session = Depends(get_db)):
+def delete_user(id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     user = db.query(User).filter(User.id == id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -243,7 +270,7 @@ class UserUpdate(BaseModel):
 
 
 @router.put("/{id}", response_model=UserResponse)
-def update_user(id: int, request: UserUpdate, db: Session = Depends(get_db)):
+def update_user(id: int, request: UserUpdate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     # Find the user
     user = db.query(User).filter(User.id == id).first()
     if not user:
@@ -276,7 +303,7 @@ class PasswordUpdateRequest(BaseModel):
 
 
 @router.post("/update-password", response_model=dict)
-async def update_password_only(request: PasswordUpdateRequest, db: Session = Depends(get_db)):
+async def update_password_only(request: PasswordUpdateRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """
     Update user password using email
     - Requires email and new password

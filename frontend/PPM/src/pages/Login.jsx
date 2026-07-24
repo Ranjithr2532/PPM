@@ -3,7 +3,7 @@ import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { Card, Form, Input, Button, Typography, Checkbox, message, Modal, Steps } from 'antd'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
-import { API_BASE_URL } from '../config/api.js'
+import { API_BASE_URL, setAccessToken, setCurrentUser } from '../config/api.js'
 
 const { Title } = Typography
 const { Step } = Steps
@@ -76,8 +76,8 @@ function Login() {
       }
 
       if (token) {
-        localStorage.setItem('token', token)
-        console.log('Token saved to localStorage')
+        setAccessToken(token)
+        console.log('Token saved via setAccessToken helper')
       } else {
         console.warn('No token found in login response! Continuing without token.')
       }
@@ -100,8 +100,8 @@ function Login() {
       } else {
         // For non-GH users, proceed normally
         try {
-          localStorage.setItem('ppm_user', JSON.stringify(userPayload))
-          console.log('User saved to localStorage:', userPayload)
+          setCurrentUser(userPayload)
+          console.log('User saved via setCurrentUser helper:', userPayload)
         } catch (err) {
           console.error('Failed to save user to localStorage', err)
         }

@@ -84,22 +84,30 @@ function Sidebar() {
 
   useEffect(() => {
     // Fetch unread proposal chats + unread group chats for the active user
-    if (userName && !isGuest && !isCH && !isDirector) {
-      let userGroup = ''
-      try {
-        const raw = localStorage.getItem('ppm_user')
-        if (raw) userGroup = JSON.parse(raw).group || ''
-      } catch (e) {}
+    const fetchUnread = () => {
+      if (userName && !isGuest && !isDirector) {
+        let userGroup = ''
+        try {
+          const raw = localStorage.getItem('ppm_user')
+          if (raw) userGroup = JSON.parse(raw).group || ''
+        } catch (e) {}
 
-      Promise.all([
-        axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
-      ]).then(([groupRes, proposalRes]) => {
-        const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
-        const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
-        const proposalUnread = proposalRes.data?.unread_count || 0
-        setUnreadChatCount(groupUnread + proposalUnread)
-      })
+        Promise.all([
+          axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
+          axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
+        ]).then(([groupRes, proposalRes]) => {
+          const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
+          const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
+          const proposalUnread = proposalRes.data?.unread_count || 0
+          setUnreadChatCount(groupUnread + proposalUnread)
+        })
+      }
+    }
+
+    fetchUnread()
+    window.addEventListener('ppm-chat-updated', fetchUnread)
+    return () => {
+      window.removeEventListener('ppm-chat-updated', fetchUnread)
     }
   }, [userName, userRole, isGuest, isCH, isDirector]);
 
@@ -247,7 +255,7 @@ function Sidebar() {
             }}
             items={[
               { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
-              ...(!isGuest && !isCH && !isDirector ? [{
+              ...(!isGuest && !isDirector ? [{
                 key: 'chats',
                 icon: <MessageOutlined />,
                 label: (

@@ -98,6 +98,7 @@ const checkIsToMe = (itemTo, userName, userRole, userGroup) => {
   if (uName && (toVal.includes(uName) || uName.includes(toVal))) return true
   if (uRole === 'admin' && (toVal === 'admin' || toVal === 'manjunath' || toVal.includes('admin'))) return true
   if (uRole === 'gh' && (toVal === 'gh' || toVal === uGrp || toVal.includes('group head') || toVal.includes('gh'))) return true
+  if (uRole === 'ch' && (toVal === 'ch' || toVal.includes('centre head') || toVal.includes('center head') || toVal.includes('ch'))) return true
   if (uRole === 'scientist' && (toVal === uName || toVal.includes('coordinator') || toVal.includes('project'))) return true
   return false
 }
@@ -115,6 +116,7 @@ const checkIsFromMe = (itemFrom, userName, userRole, userGroup) => {
   if (uName && (fromVal.includes(uName) || uName.includes(fromVal))) return true
   if (uRole === 'admin' && (fromVal === 'admin' || fromVal === 'manjunath' || fromVal.includes('admin'))) return true
   if (uRole === 'gh' && (fromVal === 'gh' || fromVal === uGrp || fromVal.includes('group head') || fromVal.includes('gh'))) return true
+  if (uRole === 'ch' && (fromVal === 'ch' || fromVal.includes('centre head') || fromVal.includes('center head') || fromVal.includes('ch'))) return true
   if (uRole === 'scientist' && (fromVal === uName || fromVal.includes('coordinator') || fromVal.includes('project'))) return true
   return false
 }
@@ -346,6 +348,11 @@ export default function ChatsPage() {
 
   useEffect(() => {
     fetchAllChats()
+    const handleChatUpdated = () => fetchAllChats()
+    window.addEventListener('ppm-chat-updated', handleChatUpdated)
+    return () => {
+      window.removeEventListener('ppm-chat-updated', handleChatUpdated)
+    }
   }, [fetchAllChats])
 
   // Combine Proposals and Group Chats into one WhatsApp-style unified list
@@ -514,7 +521,7 @@ export default function ChatsPage() {
     }
   }, [selectedProposal, targetRecipient, fetchMessages])
 
-  // Recipient options for proposal chats
+  // Recipient options for proposal chats (with GH, CH, PC, Admin options)
   const recipientOptions = useMemo(() => {
     if (!selectedProposal) return []
 
@@ -522,48 +529,52 @@ export default function ChatsPage() {
     const uNameNorm = norm(userName)
     const pcNameNorm = norm(pcName)
 
-    // Check if current logged-in user is the Project Coordinator for this proposal
     const isMePC = uNameNorm && pcNameNorm && (
       uNameNorm === pcNameNorm ||
       uNameNorm.includes(pcNameNorm) ||
       pcNameNorm.includes(uNameNorm)
     )
 
+    const centreName = selectedProposal.center || selectedProposal.centre || 'CH'
+    const groupName = selectedProposal.group || 'GH'
+
     if (userRole === 'scientist') {
       return [
-        { label: 'Group Head (GH)', value: 'gh' },
+        { label: `Group Head (${groupName})`, value: 'gh' },
+        { label: `Centre Head (${centreName})`, value: 'ch' },
         { label: 'Admin', value: 'admin' }
       ]
     } else if (userRole === 'gh') {
-      // If GH is ALSO the Project Coordinator for this project, messaging PC means messaging themselves!
-      // Therefore, they can only send message to Admin.
       if (isMePC) {
         return [
+          { label: `Centre Head (${centreName})`, value: 'ch' },
           { label: 'Admin', value: 'admin' }
         ]
       }
       return [
         { label: `Project Coordinator (${pcName || 'PC'})`, value: pcName || 'PC' },
+        { label: `Centre Head (${centreName})`, value: 'ch' },
         { label: 'Admin', value: 'admin' }
       ]
     } else if (userRole === 'ch') {
       if (isMePC) {
         return [
+          { label: `Group Head (${groupName})`, value: 'gh' },
           { label: 'Admin', value: 'admin' }
         ]
       }
       return [
         { label: `Project Coordinator (${pcName || 'PC'})`, value: pcName || 'PC' },
+        { label: `Group Head (${groupName})`, value: 'gh' },
         { label: 'Admin', value: 'admin' }
       ]
     } else {
-      // Admin role
-      const gName = selectedProposal.group || 'GH'
       const opts = []
       if (!isMePC && pcName) {
         opts.push({ label: `Project Coordinator (${pcName})`, value: pcName })
       }
-      opts.push({ label: `Group Head (${gName})`, value: 'gh' })
+      opts.push({ label: `Group Head (${groupName})`, value: 'gh' })
+      opts.push({ label: `Centre Head (${centreName})`, value: 'ch' })
       return opts
     }
   }, [userRole, userName, selectedProposal])
@@ -595,7 +606,8 @@ export default function ChatsPage() {
           return fromVal.includes(optVal) || optVal.includes(fromVal) ||
                  toVal.includes(optVal) || optVal.includes(toVal) ||
                  (optVal === 'admin' && (fromVal === 'manjunath' || toVal === 'admin')) ||
-                 (optVal === 'gh' && (fromVal === 'gh' || toVal === 'gh' || fromVal === userGroup.toLowerCase()))
+                 (optVal === 'gh' && (fromVal === 'gh' || toVal === 'gh' || fromVal === userGroup.toLowerCase())) ||
+                 (optVal === 'ch' && (fromVal === 'ch' || toVal === 'ch'))
         })
 
         if (matchedOption) {
