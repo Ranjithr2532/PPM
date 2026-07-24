@@ -1,5 +1,14 @@
 import { API_BASE_URL } from '../config/api.js'
 
+const getAuthHeaders = (extraHeaders = {}) => {
+  const token = localStorage.getItem('token');
+  return {
+    accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
+  };
+};
+
 /**
  * Group Chat API Utilities for managing group chats, group members, and group messages.
  */
@@ -14,7 +23,7 @@ export const groupApi = {
 
     const url = `${API_BASE_URL}/group-chats/${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
     const res = await fetch(url, {
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to fetch group chats')
     return res.json()
@@ -26,10 +35,7 @@ export const groupApi = {
   async createGroup(name, memberUserIds = []) {
     const res = await fetch(`${API_BASE_URL}/group-chats/`, {
       method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name })
     })
     if (!res.ok) throw new Error('Failed to create group')
@@ -53,7 +59,7 @@ export const groupApi = {
   async deleteGroup(groupId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}`, {
       method: 'DELETE',
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok && res.status !== 204) {
       throw new Error('Failed to delete group chat')
@@ -66,7 +72,7 @@ export const groupApi = {
    */
   async getMembers(groupId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}/members`, {
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to fetch group members')
     return res.json()
@@ -78,7 +84,7 @@ export const groupApi = {
   async addMember(groupId, userId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}/members?user_id=${userId}`, {
       method: 'POST',
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to add group member')
     return res.json()
@@ -90,7 +96,7 @@ export const groupApi = {
   async removeMember(groupId, userId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}/members/${userId}`, {
       method: 'DELETE',
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok && res.status !== 204) {
       throw new Error('Failed to remove group member')
@@ -103,7 +109,7 @@ export const groupApi = {
    */
   async getMessages(groupId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}/messages`, {
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to fetch group messages')
     return res.json()
@@ -118,6 +124,7 @@ export const groupApi = {
 
     const res = await fetch(`${API_BASE_URL}/group-chats/upload-attachment`, {
       method: 'POST',
+      headers: getAuthHeaders(),
       body: formData
     })
     if (!res.ok) throw new Error('Failed to upload group attachment')
@@ -142,10 +149,7 @@ export const groupApi = {
 
     const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}/messages`, {
       method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload)
     })
     if (!res.ok) throw new Error('Failed to send group message')
@@ -157,7 +161,7 @@ export const groupApi = {
    */
   async getAllUsers() {
     const res = await fetch(`${API_BASE_URL}/users/`, {
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to fetch users list')
     return res.json()
@@ -169,7 +173,7 @@ export const groupApi = {
   async markMessageSeen(messageId, userId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/messages/${messageId}/mark-seen?user_id=${userId}`, {
       method: 'POST',
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to mark group message as seen')
     return res.json()
@@ -180,7 +184,7 @@ export const groupApi = {
    */
   async getMessageSeenBy(messageId) {
     const res = await fetch(`${API_BASE_URL}/group-chats/messages/${messageId}/seen-by`, {
-      headers: { accept: 'application/json' }
+      headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to fetch group message read receipts')
     return res.json()

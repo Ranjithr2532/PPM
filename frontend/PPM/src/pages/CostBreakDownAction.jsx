@@ -725,7 +725,7 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
                 open={open}
                 onCancel={closeModal}
                 width={800}
-                destroyOnClose
+                destroyOnHidden
                 confirmLoading={loadingSaved}
                 footer={[
                     <Button key="cancel" onClick={closeModal}>

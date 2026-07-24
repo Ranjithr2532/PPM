@@ -57,7 +57,10 @@ function RoleProtectedLayout({ basePath }) {
 
   const user = getStoredUser()
   const userRole = (user?.role || '').toLowerCase().trim()
-  const normalizedUserRole = userRole === 'role' ? 'guest' : userRole
+  let normalizedUserRole = userRole
+  if (userRole === 'role') normalizedUserRole = 'guest'
+  if (userRole === 'centre head' || userRole === 'center head') normalizedUserRole = 'ch'
+  if (userRole === 'group head') normalizedUserRole = 'gh'
 
   // Normalize role: only allow 'admin', 'guest', 'gh', 'ch', 'scientist', 'director' — default to 'gh' if unknown
   const normalizedRole =
@@ -89,16 +92,11 @@ function RoleProtectedLayout({ basePath }) {
     ProposalsComponent = Allproposals
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
-    // } else if (basePath === 'director') {
-    //   ProposalsComponent = DirectorProposals
-    //   // ProjectsComponent = Projects
-    //   AnalyticsComponent = Analytics
   } else if (basePath === 'guest') {
     ProposalsComponent = Proposals
     ProjectsComponent = Projects
     AnalyticsComponent = Analytics
   }
-  // 'gh' already set as default above
 
   return (
     <Layout className="min-h-screen">
@@ -113,7 +111,7 @@ function RoleProtectedLayout({ basePath }) {
         >
           <Routes>
             <Route path="proposals" element={<ProposalsComponent />} />
-            {normalizedRole !== 'guest' && normalizedRole !== 'ch' && normalizedRole !== 'director' && (
+            {normalizedRole !== 'guest' && normalizedRole !== 'director' && (
               <Route path="chats" element={<ChatsPage />} />
             )}
             {isAdmin && (

@@ -80,6 +80,29 @@ function Sidebar() {
   // Treat Scientist as same as GH
   const isGHOrScientist = basePath === 'gh' || basePath === 'scientist'
 
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+
+  useEffect(() => {
+    // Fetch unread proposal chats + unread group chats for the active user
+    if (userName && !isGuest && !isCH && !isDirector) {
+      let userGroup = ''
+      try {
+        const raw = localStorage.getItem('ppm_user')
+        if (raw) userGroup = JSON.parse(raw).group || ''
+      } catch (e) { }
+
+      Promise.all([
+        axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
+      ]).then(([groupRes, proposalRes]) => {
+        const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
+        const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
+        const proposalUnread = proposalRes.data?.unread_count || 0
+        setUnreadChatCount(groupUnread + proposalUnread)
+      })
+    }
+  }, [userName, userRole, isGuest, isCH, isDirector]);
+
   useEffect(() => {
     // Set initial role from localStorage
     try {
@@ -225,7 +248,30 @@ function Sidebar() {
             }}
             items={[
               { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
-              { key: 'chats', icon: <MessageOutlined />, label: 'Chats' },
+              ...(!isGuest && !isCH && !isDirector ? [{
+                key: 'chats',
+                icon: <MessageOutlined />,
+                label: (
+                  <span>
+                    Chats
+                    {unreadChatCount > 0 && (
+                      <span
+                        style={{
+                          backgroundColor: '#ff4d4f',
+                          borderRadius: '50%',
+                          color: 'white',
+                          padding: '0 6px',
+                          marginLeft: '8px',
+                          fontSize: '12px',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {unreadChatCount}
+                      </span>
+                    )}
+                  </span>
+                )
+              }] : []),
               ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
 
               ...(isGHOrScientist

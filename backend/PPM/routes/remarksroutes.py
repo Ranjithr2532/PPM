@@ -169,12 +169,34 @@ def create_Remarks(data: schemas.RemarksCreate, db: Session = Depends(get_db)):
     return new_item
 
 
-# ---------------- READ ALL ----------------
+# ---------------- READ ALL / UNREAD ONLY ----------------
 @router.get("/", response_model=list[schemas.RemarksResponse])
-def get_all_Remarkss(project_id: int = None, db: Session = Depends(get_db)):
+def get_all_Remarkss(
+    project_id: int = None,
+    user_name: Optional[str] = None,
+    user_role: Optional[str] = None,
+    user_group: Optional[str] = None,
+    unread_only: Optional[bool] = False,
+    db: Session = Depends(get_db)
+):
     query = db.query(Remarks)
     if project_id is not None:
         query = query.filter(Remarks.project_id == project_id)
+
+    if unread_only and user_name:
+        all_items = query.all()
+        filtered = []
+        u_n = user_name.strip()
+        u_r = (user_role or '').strip().lower()
+        u_g = (user_group or '').strip()
+        for item in all_items:
+            is_to = check_is_to_me(item.to, u_n, u_r, u_g)
+            is_from = check_is_from_me(item.from_, u_n, u_r, u_g)
+            has_unread = (is_to and not item.message_seen) or (is_from and bool(item.reply_description) and not item.reply_seen)
+            if has_unread:
+                filtered.append(item)
+        return filtered
+
     return query.all()
 
 

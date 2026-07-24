@@ -56,6 +56,8 @@ import '../App.css'
 import { API_BASE_URL } from '../config/api.js'
 import { DISPLAY_DATE_FORMAT, formatDate, formatIndianNumber } from '../config/date.js'
 import { Checkbox } from 'antd';
+import messagingImg from '../assets/messaging.png'
+import FloatingChatsWidget from '../components/FloatingChatsWidget'
 import {
   openAcknowledgmentModal,
   closeAcknowledgmentModal,
@@ -346,6 +348,8 @@ const isPendingReply = (record) => {
 }
 
 function Proposals() {
+  const [floatingChatOpen, setFloatingChatOpen] = useState(false)
+  const [unreadChatCount, setUnreadChatCount] = useState(0)
   const [form] = Form.useForm()
   const [tableData, setTableData] = useState([])
   const [filteredData, setFilteredData] = useState([])
@@ -378,6 +382,39 @@ function Proposals() {
   const [bulkImportLoading, setBulkImportLoading] = useState(false)
   const [currentUserName, setCurrentUserName] = useState('')
   const [currentUserRole, setCurrentUserRole] = useState('')
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const raw = localStorage.getItem('ppm_user')
+      const parsed = raw ? JSON.parse(raw) : {}
+      const uName = parsed.name || currentUserName
+      const uRole = currentUserRole
+      const uGrp = parsed.group || ''
+
+      if (!uName) return
+
+      const [groupRes, proposalRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(uName)}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(uName)}&user_role=${encodeURIComponent(uRole)}&user_group=${encodeURIComponent(uGrp)}`).then(r => r.ok ? r.json() : { unread_count: 0 }).catch(() => ({ unread_count: 0 }))
+      ])
+
+      const groupList = Array.isArray(groupRes) ? groupRes : []
+      const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
+      const proposalUnread = proposalRes?.unread_count || 0
+      setUnreadChatCount(groupUnread + proposalUnread)
+    } catch (e) {
+      console.error('Error fetching unread count:', e)
+    }
+  }, [currentUserName, currentUserRole])
+
+  useEffect(() => {
+    fetchUnreadCount()
+    const handleChatUpdated = () => fetchUnreadCount()
+    window.addEventListener('ppm-chat-updated', handleChatUpdated)
+    return () => {
+      window.removeEventListener('ppm-chat-updated', handleChatUpdated)
+    }
+  }, [fetchUnreadCount])
   const [allCustomerSuggestions, setAllCustomerSuggestions] = useState([])
   const [customerOptions, setCustomerOptions] = useState([])
   const [addressOptions, setAddressOptions] = useState([])
@@ -412,7 +449,6 @@ function Proposals() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [viewDocumentPreviewError, setViewDocumentPreviewError] = useState('')
 
-  // Chat modal state
   const [chatModalOpen, setChatModalOpen] = useState(false)
   const [chatProject, setChatProject] = useState(null)
   const [chatThread, setChatThread] = useState('pi')
@@ -420,35 +456,7 @@ function Proposals() {
   const [chatLoading, setChatLoading] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatSending, setChatSending] = useState(false)
-  const [showNewMessagesOnly, setShowNewMessagesOnly] = useState(false)
-  const [showPendingReplyOnly, setShowPendingReplyOnly] = useState(false)
   const messagesEndRef = useRef(null)
-
-  const chatEvents = useMemo(
-    () => getThreadEvents(chatMessages, chatThread, chatProject),
-    [chatMessages, chatThread, chatProject]
-  )
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    if (chatModalOpen) {
-      const timer = setTimeout(() => {
-        scrollToBottom()
-      }, 80)
-      return () => clearTimeout(timer)
-    }
-  }, [chatEvents, chatModalOpen])
-
-  const unreadChatsCount = useMemo(() => {
-    return tableData.filter((item) => countUnseenReplies(item) > 0).length
-  }, [tableData])
-
-  const pendingReplyCount = useMemo(() => {
-    return tableData.filter(isPendingReply).length
-  }, [tableData])
 
   // Acknowledgment modal state
   const [acknowledgmentModalOpen, setAcknowledgmentModalOpen] = useState(false)
@@ -779,10 +787,13 @@ function Proposals() {
         console.error('Failed to fetch document counts:', docErr)
       }
 
-      // Fetch all queries once and attach to each proposal
+      // Fetch only unread queries for logged user on initial load
       let allQueries = []
       try {
-        const queriesResponse = await fetch(`${API_BASE_URL}/Remarkss/`, {
+        const uName = currentUser?.name || currentUser?.username || ''
+        const uRole = currentUser?.role || ''
+        const uGrp = currentUser?.group || currentUser?.group_name || ''
+        const queriesResponse = await fetch(`${API_BASE_URL}/Remarkss/?unread_only=true&user_name=${encodeURIComponent(uName)}&user_role=${encodeURIComponent(uRole)}&user_group=${encodeURIComponent(uGrp)}`, {
           headers: { accept: 'application/json' },
         })
         if (queriesResponse.ok) {
@@ -1578,13 +1589,6 @@ function Proposals() {
       })
     }
 
-    if (showNewMessagesOnly) {
-      filtered = filtered.filter((item) => countUnseenReplies(item) > 0)
-    }
-
-    if (showPendingReplyOnly) {
-      filtered = filtered.filter(isPendingReply)
-    }
 
     if (showDuplicatesOnly) {
       const seen = new Map()
@@ -1605,7 +1609,7 @@ function Proposals() {
     }
 
     setFilteredData(filtered)
-  }, [searchText, centreFilter, orderDateRange, statusFilter, projectNumberFilter, isAcknowledgedFilter, smallValueProjectFilter, tableData, selectedDateField, startDate, endDate, showNewMessagesOnly, showPendingReplyOnly, showDuplicatesOnly])
+  }, [searchText, centreFilter, orderDateRange, statusFilter, projectNumberFilter, isAcknowledgedFilter, smallValueProjectFilter, tableData, selectedDateField, startDate, endDate, showDuplicatesOnly])
 
   // Get unique centers for filter
   const uniqueCentres = useMemo(() => {
@@ -2186,24 +2190,8 @@ function Proposals() {
         width: 110,
         render: (_, record) => {
           const isGuest = ['guest', 'role'].includes(currentUserRole?.toLowerCase().trim())
-          const unseenCount = isGuest ? 0 : countUnseenReplies(record)
-          const pendingReply = isGuest ? false : isPendingReply(record)
-          const hasBadge = unseenCount > 0 || pendingReply
 
           const menuItems = [
-            ...(!isGuest
-              ? [
-                {
-                  key: 'chat',
-                  label: (
-                    <span title={`Chat${unseenCount > 0 ? ` (${unseenCount} new)` : ''}${pendingReply ? ' - Reply needed' : ''}`} style={{ color: unseenCount > 0 ? '#ff4d4f' : undefined, display: 'flex', justifyContent: 'center', fontSize: '16px' }}>
-                      <MessageOutlined />
-                    </span>
-                  ),
-                  onClick: () => openChatModal(record),
-                },
-              ]
-              : []),
             ...(isProposalConverted(record.proposals_converted)
               ? [
                 {
@@ -2271,15 +2259,12 @@ function Proposals() {
               )}
               {menuItems.length > 0 && (
                 <Dropdown menu={{ items: menuItems }} trigger={['click']}>
-                  <Badge dot={hasBadge} color="#ff4d4f" offset={[-2, 2]}>
-                    <Button
-                      size="small"
-                      type="link"
-                      icon={<MoreOutlined />}
-                      title="More actions"
-                      style={{ color: hasBadge ? '#ff4d4f' : undefined }}
-                    />
-                  </Badge>
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<MoreOutlined />}
+                    title="More actions"
+                  />
                 </Dropdown>
               )}
             </Space>
@@ -3372,8 +3357,6 @@ function Proposals() {
                           setSelectedDateField('enquiry_date')
                           setStartDate(null)
                           setEndDate(null)
-                          setShowNewMessagesOnly(false)
-                          setShowPendingReplyOnly(false)
                           setShowDuplicatesOnly(false)
                         }}
                         className="h-10 rounded-lg font-medium"
@@ -3383,33 +3366,22 @@ function Proposals() {
                       </Button>
 
                       {!['guest', 'role'].includes(currentUserRole?.toLowerCase().trim()) && (
-                        <>
-                          <Button
-                            type={showNewMessagesOnly ? 'primary' : 'default'}
-                            size="small"
-                            onClick={() => {
-                              setShowNewMessagesOnly(!showNewMessagesOnly)
-                              setShowPendingReplyOnly(false)
-                            }}
-                            className={`h-10 rounded-lg ${showNewMessagesOnly ? 'shadow-md hover:shadow-lg' : (unreadChatsCount > 0 ? 'blink-chat-btn' : '')}`}
-                            style={showNewMessagesOnly ? {} : (unreadChatsCount > 0 ? {} : { borderColor: '#1890ff', color: '#1890ff' })}
-                          >
-                            💬 Unread Chats ({unreadChatsCount})
-                          </Button>
-
-                          <Button
-                            type={showPendingReplyOnly ? 'primary' : 'default'}
-                            size="small"
-                            onClick={() => {
-                              setShowPendingReplyOnly(!showPendingReplyOnly)
-                              setShowNewMessagesOnly(false)
-                            }}
-                            className={`h-10 rounded-lg ${showPendingReplyOnly ? 'shadow-md hover:shadow-lg' : ''}`}
-                            style={showPendingReplyOnly ? {} : { borderColor: '#fa8c16', color: '#fa8c16' }}
-                          >
-                            ⚠️ Reply Needed ({pendingReplyCount})
-                          </Button>
-                        </>
+                        <Tooltip title="PPM MESSAGING">
+                          <Badge count={unreadChatCount} overflowCount={99} offset={[-4, 4]}>
+                            <Button
+                              type="text"
+                              size="large"
+                              onClick={() => setFloatingChatOpen((prev) => !prev)}
+                              style={{ padding: '2px 6px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'transparent', height: 'auto' }}
+                              className="hover:bg-slate-100 transition-colors rounded-xl border-none shadow-none group py-1"
+                            >
+                              <img src={messagingImg} alt="PPM Chat" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                              <span className="text-[10px] font-bold tracking-wide text-slate-700 group-hover:text-emerald-700 transition-colors -mt-0.5">
+                                PPM Chat
+                              </span>
+                            </Button>
+                          </Badge>
+                        </Tooltip>
                       )}
 
                       {/* Spacer */}
@@ -4698,112 +4670,6 @@ function Proposals() {
         </Form>
       </Modal>
 
-      {/* Chronological Chat Modal */}
-      <Modal
-        title={
-          <div className="flex flex-col gap-2">
-            <span className="text-base font-semibold text-slate-800">
-              {chatProject?.activity || chatProject?.project_number || 'Conversation'}
-            </span>
-            <span className="text-xs text-slate-400">
-              Chat with {chatThread === 'pi' ? 'Scientist' : 'Group Head'}
-            </span>
-            {(() => {
-              const piUnseen = chatProject ? getThreadUnseenCount(chatProject, 'pi') : 0
-              const ghUnseen = chatProject ? getThreadUnseenCount(chatProject, 'gh') : 0
-              return (
-                <Segmented
-                  value={chatThread}
-                  onChange={switchChatThread}
-                  options={[
-                    {
-                      label: (
-                        <Badge count={piUnseen} size="small" offset={[8, -2]}>
-                          <span>Scientist</span>
-                        </Badge>
-                      ),
-                      value: 'pi'
-                    },
-                    {
-                      label: (
-                        <Badge count={ghUnseen} size="small" offset={[8, -2]}>
-                          <span>GH{chatProject ? ` (${getGhName(chatProject)})` : ''}</span>
-                        </Badge>
-                      ),
-                      value: 'gh'
-                    },
-                  ]}
-                />
-              )
-            })()}
-          </div>
-        }
-        open={chatModalOpen}
-        onCancel={closeChatModal}
-        footer={null}
-        width={600}
-        styles={{ body: { padding: 0 } }}
-      >
-        <div className="flex flex-col" style={{ height: '65vh' }}>
-          {/* Message thread */}
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-3">
-            {chatLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <Spin />
-              </div>
-            ) : chatEvents.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-slate-400 text-sm">
-                No messages yet. Start the conversation below.
-              </div>
-            ) : (
-              chatEvents.map((event) => {
-                const isOwn = normalizeName(event.from_) === 'admin'
-                return (
-                  <div key={event.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`max-w-[75%] rounded-2xl px-4 py-2 shadow-sm ${isOwn
-                        ? 'rounded-tr-sm bg-blue-500 text-white'
-                        : 'rounded-tl-sm bg-white text-slate-800 border border-slate-200'
-                        }`}
-                    >
-                      <div className="text-sm">{event.content}</div>
-                      <div className={`mt-1 text-[10px] ${isOwn ? 'text-blue-100' : 'text-slate-400'}`}>
-                        {event.from_} · {dayjs(event.timestamp).format('DD MMM, HH:mm')}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input bar */}
-          <div className="border-t border-slate-200 bg-white p-3 flex gap-2 items-end">
-            <TextArea
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Type a message..."
-              autoSize={{ minRows: 1, maxRows: 3 }}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault()
-                  handleSendChatMessage()
-                }
-              }}
-            />
-            <Button
-              type="primary"
-              loading={chatSending}
-              disabled={!chatInput.trim()}
-              onClick={handleSendChatMessage}
-            >
-              Send
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
       {/* Acknowledgment Modal */}
       <Modal
         title="Generate Acknowledgment"
@@ -4867,6 +4733,12 @@ function Proposals() {
           </div>
         </Form>
       </Modal>
+
+      <FloatingChatsWidget
+        open={floatingChatOpen}
+        onClose={() => setFloatingChatOpen(false)}
+        onUnreadCountChange={setUnreadChatCount}
+      />
     </>
   )
 }
