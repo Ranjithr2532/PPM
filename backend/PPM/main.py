@@ -29,6 +29,7 @@ from routes.projectpayment import router as project_payments_router
 from routes.acknowledgment import router as acknowledgment_router
 from routes.dynamic_table import router as dynamic_table_router
 from routes.groupchatroutes import router as groupchat_router
+from routes.count import router as count_router
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -70,3 +71,5 @@ app.include_router(project_payments_router, dependencies=jwt_auth)
 app.include_router(acknowledgment_router, dependencies=jwt_auth)
 app.include_router(dynamic_table_router, dependencies=jwt_auth)
 app.include_router(groupchat_router, dependencies=jwt_auth)
+app.include_router(count_router, dependencies=jwt_auth)
+
