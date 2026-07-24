@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr
 from models.model import OTP
 from datetime import datetime, timedelta
 
-from security.security import create_access_token, verify_password
+from security.security import create_access_token, verify_password, get_password_hash
 from security.auth import get_current_user
 
 
@@ -154,7 +154,7 @@ async def verify_otp(verification: OTPVerification, db: Session = Depends(get_db
 
 # CREATE
 @router.post("/", response_model=UserResponse)
-def create_user(request: UserCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_user(request: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == request.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
@@ -165,7 +165,7 @@ def create_user(request: UserCreate, db: Session = Depends(get_db), current_user
         role=request.role,
         center=request.center,
         group=request.group,
-        password=request.password
+        password=get_password_hash(request.password)
     )
 
     db.add(new_user)
@@ -286,6 +286,8 @@ def update_user(id: int, request: UserUpdate, db: Session = Depends(get_db), cur
     update_data = request.model_dump(exclude_unset=True)  # Only fields sent in request
 
     for key, value in update_data.items():
+        if key == "password" and value:
+            value = get_password_hash(value)
         setattr(user, key, value)
 
     db.commit()
@@ -325,8 +327,8 @@ async def update_password_only(request: PasswordUpdateRequest, db: Session = Dep
             detail="Password must be at least 6 characters long"
         )
 
-    # Update password
-    user.password = request.new_password  # ← in real app: hash it!
+    # Update password (hashed)
+    user.password = get_password_hash(request.new_password)
 
     db.commit()
     # No need to refresh since we only changed password

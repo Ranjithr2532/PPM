@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 
 try:
     from .config import (
@@ -26,18 +26,24 @@ except ImportError:
         JWT_AUDIENCE,
     )
 
-# Password hashing configuration
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against the hashed password."""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        pw_bytes = plain_password.encode('utf-8')
+        if len(pw_bytes) > 72:
+            pw_bytes = pw_bytes[:72]
+        return bcrypt.checkpw(pw_bytes, hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 
 
 def get_password_hash(password: str) -> str:
     """Hash a plain text password."""
-    return pwd_context.hash(password)
+    pw_bytes = password.encode('utf-8')
+    if len(pw_bytes) > 72:
+        pw_bytes = pw_bytes[:72]
+    return bcrypt.hashpw(pw_bytes, bcrypt.gensalt()).decode('utf-8')
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
