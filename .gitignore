@@ -1,0 +1,45 @@
+# Python Virtual Environments
+venv/
+.venv/
+env/
+backend/venv/
+backend/PPM/venv/
+backend/PPM/.venv/
+
+# Node Dependencies & Builds (Frontend)
+node_modules/
+frontend/PPM/node_modules/
+frontend/node_modules/
+dist/
+frontend/PPM/dist/
+frontend/dist/
+.vite/
+
+# Python Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

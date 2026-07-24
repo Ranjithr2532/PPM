@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Typography, message, Select, Badge } from 'antd'
+import { Layout, Menu, Button, Typography, message, Select } from 'antd'
 import {
   ProfileOutlined,
   SettingOutlined,
@@ -31,28 +31,28 @@ function Sidebar() {
     section === 'configuration'
       ? 'configuration'
       : section === 'projects'
-      ? 'projects'
-      : section === 'analytics'
-      ? 'analytics'
-      : section === 'overall-analytics'
-      ? 'overall-analytics'
-      // : section === 'financial-analytics'
-      // ? 'financial-analytics'
-      : section === 'master-proposals'
-      ? 'master-proposals'
-      : section === 'notification'
-      ? 'notification'
-      : section === 'gh-master-proposals'
-      ? 'gh-master-proposals'
-      : section === 'gh-notification'
-      ? 'gh-notification'
-      : section === 'access-control'
-      ? 'access-control'
-      : section === 'customers'
-      ? 'customers'
-      : section === 'chats'
-      ? 'chats'
-      : 'proposals'
+        ? 'projects'
+        : section === 'analytics'
+          ? 'analytics'
+          : section === 'overall-analytics'
+            ? 'overall-analytics'
+            // : section === 'financial-analytics'
+            // ? 'financial-analytics'
+            : section === 'master-proposals'
+              ? 'master-proposals'
+              : section === 'notification'
+                ? 'notification'
+                : section === 'gh-master-proposals'
+                  ? 'gh-master-proposals'
+                  : section === 'gh-notification'
+                    ? 'gh-notification'
+                    : section === 'access-control'
+                      ? 'access-control'
+                      : section === 'customers'
+                        ? 'customers'
+                        : section === 'chats'
+                          ? 'chats'
+                          : 'proposals'
 
   let userName = ''
   let userRole = ''
@@ -74,9 +74,9 @@ function Sidebar() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
   const [selectedRole, setSelectedRole] = useState('');
-  const isDirector = basePath === 'director' || (userRole && userRole.toLowerCase() === 'director')
-  const isCH = basePath === 'ch' || (userRole && userRole.toLowerCase() === 'ch')
-  const isGuest = basePath === 'guest' || (userRole && userRole.toLowerCase() === 'guest')
+  const isDirector = basePath === 'director'
+  const isCH = basePath === 'ch'
+  const isGuest = basePath === 'guest'
   // Treat Scientist as same as GH
   const isGHOrScientist = basePath === 'gh' || basePath === 'scientist'
 
@@ -84,30 +84,22 @@ function Sidebar() {
 
   useEffect(() => {
     // Fetch unread proposal chats + unread group chats for the active user
-    const fetchUnread = () => {
-      if (userName && !isGuest && !isDirector) {
-        let userGroup = ''
-        try {
-          const raw = localStorage.getItem('ppm_user')
-          if (raw) userGroup = JSON.parse(raw).group || ''
-        } catch (e) {}
+    if (userName && !isGuest && !isCH && !isDirector) {
+      let userGroup = ''
+      try {
+        const raw = localStorage.getItem('ppm_user')
+        if (raw) userGroup = JSON.parse(raw).group || ''
+      } catch (e) { }
 
-        Promise.all([
-          axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
-          axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
-        ]).then(([groupRes, proposalRes]) => {
-          const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
-          const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
-          const proposalUnread = proposalRes.data?.unread_count || 0
-          setUnreadChatCount(groupUnread + proposalUnread)
-        })
-      }
-    }
-
-    fetchUnread()
-    window.addEventListener('ppm-chat-updated', fetchUnread)
-    return () => {
-      window.removeEventListener('ppm-chat-updated', fetchUnread)
+      Promise.all([
+        axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
+      ]).then(([groupRes, proposalRes]) => {
+        const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
+        const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
+        const proposalUnread = proposalRes.data?.unread_count || 0
+        setUnreadChatCount(groupUnread + proposalUnread)
+      })
     }
   }, [userName, userRole, isGuest, isCH, isDirector]);
 
@@ -157,9 +149,10 @@ function Sidebar() {
 
     // Fetch unacknowledged proposals count for admin-equivalent users
     if (normalizedBasePath === 'admin' || normalizedBasePath === 'guest') {
-      axios.get(`${API_BASE_URL}/proposals/unacknowledged/count`)
+      axios.get(`${API_BASE_URL}/proposals/false`)
         .then((response) => {
-          setUnacknowledgedCount(response.data.unacknowledged_count || 0)
+          const list = Array.isArray(response.data) ? response.data : []
+          setUnacknowledgedCount(list.length)
         })
         .catch((error) => console.error('Error fetching unacknowledged count:', error));
     }
@@ -195,12 +188,12 @@ function Sidebar() {
   return (
     <Sider
       width={260}
-      style={{ 
-        position: 'fixed', 
-        left: 0, 
-        top: 0, 
-        bottom: 0, 
-        height: '100vh', 
+      style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        height: '100vh',
         zIndex: 100,
         background: '#ffffff',
         borderRight: '1px solid #e2e8f0',
@@ -250,12 +243,12 @@ function Sidebar() {
               else if (info.key === 'customers') navigate(`${prefix}/customers`)
               else if (info.key === 'overall-analytics') navigate(`${prefix}/overall-analytics`)
               else if (info.key === 'chats') navigate(`${prefix}/chats`)
-              
+
               else navigate(`${prefix}/proposals`)
             }}
             items={[
               { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
-              ...(!isGuest && !isDirector ? [{
+              ...(!isGuest && !isCH && !isDirector ? [{
                 key: 'chats',
                 icon: <MessageOutlined />,
                 label: (
@@ -283,99 +276,141 @@ function Sidebar() {
 
               ...(isGHOrScientist
                 ? [
-                    {
-                      key: 'gh-notification',
-                      icon: <ProfileOutlined />,
-                      label: (
-                        <span>
-                          Notification
-                          {notificationCount > 0 && (
-                            <Badge
-                              count={notificationCount}
-                              style={{ backgroundColor: '#ff4d4f', marginLeft: '8px' }}
-                              size="small"
-                            />
-                          )}
-                        </span>
-                      ),
-                    },
-                  ]
-                : []),  
+                  {
+                    key: 'gh-notification',
+                    icon: <ProfileOutlined />,
+                    label: (
+                      <span>
+                        Notification
+                        {notificationCount > 0 && (
+                          <span
+                            style={{
+                              backgroundColor: '#ff4d4f',
+                              borderRadius: '10px',
+                              color: 'white',
+                              padding: '0 6px',
+                              marginLeft: '8px',
+                              fontSize: '10px',
+                              lineHeight: '14px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: '16px',
+                              height: '16px',
+                              fontWeight: 'bold',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {notificationCount}
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]
+                : []),
 
               ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
                 ? [
-                    {
-                      key: 'master-proposals',
-                      icon: <ProfileOutlined />,
-                      label: (
-                        <span>
-                          Acknowledge Proposals
-                          {unacknowledgedCount > 0 && (
-                            <Badge
-                              count={unacknowledgedCount}
-                              overflowCount={999}
-                              style={{ backgroundColor: '#ff4d4f', marginLeft: '8px' }}
-                              size="small"
-                            />
-                          )}
-                        </span>
-                      ),
-                    },
-                  ]
+                  {
+                    key: 'master-proposals',
+                    icon: <ProfileOutlined />,
+                    label: (
+                      <span style={{ fontSize: '13.5px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+                        Acknowledge Proposals
+                        {unacknowledgedCount > 0 && (
+                          <span
+                            style={{
+                              backgroundColor: '#ff4d4f',
+                              borderRadius: '10px',
+                              color: 'white',
+                              padding: '0 6px',
+                              marginLeft: '8px',
+                              fontSize: '10px',
+                              lineHeight: '14px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: '16px',
+                              height: '16px',
+                              fontWeight: 'bold',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {unacknowledgedCount}
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]
                 : []),
 
               ...((isDirector || isCH || isGHOrScientist) ? [{
-                      key: 'analytics',
-                      icon: <BarChartOutlined />,
-                      label: isCH ? 'CH Analytics' : isDirector ? 'Project Analytics' : basePath === 'scientist' ? 'Scientist Analytics' : 'Analytics',
+                key: 'analytics',
+                icon: <BarChartOutlined />,
+                label: isCH ? 'CH Analytics' : isDirector ? 'Project Analytics' : basePath === 'scientist' ? 'Scientist Analytics' : 'Analytics',
               }] : []),
 
               ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
                 ? [
-                    {
-                      key: 'overall-analytics',
-                      icon: <BarChartOutlined />,
-                      label: 'Overall Analytics',
-                    },
-                    {
-                      key: 'configuration',
-                      icon: <SettingOutlined />,
-                      label: 'Configuration',
-                    },
-                  ]
+                  {
+                    key: 'overall-analytics',
+                    icon: <BarChartOutlined />,
+                    label: 'Overall Analytics',
+                  },
+                  {
+                    key: 'configuration',
+                    icon: <SettingOutlined />,
+                    label: 'Configuration',
+                  },
+                ]
                 : []),
 
-                ...((normalizedBasePath === 'admin')
+              ...((normalizedBasePath === 'admin')
                 ? [
-                    {
-                      key: 'notification',
-                      icon: <BellOutlined />, 
-                      label: (
-                        <span>
-                          Notification
-                          {notificationCount > 0 && (
-                            <Badge
-                              count={notificationCount}
-                              style={{ backgroundColor: '#ff4d4f', marginLeft: '8px' }}
-                              size="small"
-                            />
-                          )}
-                        </span>
-                      ),
-                    },
-                  ]
+                  {
+                    key: 'notification',
+                    icon: <BellOutlined />,
+                    label: (
+                      <span>
+                        Notification
+                        {notificationCount > 0 && (
+                          <span style={{
+                            backgroundColor: '#ff4d4f',
+                            borderRadius: '10px',
+                            color: 'white',
+                            padding: '0 6px',
+                            marginLeft: '8px',
+                            fontSize: '10px',
+                            lineHeight: '14px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: '16px',
+                            height: '16px',
+                            fontWeight: 'bold',
+                            verticalAlign: 'middle',
+                          }}>
+                            {notificationCount}
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]
                 : []),
 
-                ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
+              ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
                 ? [
-                    {
-                      key: 'access-control',
-                      icon: <UsergroupAddOutlined />, 
-                      label: 'Access Control'
-                    },
-                  ]
+                  {
+                    key: 'access-control',
+                    icon: <UsergroupAddOutlined />,
+                    label: 'Access Control'
+                  },
+                ]
                 : []),
-                ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
+              ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
                 ? [
                   {
                     key: 'customers',
@@ -391,9 +426,9 @@ function Sidebar() {
 
         {/* Footer & Logout */}
         <div className="px-4 pb-6 border-t border-slate-100 pt-4 bg-slate-50/50">
-          <Button 
-            danger 
-            block 
+          <Button
+            danger
+            block
             size="large"
             type="primary"
             onClick={handleLogout}

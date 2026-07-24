@@ -983,10 +983,7 @@ def get_proposal_stats_by_scientist(name: str, db: Session = Depends(get_db)):
 @router.get("/proposal-vs-project")
 def proposal_vs_project(db: Session = Depends(get_db)):
     """
-    Get count of proposals converted to projects vs those that remained as proposals.
-    
-    Converted to Project = proposals where project_number is NOT null AND NOT empty string
-    Remained as Proposal = proposals where project_number IS null OR empty string
+    Get count of proposals, pending, converted to projects, ongoing, technically completed, and financially completed.
     """
     total = db.query(Proposal).count()
     converted = db.query(Proposal).filter(
@@ -994,10 +991,30 @@ def proposal_vs_project(db: Session = Depends(get_db)):
         Proposal.project_number != ''
     ).count()
     remained = total - converted
+
+    tech_completed = db.query(Proposal).filter(
+        Proposal.technical_completed_year.isnot(None),
+        Proposal.technical_completed_year != ''
+    ).count()
+
+    fin_completed = db.query(Proposal).filter(
+        Proposal.financial_completed_year.isnot(None),
+        Proposal.financial_completed_year != ''
+    ).count()
+
+    ongoing_projects = db.query(Proposal).filter(
+        Proposal.project_number.isnot(None),
+        Proposal.project_number != '',
+        (Proposal.technical_completed_year.is_(None) | (Proposal.technical_completed_year == ''))
+    ).count()
+
     return {
-        "converted_to_project": converted,
+        "total": total,
         "remained_as_proposal": remained,
-        "total": total
+        "converted_to_project": converted,
+        "ongoing_projects": ongoing_projects,
+        "technically_completed": tech_completed,
+        "financially_completed": fin_completed,
     }
 
 

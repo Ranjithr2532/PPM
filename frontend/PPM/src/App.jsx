@@ -31,7 +31,7 @@ function isAuthenticated() {
     const raw = window.localStorage.getItem('ppm_user')
     if (!raw) return false
     const parsed = JSON.parse(raw)
-    return Boolean(parsed && parsed.user_id)
+    return Boolean(parsed && (parsed.user_id || parsed.id))
   } catch {
     return false
   }

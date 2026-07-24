@@ -1697,7 +1697,7 @@ function Analytics() {
   const getCoordinator = useCallback((item) => {
     const c = (item.project_co_ordinator || '').trim()
     if (c) return c
-    return (item.quotation_given_by_name || '').trim() || 'Pending'
+    return (item.quotation_given_by_name || '').trim() || 'Unknown'
   }, [])
 
   const filterForDrill = useCallback(
@@ -1746,7 +1746,7 @@ function Analytics() {
     items.forEach((item) => {
       // For coordinator dimension, use the effective coordinator (with fallback)
       const key = dimension === 'project_co_ordinator'
-        ? (getCoordinator(item) || 'Pending')
+        ? (getCoordinator(item) || 'Unknown')
         : String(item[dimension] || 'Pending').trim() || 'Pending'
       totals[key] = (totals[key] || 0) + (chartMetric === 'amount' ? getFinancialValue(item) : 1)
     })
@@ -1881,7 +1881,7 @@ function Analytics() {
         // For projects (has project_number), use project_co_ordinator
         const isProject = item.project_number && String(item.project_number).trim() !== ''
         const coordinatorField = isProject ? 'project_co_ordinator' : 'quotation_given_by_name'
-        const key = String(item[coordinatorField] || 'Pending').trim() || 'UnPendingknown'
+        const key = String(item[coordinatorField] || 'Unknown').trim() || 'Unknown'
         totals[key] = (totals[key] || 0) + (chartMetric === 'amount' ? getFinancialValue(item) : 1)
       })
       const entries = Object.entries(totals).sort((a, b) => b[1] - a[1])
