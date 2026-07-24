@@ -257,7 +257,7 @@ function Projects() {
   }, [])
 
   const isGuest = currentUserRole === 'guest' || currentUserRole === 'role'
-  const isReadOnly = isGuest || currentUserRole === 'ch' || currentUserRole === 'center head'
+  const isReadOnly = isGuest || currentUserRole === 'ch' || currentUserRole === 'center head' || currentUserRole === 'gh' || currentUserRole === 'group head'
 
   const fetchProjects = async () => {
     setLoading(true)
@@ -1527,27 +1527,31 @@ function Projects() {
                               </div>
                               <div className="absolute bottom-2 right-2 flex items-center gap-1">
                                 <Text type="secondary" className="text-xs">v{doc.version || 'N/A'}</Text>
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  icon={<EditOutlined />}
-                                  onClick={() => handleOpenEditDocumentModal(doc)}
-                                  className="text-blue-600 hover:text-blue-800"
-                                />
-                                <Popconfirm
-                                  title="Delete document?"
-                                  description="This action cannot be undone."
-                                  onConfirm={() => handleDeleteDocument(doc.id)}
-                                  okText="Delete"
-                                  cancelText="Cancel"
-                                >
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<DeleteOutlined />}
-                                    className="text-red-600 hover:text-red-800"
-                                  />
-                                </Popconfirm>
+                                {!isReadOnly && (
+                                  <>
+                                    <Button
+                                      type="text"
+                                      size="small"
+                                      icon={<EditOutlined />}
+                                      onClick={() => handleOpenEditDocumentModal(doc)}
+                                      className="text-blue-600 hover:text-blue-800"
+                                    />
+                                    <Popconfirm
+                                      title="Delete document?"
+                                      description="This action cannot be undone."
+                                      onConfirm={() => handleDeleteDocument(doc.id)}
+                                      okText="Delete"
+                                      cancelText="Cancel"
+                                    >
+                                      <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<DeleteOutlined />}
+                                        className="text-red-600 hover:text-red-800"
+                                      />
+                                    </Popconfirm>
+                                  </>
+                                )}
                               </div>
                               {doc.url ? (
                                 <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => {
@@ -1662,7 +1666,7 @@ function Projects() {
 
                     <div className="mb-6">
                       <div className="flex justify-between items-center mb-3">
-                        {canAddRemarks && (
+                        {!isReadOnly && canAddRemarks && (
                           <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={() => handleOpenRemarksModal(stage)}>
                             Add Remark
                           </Button>
@@ -1677,14 +1681,16 @@ function Projects() {
                                 {p.updated_by || 'Unknown'} • {formatDate(p.updated_at)}
                               </Text>
                             </div>
-                            <div>
-                              <Space>
-                                <Button size="small" icon={<EditOutlined />} onClick={() => handleEditRemark(stage, p)}>Edit</Button>
-                                <Popconfirm title="Delete remark?" onConfirm={() => handleDeleteRemark(p.id)}>
-                                  <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
-                                </Popconfirm>
-                              </Space>
-                            </div>
+                            {!isReadOnly && (
+                              <div>
+                                <Space>
+                                  <Button size="small" icon={<EditOutlined />} onClick={() => handleEditRemark(stage, p)}>Edit</Button>
+                                  <Popconfirm title="Delete remark?" onConfirm={() => handleDeleteRemark(p.id)}>
+                                    <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
+                                  </Popconfirm>
+                                </Space>
+                              </div>
+                            )}
                           </div>
                         </Card>
                       ))}
@@ -1786,9 +1792,11 @@ function Projects() {
                                 <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                                   Status
                                 </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Actions
-                                </th>
+                                {!isReadOnly && (
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Actions
+                                  </th>
+                                )}
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
@@ -1808,14 +1816,16 @@ function Projects() {
                                       {detail.status || 'Pending'}
                                     </Tag>
                                   </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    <Space>
-                                      <Button size="small" icon={<EditOutlined />} onClick={() => handleEditStageDetail(detail)}>Edit</Button>
-                                      <Popconfirm title="Delete stage?" onConfirm={() => handleDeleteStageDetail(detail.id)}>
-                                        <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
-                                      </Popconfirm>
-                                    </Space>
-                                  </td>
+                                  {!isReadOnly && (
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      <Space>
+                                        <Button size="small" icon={<EditOutlined />} onClick={() => handleEditStageDetail(detail)}>Edit</Button>
+                                        <Popconfirm title="Delete stage?" onConfirm={() => handleDeleteStageDetail(detail.id)}>
+                                          <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
+                                        </Popconfirm>
+                                      </Space>
+                                    </td>
+                                  )}
                                 </tr>
                               ))}
                             </tbody>
