@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Central API configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.18.7.42:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.18.100.55:8000';
 
 const ACCESS_TOKEN_KEY = 'token';
 const CURRENT_USER_KEY = 'ppm_user';
