@@ -74,13 +74,20 @@ def check_is_to_me(item_to: Optional[str], user_name: str, user_role: str, user_
     u_r = _norm(user_role)
     u_g = _norm(user_group)
 
-    if to_val == u_n or (u_r and to_val == u_r):
+    if u_r in ('grouphead', 'group_head', 'gh'):
+        u_r = 'gh'
+    if u_r in ('centrehead', 'centerhead', 'ch'):
+        u_r = 'ch'
+
+    if to_val == u_n or (u_r and to_val == u_r) or (to_val in ('gh', 'grouphead') and u_r == 'gh') or (to_val in ('ch', 'centrehead', 'centerhead') and u_r == 'ch'):
         return True
     if u_n and (u_n in to_val or to_val in u_n):
         return True
     if u_r == 'admin' and 'admin' in to_val:
         return True
     if u_r == 'gh' and ('gh' in to_val or 'grouphead' in to_val or (u_g and u_g in to_val)):
+        return True
+    if u_r == 'ch' and ('ch' in to_val or 'centrehead' in to_val or 'centerhead' in to_val):
         return True
     if u_r == 'scientist' and (u_n in to_val or 'coordinator' in to_val or 'project' in to_val):
         return True
@@ -95,13 +102,20 @@ def check_is_from_me(item_from: Optional[str], user_name: str, user_role: str, u
     u_r = _norm(user_role)
     u_g = _norm(user_group)
 
-    if from_val == u_n or (u_r and from_val == u_r):
+    if u_r in ('grouphead', 'group_head', 'gh'):
+        u_r = 'gh'
+    if u_r in ('centrehead', 'centerhead', 'ch'):
+        u_r = 'ch'
+
+    if from_val == u_n or (u_r and from_val == u_r) or (from_val in ('gh', 'grouphead') and u_r == 'gh') or (from_val in ('ch', 'centrehead', 'centerhead') and u_r == 'ch'):
         return True
     if u_n and (u_n in from_val or from_val in u_n):
         return True
     if u_r == 'admin' and 'admin' in from_val:
         return True
     if u_r == 'gh' and ('gh' in from_val or 'grouphead' in from_val or (u_g and u_g in from_val)):
+        return True
+    if u_r == 'ch' and ('ch' in from_val or 'centrehead' in from_val or 'centerhead' in from_val):
         return True
     if u_r == 'scientist' and (u_n in from_val or 'coordinator' in from_val or 'project' in from_val):
         return True
@@ -144,39 +158,41 @@ def get_unread_remarks_count(user_name: Optional[str] = None, user_role: Optiona
 
 
 # ---------------- CREATE ----------------
-@router.post("/", response_model=schemas.TransitionResponse)
+@router.post("/", response_model=schemas.RemarksResponse)
 def create_Remarks(data: schemas.RemarksCreate, db: Session = Depends(get_db)):
-    now = datetime.now()
-    new_item = Remarks(
+    # Verify project exists
+    proj = db.query(Proposal).filter(Proposal.id == data.project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"Project/Proposal with ID {data.project_id} not found")
+
+    new_remarks = Remarks(
         from_=data.from_,
         to=data.to,
         project_id=data.project_id,
         remarks_description=data.remarks_description,
         respond_to_remarks=data.respond_to_remarks,
+        replyer=data.replyer,
+        message_seen=data.message_seen if data.message_seen is not None else False,
+        reply_seen=data.reply_seen if data.reply_seen is not None else False,
         attachment_url=data.attachment_url,
         attachment_name=data.attachment_name,
         attachment_type=data.attachment_type,
-        is_delivered=True,
-        delivered_at=now,
-        message_seen=False,
-        reply_seen=False,
-        created_at=now,
-        updated_at=now
     )
-    db.add(new_item)
+    db.add(new_remarks)
     db.commit()
-    db.refresh(new_item)
-    return new_item
+    db.refresh(new_remarks)
+
+    return new_remarks
 
 
-# ---------------- READ ALL / UNREAD ONLY ----------------
+# ---------------- LIST REMARKS / FILTER UNREAD ----------------
 @router.get("/", response_model=list[schemas.RemarksResponse])
-def get_all_Remarkss(
-    project_id: int = None,
+def get_all_Remarks(
+    project_id: Optional[int] = None,
+    unread_only: Optional[bool] = False,
     user_name: Optional[str] = None,
     user_role: Optional[str] = None,
     user_group: Optional[str] = None,
-    unread_only: Optional[bool] = False,
     db: Session = Depends(get_db)
 ):
     query = db.query(Remarks)
@@ -192,7 +208,7 @@ def get_all_Remarkss(
         for item in all_items:
             is_to = check_is_to_me(item.to, u_n, u_r, u_g)
             is_from = check_is_from_me(item.from_, u_n, u_r, u_g)
-            has_unread = (is_to and not item.message_seen) or (is_from and bool(item.reply_description) and not item.reply_seen)
+            has_unread = (is_to and not item.message_seen) or (is_from and bool(item.respond_to_remarks) and not item.reply_seen)
             if has_unread:
                 filtered.append(item)
         return filtered

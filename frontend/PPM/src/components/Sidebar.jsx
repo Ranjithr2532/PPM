@@ -64,7 +64,8 @@ function Sidebar() {
         userName = parsedUser.name
       }
       if (parsedUser && parsedUser.role) {
-        userRole = parsedUser.role
+        const r = (parsedUser.role || '').toLowerCase().trim()
+        userRole = (r === 'group head' || r === 'group_head') ? 'gh' : (r === 'centre head' || r === 'center head') ? 'ch' : r
       }
     }
   } catch (error) {
@@ -83,25 +84,34 @@ function Sidebar() {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   useEffect(() => {
-    // Fetch unread proposal chats + unread group chats for the active user
-    if (userName && !isGuest && !isCH && !isDirector) {
-      let userGroup = ''
-      try {
-        const raw = localStorage.getItem('ppm_user')
-        if (raw) userGroup = JSON.parse(raw).group || ''
-      } catch (e) { }
+    const fetchUnreadChatCount = () => {
+      if (userName && !isGuest && !isDirector) {
+        let userGroup = ''
+        try {
+          const raw = localStorage.getItem('ppm_user')
+          if (raw) userGroup = JSON.parse(raw).group || ''
+        } catch (e) { }
 
-      Promise.all([
-        axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
-      ]).then(([groupRes, proposalRes]) => {
-        const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
-        const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
-        const proposalUnread = proposalRes.data?.unread_count || 0
-        setUnreadChatCount(groupUnread + proposalUnread)
-      })
+        Promise.all([
+          axios.get(`${API_BASE_URL}/group-chats/?user_name=${encodeURIComponent(userName)}`).catch(() => ({ data: [] })),
+          axios.get(`${API_BASE_URL}/Remarkss/unread_count?user_name=${encodeURIComponent(userName)}&user_role=${encodeURIComponent(userRole)}&user_group=${encodeURIComponent(userGroup)}`).catch(() => ({ data: { unread_count: 0 } }))
+        ]).then(([groupRes, proposalRes]) => {
+          const groupList = Array.isArray(groupRes.data) ? groupRes.data : []
+          const groupUnread = groupList.reduce((acc, curr) => acc + (curr.unread_count || 0), 0)
+          const proposalUnread = proposalRes.data?.unread_count || 0
+          setUnreadChatCount(groupUnread + proposalUnread)
+        })
+      }
     }
-  }, [userName, userRole, isGuest, isCH, isDirector]);
+
+    // Fetch on mount
+    fetchUnreadChatCount()
+
+    // Re-fetch whenever a chat is sent/read from any page
+    const handleChatUpdated = () => fetchUnreadChatCount()
+    window.addEventListener('ppm-chat-updated', handleChatUpdated)
+    return () => window.removeEventListener('ppm-chat-updated', handleChatUpdated)
+  }, [userName, userRole, isGuest, isDirector]);
 
   useEffect(() => {
     // Set initial role from localStorage
@@ -248,7 +258,7 @@ function Sidebar() {
             }}
             items={[
               { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
-              ...(!isGuest && !isCH && !isDirector ? [{
+              ...(!isGuest && !isDirector ? [{
                 key: 'chats',
                 icon: <MessageOutlined />,
                 label: (

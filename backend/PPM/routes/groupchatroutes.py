@@ -184,6 +184,12 @@ def remove_group_member(group_id: int, user_id: int, db: Session = Depends(get_d
 # ---------------------------------------------------------
 # GROUP MESSAGES
 # ---------------------------------------------------------
+from datetime import datetime, timedelta
+
+# Helper for Indian Standard Time (UTC+5:30)
+def get_ist_now():
+    return datetime.utcnow() + timedelta(hours=5, minutes=30)
+
 @router.post("/{group_id}/messages", response_model=schemas.GroupMessageResponse, status_code=status.HTTP_201_CREATED)
 def send_group_message(group_id: int, data: schemas.GroupMessageCreate, db: Session = Depends(get_db)):
     """Sends a new message to a message group."""
@@ -195,10 +201,12 @@ def send_group_message(group_id: int, data: schemas.GroupMessageCreate, db: Sess
     if not usr:
         raise HTTPException(status_code=404, detail="Sender user not found")
 
+    ist_now = get_ist_now()
     msg = Message(
         group_id=group_id,
         sender_id=data.sender_id,
         message=data.message,
+        created_at=ist_now,
         attachment_url=data.attachment_url,
         attachment_name=data.attachment_name,
         attachment_type=data.attachment_type

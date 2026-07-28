@@ -255,6 +255,10 @@ export default function ChatsPage() {
         groupApi.getMessages(groupId, options),
         isLoadMore ? Promise.resolve(existingCache.members) : groupApi.getMembers(groupId)
       ])
+
+      const list = Array.isArray(msgs) ? msgs : []
+      const membersList = Array.isArray(mbrs) ? mbrs : []
+
       const groupThreadKey = `group-${groupId}`
       const decryptedList = await Promise.all(list.map(async (m) => {
         const decText = await decryptMessage(m.message, groupThreadKey)
@@ -1022,6 +1026,7 @@ export default function ChatsPage() {
       message.success('Message sent')
 
       userScrolledUpRef.current = false
+      window.dispatchEvent(new Event('ppm-chat-updated'))
       await fetchMessages(selectedProposal.id)
       fetchAllChats()
       setTimeout(() => scrollToBottom(true), 150)
@@ -1068,7 +1073,7 @@ export default function ChatsPage() {
       : messages
 
     listToRender.forEach(msg => {
-      const dateKey = dayjs(msg.timestamp).format('YYYY-MM-DD')
+      const dateKey = dayjs(msg.created_at || msg.timestamp).format('YYYY-MM-DD')
       if (!currentGroup || currentGroup.dateKey !== dateKey) {
         currentGroup = { dateKey, items: [] }
         groups.push(currentGroup)
@@ -1505,7 +1510,7 @@ export default function ChatsPage() {
                             )}
 
                             <div className="flex items-center justify-end gap-1 text-[10px] text-slate-400">
-                              <span>{dayjs(msg.timestamp).format('hh:mm A')}</span>
+                              <span>{dayjs(msg.created_at || msg.timestamp).format('hh:mm A')}</span>
                               {isMe && (
                                 <span className="ml-0.5">
                                   {msg.seen ? (
