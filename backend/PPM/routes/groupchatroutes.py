@@ -1,7 +1,7 @@
 import os
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from db import get_db
@@ -222,14 +222,33 @@ def send_group_message(group_id: int, data: schemas.GroupMessageCreate, db: Sess
 
 
 @router.get("/{group_id}/messages", response_model=List[schemas.GroupMessageResponse])
-def get_group_messages(group_id: int, db: Session = Depends(get_db)):
-    """Gets all messages for a message group with read receipt details."""
+def get_group_messages(
+    group_id: int,
+    before_id: Optional[int] = None,
+    after_id: Optional[int] = None,
+    limit: Optional[int] = Query(None, ge=1, le=200),
+    db: Session = Depends(get_db)
+):
+    """Gets paginated messages for a message group with read receipt details."""
     grp = db.query(MessageGroup).filter(MessageGroup.id == group_id).first()
     if not grp:
         raise HTTPException(status_code=404, detail="Message group not found")
 
+    query = db.query(Message).filter(Message.group_id == group_id)
+
+    if before_id:
+        query = query.filter(Message.id < before_id)
+    if after_id:
+        query = query.filter(Message.id > after_id)
+
+    if before_id or limit:
+        effective_limit = limit or 30
+        messages = query.order_by(Message.id.desc()).limit(effective_limit).all()
+        messages.reverse()
+    else:
+        messages = query.order_by(Message.id.asc()).all()
+
     results = []
-    messages = db.query(Message).filter(Message.group_id == group_id).order_by(Message.created_at.asc()).all()
     for m in messages:
         usr = db.query(User).filter(User.id == m.sender_id).first()
 

@@ -42,6 +42,7 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { API_BASE_URL } from '../config/api.js'
 import { groupApi } from '../utils/groupApi.js'
+import { encryptMessage, decryptMessage } from '../utils/crypto.js'
 
 dayjs.extend(relativeTime)
 const { Text, Title } = Typography
@@ -96,7 +97,7 @@ const checkIsToMe = (itemTo, userName, userRole, userGroup) => {
 
   if (toVal === uName || toVal === uRole) return true
   if (uName && (toVal.includes(uName) || uName.includes(toVal))) return true
-  if (uRole === 'admin' && (toVal === 'admin' || toVal === 'manjunath' || toVal.includes('admin'))) return true
+  if (uRole === 'admin' && (toVal === 'admin' || toVal.includes('admin'))) return true
   if (uRole === 'gh' && (toVal === 'gh' || toVal === uGrp || toVal.includes('group head') || toVal.includes('gh'))) return true
   if (uRole === 'ch' && (toVal === 'ch' || toVal.includes('centre head') || toVal.includes('center head') || toVal.includes('ch'))) return true
   if (uRole === 'scientist' && (toVal === uName || toVal.includes('coordinator') || toVal.includes('project'))) return true
@@ -114,7 +115,7 @@ const checkIsFromMe = (itemFrom, userName, userRole, userGroup) => {
 
   if (fromVal === uName || fromVal === uRole) return true
   if (uName && (fromVal.includes(uName) || uName.includes(fromVal))) return true
-  if (uRole === 'admin' && (fromVal === 'admin' || fromVal === 'manjunath' || fromVal.includes('admin'))) return true
+  if (uRole === 'admin' && (fromVal === 'admin' || fromVal.includes('admin'))) return true
   if (uRole === 'gh' && (fromVal === 'gh' || fromVal === uGrp || fromVal.includes('group head') || fromVal.includes('gh'))) return true
   if (uRole === 'ch' && (fromVal === 'ch' || fromVal.includes('centre head') || fromVal.includes('center head') || fromVal.includes('ch'))) return true
   if (uRole === 'scientist' && (fromVal === uName || fromVal.includes('coordinator') || fromVal.includes('project'))) return true
@@ -196,19 +197,16 @@ export default function ChatsPage() {
     return matched?.id || 408
   }, [currentUser, allSystemUsers, userName])
 
-  // Fetch all system users for member assignment
+  // Fetch all system users for member assignment (Lazy-loaded on modal open)
   const fetchSystemUsers = useCallback(async () => {
+    if (allSystemUsers.length > 0) return
     try {
       const users = await groupApi.getAllUsers()
       if (Array.isArray(users)) setAllSystemUsers(users)
     } catch (e) {
       console.warn('Could not fetch system users:', e)
     }
-  }, [])
-
-  useEffect(() => {
-    fetchSystemUsers()
-  }, [fetchSystemUsers])
+  }, [allSystemUsers.length])
 
   // Active Proposal object if selected item is a proposal
   const selectedProposal = useMemo(() => {
@@ -226,30 +224,76 @@ export default function ChatsPage() {
     return null
   }, [selectedChatItem, groupChats])
 
-  // Fetch Group Messages & Members
-  const fetchGroupDetails = useCallback(async (groupId) => {
+  // Fetch Group Messages & Members with Pagination and Caching
+  const fetchGroupDetails = useCallback(async (groupId, isLoadMore = false, isDelta = false) => {
     if (!groupId) return
-    setMessagesLoading(true)
+
+    const cacheKey = `group-${groupId}`
+    const existingCache = chatCacheRef.current[cacheKey] || { messages: [], members: [], hasMore: true }
+
+    if (!isLoadMore && !isDelta && existingCache.messages.length > 0) {
+      setGroupMessages(existingCache.messages)
+      setGroupMembers(existingCache.members)
+      setMessagesLoading(false)
+    } else if (!isLoadMore && !isDelta) {
+      setMessagesLoading(true)
+    }
+
     try {
+      const options = {}
+      if (isLoadMore && existingCache.messages.length > 0) {
+        const oldestId = Math.min(...existingCache.messages.map(m => m.id))
+        options.before_id = oldestId
+      } else if (isDelta && existingCache.messages.length > 0) {
+        const newestId = Math.max(...existingCache.messages.map(m => m.id))
+        options.after_id = newestId
+      } else {
+        options.limit = 30
+      }
+
       const [msgs, mbrs] = await Promise.all([
-        groupApi.getMessages(groupId),
-        groupApi.getMembers(groupId)
+        groupApi.getMessages(groupId, options),
+        isLoadMore ? Promise.resolve(existingCache.members) : groupApi.getMembers(groupId)
       ])
-      const msgList = Array.isArray(msgs) ? msgs : []
-      setGroupMessages(msgList)
-      setGroupMembers(Array.isArray(mbrs) ? mbrs : [])
+      const groupThreadKey = `group-${groupId}`
+      const decryptedList = await Promise.all(list.map(async (m) => {
+        const decText = await decryptMessage(m.message, groupThreadKey)
+        return { ...m, message: decText }
+      }))
+
+      let updatedMsgs = []
+      if (isLoadMore) {
+        updatedMsgs = [...decryptedList, ...existingCache.messages]
+      } else if (isDelta) {
+        const msgMap = new Map(existingCache.messages.map(m => [m.id, m]))
+        decryptedList.forEach(m => msgMap.set(m.id, m))
+        updatedMsgs = Array.from(msgMap.values())
+      } else {
+        updatedMsgs = decryptedList
+      }
+
+      updatedMsgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+
+      chatCacheRef.current[cacheKey] = {
+        messages: updatedMsgs,
+        members: membersList,
+        hasMore: list.length >= 30
+      }
+
+      setGroupMessages(updatedMsgs)
+      setGroupMembers(membersList)
 
       if (currentUserId) {
-        msgList.forEach(m => {
+        list.forEach(m => {
           const alreadySeen = (m.seen_by || []).some(s => s.user_id === currentUserId)
           if (!alreadySeen && m.sender_id !== currentUserId) {
-            groupApi.markMessageSeen(m.id, currentUserId).catch(() => {})
+            groupApi.markMessageSeen(m.id, currentUserId).catch(() => { })
           }
         })
       }
     } catch (err) {
       console.error('Error fetching group details:', err)
-      message.error('Could not load group details')
+      if (!isDelta) message.error('Could not load group details')
     } finally {
       setMessagesLoading(false)
     }
@@ -311,7 +355,7 @@ export default function ChatsPage() {
 
       // Map proposals with last message & unread count
       const pList = Array.isArray(proposalData) ? proposalData : []
-      const proposalsWithRemarks = pList.map(item => {
+      const proposalsWithRemarks = await Promise.all(pList.map(async (item) => {
         const itemRemarks = allRemarks.filter(r => String(r.project_id) === String(item.id))
         const sorted = itemRemarks.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
         const lastMsg = sorted[0] || null
@@ -326,7 +370,12 @@ export default function ChatsPage() {
           return unseenMsg || unseenReply
         }).length
 
-        const displayMsgText = lastMsg?.attachment_url ? `📎 [File] ${lastMsg?.attachment_name || 'Attachment'}` : (lastMsg?.remarks_description || lastMsg?.respond_to_remarks || 'No messages yet')
+        let rawText = lastMsg?.remarks_description || lastMsg?.respond_to_remarks || ''
+        if (rawText) {
+          rawText = await decryptMessage(rawText, `proposal-${item.id}`)
+        }
+
+        const displayMsgText = lastMsg?.attachment_url ? `📎 [File] ${lastMsg?.attachment_name || 'Attachment'}` : (rawText || 'No messages yet')
 
         return {
           ...item,
@@ -334,7 +383,7 @@ export default function ChatsPage() {
           lastMessageTime: lastMsg?.updated_at || lastMsg?.created_at || null,
           unreadCount
         }
-      })
+      }))
 
       setProposals(proposalsWithRemarks)
       setGroupChats(Array.isArray(groupData) ? groupData : [])
@@ -441,10 +490,33 @@ export default function ChatsPage() {
 
   const hasMoreChats = paginatedChats.length < filteredChats.length
 
-  // Fetch Proposal Messages Stream
-  const fetchMessages = useCallback(async (proposalId, targetUser) => {
+  // In-memory message cache per chat ID
+  const chatCacheRef = useRef({})
+  const activeAbortControllerRef = useRef(null)
+
+  // Fetch Proposal Messages Stream with Cursor Pagination & Caching
+  const fetchMessages = useCallback(async (proposalId, targetUser, isLoadMore = false, isDelta = false) => {
     if (!proposalId) return
-    setMessagesLoading(true)
+
+    const cacheKey = `proposal-${proposalId}-${targetUser || targetRecipient || 'all'}`
+    const existingCache = chatCacheRef.current[cacheKey] || { messages: [], raw: [], hasMore: true }
+
+    // Instant Cache Hydration if switching back to chat and not loading more/delta
+    if (!isLoadMore && !isDelta && existingCache.messages.length > 0) {
+      setMessages(existingCache.messages)
+      setRawRemarksList(existingCache.raw)
+      setMessagesLoading(false)
+    } else if (!isLoadMore && !isDelta) {
+      setMessagesLoading(true)
+    }
+
+    // Cancel in-flight request for previous chat if switching rapidly
+    if (activeAbortControllerRef.current && !isLoadMore && !isDelta) {
+      activeAbortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    activeAbortControllerRef.current = controller
+
     try {
       const queryParams = new URLSearchParams({ project_id: proposalId })
       const activeUser = userName || userRole.toUpperCase()
@@ -458,20 +530,32 @@ export default function ChatsPage() {
       if (userRole) queryParams.append('user_role', userRole)
       if (userGroup) queryParams.append('user_group', userGroup)
 
+      if (isLoadMore && existingCache.raw.length > 0) {
+        const oldestId = Math.min(...existingCache.raw.map(r => r.id))
+        queryParams.append('before_id', oldestId)
+      } else if (isDelta && existingCache.raw.length > 0) {
+        const newestId = Math.max(...existingCache.raw.map(r => r.id))
+        queryParams.append('after_id', newestId)
+      } else {
+        queryParams.append('limit', '30')
+      }
+
       const res = await fetch(`${API_BASE_URL}/Remarkss/chat-history?${queryParams.toString()}`, {
-        headers: { accept: 'application/json' }
+        headers: { accept: 'application/json' },
+        signal: controller.signal
       })
       if (!res.ok) throw new Error('Failed to fetch messages')
       const data = await res.json()
       const list = Array.isArray(data) ? data : []
-      setRawRemarksList(list)
 
-      const events = []
-      list.forEach(item => {
+      const threadKey = `proposal-${proposalId}`
+      const events = await Promise.all(list.flatMap(async (item) => {
+        const itemEvents = []
         if (item.remarks_description || item.attachment_url) {
-          events.push({
+          const decryptedText = await decryptMessage(item.remarks_description, threadKey)
+          itemEvents.push({
             id: `msg-${item.id}`,
-            text: item.remarks_description,
+            text: decryptedText,
             sender: item.from_ || 'System',
             timestamp: item.created_at || item.updated_at,
             seen: item.message_seen,
@@ -482,20 +566,51 @@ export default function ChatsPage() {
           })
         }
         if (item.respond_to_remarks) {
-          events.push({
+          const decryptedReply = await decryptMessage(item.respond_to_remarks, threadKey)
+          itemEvents.push({
             id: `reply-${item.id}`,
-            text: item.respond_to_remarks,
+            text: decryptedReply,
             sender: item.replyer || item.to || 'System',
             timestamp: item.replied_at || item.updated_at,
             seen: item.reply_seen,
             isReply: true
           })
         }
-      })
+        return itemEvents
+      })).then(results => results.flat())
 
-      events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-      setMessages(events)
+      let updatedRaw = []
+      let updatedEvents = []
 
+      if (isLoadMore) {
+        updatedRaw = [...list, ...existingCache.raw]
+        updatedEvents = [...events, ...existingCache.messages]
+      } else if (isDelta) {
+        const rawMap = new Map(existingCache.raw.map(r => [r.id, r]))
+        list.forEach(r => rawMap.set(r.id, r))
+        updatedRaw = Array.from(rawMap.values())
+
+        const msgMap = new Map(existingCache.messages.map(m => [m.id, m]))
+        events.forEach(m => msgMap.set(m.id, m))
+        updatedEvents = Array.from(msgMap.values())
+      } else {
+        updatedRaw = list
+        updatedEvents = events
+      }
+
+      updatedEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+
+      // Update cache
+      chatCacheRef.current[cacheKey] = {
+        messages: updatedEvents,
+        raw: updatedRaw,
+        hasMore: list.length >= 30
+      }
+
+      setRawRemarksList(updatedRaw)
+      setMessages(updatedEvents)
+
+      // Background read receipt updates
       list.forEach(async item => {
         const isToMe = checkIsToMe(item.to, userName, userRole, userGroup)
         if (isToMe && !item.message_seen) {
@@ -508,8 +623,10 @@ export default function ChatsPage() {
         }
       })
     } catch (err) {
-      console.error('Error fetching messages:', err)
-      message.error('Unable to load chat messages')
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching messages:', err)
+        message.error('Unable to load chat messages')
+      }
     } finally {
       setMessagesLoading(false)
     }
@@ -517,9 +634,12 @@ export default function ChatsPage() {
 
   useEffect(() => {
     if (selectedProposal?.id) {
+      userScrolledUpRef.current = false
       fetchMessages(selectedProposal.id, targetRecipient)
     }
   }, [selectedProposal, targetRecipient, fetchMessages])
+
+
 
   // Recipient options for proposal chats (with GH, CH, PC, Admin options)
   const recipientOptions = useMemo(() => {
@@ -604,10 +724,10 @@ export default function ChatsPage() {
         const matchedOption = recipientOptions.find(opt => {
           const optVal = opt.value.toLowerCase().trim()
           return fromVal.includes(optVal) || optVal.includes(fromVal) ||
-                 toVal.includes(optVal) || optVal.includes(toVal) ||
-                 (optVal === 'admin' && (fromVal === 'manjunath' || toVal === 'admin')) ||
-                 (optVal === 'gh' && (fromVal === 'gh' || toVal === 'gh' || fromVal === userGroup.toLowerCase())) ||
-                 (optVal === 'ch' && (fromVal === 'ch' || toVal === 'ch'))
+            toVal.includes(optVal) || optVal.includes(toVal) ||
+            (optVal === 'admin' && (fromVal.includes('admin') || toVal.includes('admin'))) ||
+            (optVal === 'gh' && (fromVal === 'gh' || toVal === 'gh' || fromVal === userGroup.toLowerCase())) ||
+            (optVal === 'ch' && (fromVal === 'ch' || toVal === 'ch'))
         })
 
         if (matchedOption) {
@@ -764,11 +884,16 @@ export default function ChatsPage() {
       if (selectedFile) {
         attachmentInfo = await groupApi.uploadAttachment(selectedFile)
       }
-      await groupApi.sendMessage(selectedGroup.id, currentUserId, inputText.trim(), attachmentInfo)
+      const groupThreadKey = `group-${selectedGroup.id}`
+      const encryptedMsg = await encryptMessage(inputText.trim(), groupThreadKey)
+
+      await groupApi.sendMessage(selectedGroup.id, currentUserId, encryptedMsg, attachmentInfo)
       setInputText('')
       setSelectedFile(null)
+      userScrolledUpRef.current = false
       fetchGroupDetails(selectedGroup.id)
       fetchAllChats()
+      setTimeout(() => scrollToBottom(true), 150)
     } catch (err) {
       console.error('Error sending group message:', err)
       message.error('Failed to send message or attachment')
@@ -845,14 +970,17 @@ export default function ChatsPage() {
         return isToMe && matchesThread
       })
 
+      const threadKey = `proposal-${selectedProposal.id}`
+      const encryptedText = await encryptMessage(msgText, threadKey)
+
       if (pendingMessageToReply && !selectedFile) {
         const payload = {
-          from_: pendingMessageToReply.from_,
-          to: pendingMessageToReply.to,
-          project_id: selectedProposal.id,
-          remarks_description: pendingMessageToReply.remarks_description,
-          respond_to_remarks: msgText,
-          replyer: senderVal
+          respond_to_remarks: encryptedText,
+          replyer: senderVal,
+          reply_seen: false,
+          reply_attachment_url: attachmentInfo.attachment_url || null,
+          reply_attachment_name: attachmentInfo.attachment_name || null,
+          reply_attachment_type: attachmentInfo.attachment_type || null
         }
 
         const res = await fetch(`${API_BASE_URL}/Remarkss/${pendingMessageToReply.id}`, {
@@ -869,7 +997,7 @@ export default function ChatsPage() {
           from_: senderVal,
           to: targetRecipient,
           project_id: selectedProposal.id,
-          remarks_description: msgText,
+          remarks_description: encryptedText,
           attachment_url: attachmentInfo.attachment_url || null,
           attachment_name: attachmentInfo.attachment_name || null,
           attachment_type: attachmentInfo.attachment_type || null,
@@ -893,8 +1021,10 @@ export default function ChatsPage() {
       if (fileInputRef.current) fileInputRef.current.value = ''
       message.success('Message sent')
 
+      userScrolledUpRef.current = false
       await fetchMessages(selectedProposal.id)
       fetchAllChats()
+      setTimeout(() => scrollToBottom(true), 150)
     } catch (err) {
       console.error('Send message error:', err)
       message.error(err.message || 'Failed to send message')
@@ -903,13 +1033,18 @@ export default function ChatsPage() {
     }
   }
 
-  // Auto-scroll to bottom of conversation
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const userScrolledUpRef = useRef(false)
+  const conversationContainerRef = useRef(null)
+
+  // Auto-scroll to bottom of conversation (only if user is near bottom or forced)
+  const scrollToBottom = (force = false) => {
+    if (force || !userScrolledUpRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }
 
   useEffect(() => {
-    scrollToBottom()
+    scrollToBottom(false)
   }, [messages, groupMessages])
 
   // Reset pagination on search or filter change
@@ -924,12 +1059,12 @@ export default function ChatsPage() {
 
     const listToRender = msgSearchText.trim()
       ? messages.filter(m => {
-          const q = msgSearchText.toLowerCase().trim()
-          const text = (m.text || '').toLowerCase()
-          const sender = (m.sender || '').toLowerCase()
-          const att = (m.attachmentName || m.attachment_name || '').toLowerCase()
-          return text.includes(q) || sender.includes(q) || att.includes(q)
-        })
+        const q = msgSearchText.toLowerCase().trim()
+        const text = (m.text || '').toLowerCase()
+        const sender = (m.sender || '').toLowerCase()
+        const att = (m.attachmentName || m.attachment_name || '').toLowerCase()
+        return text.includes(q) || sender.includes(q) || att.includes(q)
+      })
       : messages
 
     listToRender.forEach(msg => {
@@ -949,7 +1084,7 @@ export default function ChatsPage() {
 
       {/* LEFT PANEL: WHATSAPP-STYLE UNIFIED CHAT LIST */}
       <div className="w-80 md:w-[380px] border-r border-slate-200 bg-white flex flex-col shrink-0">
-        
+
         {/* Top User Header & Action Controls */}
         <div className="p-3.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -975,7 +1110,10 @@ export default function ChatsPage() {
                 type="primary"
                 size="small"
                 icon={<PlusOutlined />}
-                onClick={() => setCreateGroupModalOpen(true)}
+                onClick={() => {
+                  fetchSystemUsers()
+                  setCreateGroupModalOpen(true)
+                }}
                 className="bg-emerald-600 hover:bg-emerald-700 font-semibold rounded-lg text-xs flex items-center"
               >
                 New Group
@@ -1008,11 +1146,10 @@ export default function ChatsPage() {
           <div className="flex items-center gap-1.5 pt-1 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setChatFilter('all')}
-              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${
-                chatFilter === 'all'
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'all'
                   ? 'bg-emerald-700 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
               <span>All</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${chatFilter === 'all' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-700'}`}>
@@ -1022,11 +1159,10 @@ export default function ChatsPage() {
 
             <button
               onClick={() => setChatFilter('proposals')}
-              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${
-                chatFilter === 'proposals'
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'proposals'
                   ? 'bg-emerald-700 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
               <span>Proposals</span>
               {proposalUnreadTotal > 0 && (
@@ -1038,11 +1174,10 @@ export default function ChatsPage() {
 
             <button
               onClick={() => setChatFilter('groups')}
-              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${
-                chatFilter === 'groups'
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'groups'
                   ? 'bg-emerald-700 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
               <span>Groups</span>
               {groupUnreadTotal > 0 && (
@@ -1054,17 +1189,15 @@ export default function ChatsPage() {
 
             <button
               onClick={() => setChatFilter('unread')}
-              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${
-                chatFilter === 'unread'
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'unread'
                   ? 'bg-emerald-700 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
               <span>Unread</span>
               {totalUnreadCount > 0 && (
-                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
-                  chatFilter === 'unread' ? 'bg-white text-emerald-800' : 'bg-emerald-600 text-white'
-                }`}>
+                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${chatFilter === 'unread' ? 'bg-white text-emerald-800' : 'bg-emerald-600 text-white'
+                  }`}>
                   {totalUnreadCount}
                 </span>
               )}
@@ -1100,9 +1233,8 @@ export default function ChatsPage() {
                         setGroupChats(prev => prev.map(g => g.id === item.rawId ? { ...g, unread_count: 0 } : g))
                       }
                     }}
-                    className={`p-3.5 cursor-pointer transition-all flex items-center gap-3.5 relative ${
-                      isSelected ? 'bg-emerald-50/90 border-l-4 border-emerald-600' : 'hover:bg-slate-50'
-                    }`}
+                    className={`p-3.5 cursor-pointer transition-all flex items-center gap-3.5 relative ${isSelected ? 'bg-emerald-50/90 border-l-4 border-emerald-600' : 'hover:bg-slate-50'
+                      }`}
                   >
                     {/* Avatar with Badge Indicator */}
                     <div className="relative shrink-0">
@@ -1198,6 +1330,9 @@ export default function ChatsPage() {
                       <Title level={5} style={{ margin: 0 }} className="text-slate-800 truncate max-w-md">
                         {selectedProposal.quote_description || selectedProposal.quote_reference || `Proposal #${selectedProposal.id}`}
                       </Title>
+                      <span className="bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1 shrink-0">
+                        🔒 End-to-End Encrypted
+                      </span>
                       {selectedProposal.proposal_status && (
                         <Tag color="green" className="rounded-md text-[11px] font-semibold">
                           {selectedProposal.proposal_status}
@@ -1262,11 +1397,10 @@ export default function ChatsPage() {
                         <button
                           key={opt.value}
                           onClick={() => setTargetRecipient(opt.value)}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
-                            isActive
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${isActive
                               ? 'bg-emerald-700 text-white shadow-emerald-200 border border-emerald-800'
                               : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                          }`}
+                            }`}
                         >
                           <UserOutlined />
                           <span>{opt.label}</span>
@@ -1279,7 +1413,30 @@ export default function ChatsPage() {
             </div>
 
             {/* Conversation Stream */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#e5ddd5]/30">
+            <div
+              className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#e5ddd5]/30"
+              onScroll={(e) => {
+                const target = e.target
+                const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
+                userScrolledUpRef.current = distanceFromBottom > 120
+
+                if (target.scrollTop === 0 && !messagesLoading) {
+                  if (selectedChatItem?.itemType === 'proposal' && selectedProposal?.id) {
+                    fetchMessages(selectedProposal.id, targetRecipient, true, false)
+                  } else if (selectedChatItem?.itemType === 'group' && selectedGroup?.id) {
+                    fetchGroupDetails(selectedGroup.id, true, false)
+                  }
+                }
+              }}
+            >
+              {/* WhatsApp-Style End-to-End Encryption Security Banner */}
+              <div className="flex justify-center mb-4">
+                <div className="bg-[#ffeecd] border border-[#f5e2b8] text-[#856404] text-xs font-medium px-4 py-2 rounded-xl shadow-xs max-w-md text-center flex items-center justify-center gap-2 leading-relaxed">
+                  <span>🔒</span>
+                  <span>Messages and calls are end-to-end encrypted. No one outside of this chat can read.</span>
+                </div>
+              </div>
+
               {messagesLoading ? (
                 <div className="p-12 text-center"><Spin /></div>
               ) : messages.length === 0 ? (
@@ -1309,11 +1466,10 @@ export default function ChatsPage() {
                           className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                         >
                           <div
-                            className={`max-w-md px-4 py-2.5 rounded-2xl shadow-sm text-sm relative transition-all ${
-                              isMe
+                            className={`max-w-md px-4 py-2.5 rounded-2xl shadow-sm text-sm relative transition-all ${isMe
                                 ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none'
                                 : 'bg-white text-slate-900 rounded-tl-none'
-                            }`}
+                              }`}
                           >
                             <span className="block text-[11px] font-bold text-slate-600 mb-0.5">
                               {msg.sender}
@@ -1512,7 +1668,14 @@ export default function ChatsPage() {
             </div>
 
             {/* Group Messages Stream */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#e5ddd5]/30">
+            <div
+              className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#e5ddd5]/30"
+              onScroll={(e) => {
+                const target = e.target
+                const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
+                userScrolledUpRef.current = distanceFromBottom > 120
+              }}
+            >
               {messagesLoading ? (
                 <div className="p-12 text-center"><Spin /></div>
               ) : groupMessages.length === 0 ? (
@@ -1542,9 +1705,8 @@ export default function ChatsPage() {
 
                     return (
                       <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-md px-4 py-2.5 rounded-2xl shadow-sm text-sm ${
-                          isMe ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'
-                        }`}>
+                        <div className={`max-w-md px-4 py-2.5 rounded-2xl shadow-sm text-sm ${isMe ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'
+                          }`}>
                           <span className="block text-[11px] font-bold text-emerald-800 mb-0.5">
                             {msg.sender_name} {msg.sender_role ? `(${msg.sender_role})` : ''}
                           </span>

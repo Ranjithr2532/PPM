@@ -2100,19 +2100,7 @@ export default function Allproposals() {
                   setFloatingChatOpen(true)
                 }}
               />
-              {userRole === 'scientist' && (
-                <div className="flex justify-end">
-                  <Button
-                    danger
-                    type="primary"
-                    disabled={!statistics.convertedNo}
-                    onClick={openReasonPopup}
-                    className={statistics.convertedNo ? 'blink-reason-btn' : ''}
-                  >
-                    Reason Required ({statistics.convertedNo})
-                  </Button>
-                </div>
-              )}
+
               {(() => {
                 const handleStatusCardClick = (val) => {
                   setStatusFilter(val)
@@ -2243,16 +2231,25 @@ export default function Allproposals() {
                           </Button>
                         </Badge>
                       </Tooltip>
-                      {statusFilter === 'proposals' && (
+                      {statusFilter === 'proposals' && unacknowledgedCount > 0 && (
                         <Button
                           type={showUnacknowledgedOnly ? 'primary' : 'default'}
-                          size="large"
+                          size="small"
                           danger
-                          disabled={!unacknowledgedCount}
                           onClick={handleUnacknowledgedToggle}
-                          className={showUnacknowledgedOnly ? 'shadow-md hover:shadow-lg' : ''}
                         >
-                          ⚠️ Unacknowledged
+                          ⚠️ Unacknowledged ({unacknowledgedCount})
+                        </Button>
+                      )}
+                      {userRole === 'scientist' && statistics.convertedNo > 0 && (
+                        <Button
+                          danger
+                          type="primary"
+                          size="small"
+                          onClick={openReasonPopup}
+                          className="blink-reason-btn"
+                        >
+                          Reason Required ({statistics.convertedNo})
                         </Button>
                       )}
                       {userRole === 'scientist' && (

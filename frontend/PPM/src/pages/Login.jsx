@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { Card, Form, Input, Button, Typography, Checkbox, message, Modal, Steps } from 'antd'
@@ -47,28 +47,42 @@ function LoginVisualPanel() {
     technically_completed: 105,
     financially_completed: 69,
   })
+  const [yearlyData, setYearlyData] = useState([])
   const containerRef = useRef(null)
 
-  // Fetch live database statistics on mount
+  // Fetch live count & yearly statistics on mount
   useEffect(() => {
     async function fetchLiveCounts() {
       try {
-        const res = await axios.get(`${API_BASE_URL}/proposals/proposal-vs-project`)
+        const res = await axios.get(`${API_BASE_URL}/count/`)
         if (res.data) {
           setLiveStats({
-            total: res.data.total ?? 1090,
-            remained_as_proposal: res.data.remained_as_proposal ?? 841,
-            converted_to_project: res.data.converted_to_project ?? 249,
-            ongoing_projects: res.data.ongoing_projects ?? 144,
-            technically_completed: res.data.technically_completed ?? 105,
-            financially_completed: res.data.financially_completed ?? 69,
+            total: res.data.total_proposals ?? 0,
+            remained_as_proposal: res.data.pending_proposals ?? 0,
+            converted_to_project: res.data.converted_projects ?? 0,
+            ongoing_projects: res.data.ongoing_projects ?? 0,
+            technically_completed: res.data.technically_completed ?? 0,
+            financially_completed: res.data.financially_completed ?? 0,
           })
         }
       } catch (err) {
-        console.warn('Could not fetch live proposal counts for login visual, using fallback:', err)
+        console.warn('Could not fetch counts for login visual:', err)
       }
     }
+
+    async function fetchYearlyCounts() {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/count/yearly`)
+        if (res.data && Array.isArray(res.data.yearly_counts)) {
+          setYearlyData(res.data.yearly_counts)
+        }
+      } catch (err) {
+        console.warn('Could not fetch yearly counts for login visual:', err)
+      }
+    }
+
     fetchLiveCounts()
+    fetchYearlyCounts()
   }, [])
 
   const conversionRate = liveStats.total > 0
@@ -126,37 +140,21 @@ function LoginVisualPanel() {
     },
   ]
 
-  // Interval to rotate metrics every 3.5 seconds after initial folder reveal
+  // Interval to rotate metrics every 2 seconds after initial folder reveal
   useEffect(() => {
     const timer = setTimeout(() => {
       const interval = setInterval(() => {
         setMetricIndex((prev) => (prev + 1) % metrics.length)
-      }, 3500)
+      }, 2000)
       return () => clearInterval(interval)
-    }, 1200)
+    }, 600)
 
     return () => clearTimeout(timer)
   }, [metrics.length])
 
-  // Smooth counter animation whenever metricIndex changes or liveStats load
+  // Set metric count directly without running/counting animation
   useEffect(() => {
-    let startTime = null
-    const target = metrics[metricIndex].target
-    const duration = 1100
-
-    const updateCounter = (timestamp) => {
-      if (!startTime) startTime = timestamp
-      const elapsed = timestamp - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      const easeProgress = 1 - Math.pow(1 - progress, 3)
-      setStatCount(Math.floor(easeProgress * target))
-
-      if (progress < 1) {
-        requestAnimationFrame(updateCounter)
-      }
-    }
-
-    requestAnimationFrame(updateCounter)
+    setStatCount(metrics[metricIndex].target || 0)
   }, [metricIndex, liveStats])
 
   const handleMouseMove = (e) => {
@@ -227,7 +225,7 @@ function LoginVisualPanel() {
           width: 420px;
           height: 420px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(20, 184, 166, 0.22) 0%, rgba(6, 182, 212, 0.1) 50%, transparent 70%);
+          background: radial-gradient(circle, rgba(0, 150, 255, 0.22) 0%, rgba(0, 150, 255, 0.1) 50%, transparent 70%);
           filter: blur(60px);
           transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
           pointer-events: none;
@@ -240,7 +238,7 @@ function LoginVisualPanel() {
           height: 380px;
           transform-style: preserve-3d;
           transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
-          animation: frh-idle-float 6s ease-in-out 2.5s infinite;
+          animation: frh-idle-float 6s ease-in-out 1.5s infinite;
         }
 
         @keyframes frh-idle-float {
@@ -260,7 +258,7 @@ function LoginVisualPanel() {
           background: rgba(15, 23, 42, 0.35);
           filter: blur(15px);
           opacity: 0.4;
-          animation: frh-shadow-grow 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s forwards;
+          animation: frh-shadow-grow 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
         }
 
         @keyframes frh-shadow-grow {
@@ -297,7 +295,7 @@ function LoginVisualPanel() {
           border-radius: 8px 8px 0 0;
         }
 
-        /* --- 3D FRONT COVER (Swings Open on Load) --- */
+        /* --- 3D FRONT COVER (Swings Open Fast on Load) --- */
         .frh-folder-cover {
           position: absolute;
           bottom: 20px;
@@ -305,12 +303,12 @@ function LoginVisualPanel() {
           width: 280px;
           height: 200px;
           background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-          border: 1px solid rgba(20, 184, 166, 0.4);
+          border: 1px solid rgba(0, 150, 255, 0.4);
           border-radius: 18px;
           transform-origin: left center;
           transform-style: preserve-3d;
           box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
-          animation: frh-cover-open 1.1s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s forwards;
+          animation: frh-cover-open 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
           z-index: 10;
         }
 
@@ -328,10 +326,10 @@ function LoginVisualPanel() {
           align-items: center;
           gap: 8px;
           padding: 6px 12px;
-          background: rgba(20, 184, 166, 0.15);
-          border: 1px solid rgba(20, 184, 166, 0.3);
+          background: rgba(0, 150, 255, 0.15);
+          border: 1px solid rgba(0, 150, 255, 0.3);
           border-radius: 20px;
-          color: #2DD4BF;
+          color: #0096FF;
           font-size: 11px;
           font-weight: 600;
           letter-spacing: 0.05em;
@@ -350,14 +348,14 @@ function LoginVisualPanel() {
           transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        /* Sheet 1 (Top Stat Card - Slides out first) */
+        /* Sheet 1 (Top Stat Card - Slides out fast) */
         .frh-sheet-stat {
           bottom: 40px;
           left: 45px;
-          width: 220px;
+          width: 260px;
           z-index: 5;
           opacity: 0;
-          animation: frh-paper-slide-1 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s forwards;
+          animation: frh-paper-slide-1 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s forwards;
         }
 
         @keyframes frh-paper-slide-1 {
@@ -367,19 +365,19 @@ function LoginVisualPanel() {
           }
           100% {
             opacity: 1;
-            transform: translate3d(-35px, -115px, 65px) rotateY(-4deg) rotateX(5deg);
-            box-shadow: -15px 25px 35px -10px rgba(15, 23, 42, 0.2), 0 0 20px rgba(20, 184, 166, 0.15);
+            transform: translate3d(0px, -145px, 65px) rotateY(-2deg) rotateX(4deg);
+            box-shadow: -10px 25px 35px -10px rgba(15, 23, 42, 0.2), 0 0 20px rgba(0, 150, 255, 0.2);
           }
         }
 
-        /* Sheet 2 (Middle Line Chart Card) */
-        .frh-sheet-line {
-          bottom: 30px;
-          left: 50px;
-          width: 240px;
-          z-index: 4;
+        /* Sheet 2 (Bottom Yearly Proposals Bar Chart Card - Slides out fast) */
+        .frh-sheet-bar {
+          bottom: 25px;
+          left: 40px;
+          width: 270px;
+          z-index: 3;
           opacity: 0;
-          animation: frh-paper-slide-2 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) 0.65s forwards;
+          animation: frh-paper-slide-2 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.75s forwards;
         }
 
         @keyframes frh-paper-slide-2 {
@@ -389,59 +387,21 @@ function LoginVisualPanel() {
           }
           100% {
             opacity: 1;
-            transform: translate3d(30px, -45px, 35px) rotateY(5deg) rotateX(-3deg);
-            box-shadow: 15px 25px 35px -10px rgba(15, 23, 42, 0.18);
-          }
-        }
-
-        /* Sheet 3 (Bottom Bar Chart Card) */
-        .frh-sheet-bar {
-          bottom: 25px;
-          left: 45px;
-          width: 250px;
-          z-index: 3;
-          opacity: 0;
-          animation: frh-paper-slide-3 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) 0.8s forwards;
-        }
-
-        @keyframes frh-paper-slide-3 {
-          0% {
-            opacity: 0;
-            transform: translate3d(0, 0, -10px) rotateX(0deg);
-          }
-          100% {
-            opacity: 1;
-            transform: translate3d(-10px, 35px, 10px) rotateY(-2deg) rotateX(6deg);
+            transform: translate3d(-5px, 15px, 15px) rotateY(1deg) rotateX(3deg);
             box-shadow: 0 25px 40px -12px rgba(15, 23, 42, 0.18);
           }
         }
 
-        /* SVG Line drawing animation */
-        .frh-svg-path {
-          stroke-dasharray: 300;
-          stroke-dashoffset: 300;
-          animation: frh-draw-path 1.3s ease-in-out 1.2s forwards;
+        /* SVG Animated Line Stroke Draw */
+        .frh-line-draw {
+          stroke-dasharray: 400;
+          stroke-dashoffset: 400;
+          animation: frh-stroke-draw 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.8s forwards;
         }
 
-        @keyframes frh-draw-path {
-          to { stroke-dashoffset: 0; }
-        }
-
-        .frh-svg-gradient-fill {
-          opacity: 0;
-          animation: frh-fade-in 0.7s ease 1.7s forwards;
-        }
-
-        /* Elastic Bar growth animation */
-        .frh-bar-grow {
-          transform-origin: bottom;
-          transform: scaleY(0);
-          animation: frh-elastic-bar 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-        }
-
-        @keyframes frh-elastic-bar {
-          0% { transform: scaleY(0); }
-          100% { transform: scaleY(1); }
+        @keyframes frh-stroke-draw {
+          0% { stroke-dashoffset: 400; }
+          100% { stroke-dashoffset: 0; }
         }
 
         @keyframes frh-fade-in {
@@ -486,7 +446,7 @@ function LoginVisualPanel() {
         {/* Folder Back Cover */}
         <div className="frh-folder-back" />
 
-        {/* --- SHEET 1: STAT CARD (Reveals Top & Rotates Metrics) --- */}
+        {/* --- SHEET 1: STAT CARD (Positioned at top) --- */}
         <div className="frh-paper-sheet frh-sheet-stat">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-semibold text-slate-500 tracking-wider uppercase transition-all duration-300">
@@ -512,77 +472,128 @@ function LoginVisualPanel() {
             {metrics.map((_, idx) => (
               <span
                 key={idx}
-                className={`h-1.5 rounded-full transition-all duration-400 ${
-                  idx === metricIndex ? 'w-4 bg-teal-600' : 'w-1.5 bg-slate-200'
-                }`}
+                className={`h-1.5 rounded-full transition-all duration-400 ${idx === metricIndex ? 'w-4 bg-[#0096FF]' : 'w-1.5 bg-slate-200'
+                  }`}
               />
             ))}
           </div>
         </div>
 
-        {/* --- SHEET 2: LINE CHART CARD (Reveals Center) --- */}
-        <div className="frh-paper-sheet frh-sheet-line">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-semibold text-slate-500 tracking-wider uppercase">
-              Analytics Velocity
-            </span>
-            <span className="text-[10px] text-teal-700 font-bold bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
-              Live
-            </span>
-          </div>
-          <div className="h-16 w-full relative overflow-hidden">
-            <svg className="w-full h-full overflow-visible" viewBox="0 0 200 50">
-              <defs>
-                <linearGradient id="frhGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0D9488" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#0D9488" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
-              <path
-                className="frh-svg-gradient-fill"
-                d="M 10 40 Q 50 10, 90 28 T 180 10 L 180 50 L 10 50 Z"
-                fill="url(#frhGrad)"
-              />
-              <path
-                className="frh-svg-path"
-                d="M 10 40 Q 50 10, 90 28 T 180 10"
-                fill="none"
-                stroke="#0D9488"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-        </div>
-
-        {/* --- SHEET 3: BAR CHART CARD (Reveals Bottom) --- */}
+        {/* --- SHEET 2: YEARLY PROPOSALS ANIMATED LINE GRAPH CARD --- */}
         <div className="frh-paper-sheet frh-sheet-bar">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-semibold text-slate-500 tracking-wider uppercase">
-              Quarterly Allocation
+              Yearly Proposals Trend
             </span>
-            <span className="text-[10px] text-teal-700 font-semibold">Q3 Target</span>
+            <span className="text-[10px] text-[#0096FF] font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0096FF] animate-pulse"></span>
+              Live DB
+            </span>
           </div>
-          <div className="h-16 flex items-end justify-between gap-2 pt-1 px-1">
-            {barHeights.map((height, idx) => (
-              <div key={idx} className="flex-1 bg-slate-100 rounded-md h-full flex items-end p-0.5 border border-slate-200/60">
-                <div
-                  className="frh-bar-grow w-full bg-gradient-to-t from-teal-700 to-teal-500 rounded-sm"
-                  style={{
-                    height,
-                    animationDelay: `${1.4 + idx * 0.1}s`,
-                  }}
-                />
+
+          {(() => {
+            const dataPoints = (yearlyData.length > 0
+              ? yearlyData.slice(-5)
+              : [
+                { year: '2022', count: 45 },
+                { year: '2023', count: 80 },
+                { year: '2024', count: 120 },
+                { year: '2025', count: 160 },
+                { year: '2026', count: 90 },
+              ]
+            )
+
+            const maxCount = Math.max(...dataPoints.map(d => d.count), 1)
+            const width = 234
+            const height = 50
+            const padding = 12
+
+            const points = dataPoints.map((item, idx) => {
+              const x = padding + (idx * (width - 2 * padding)) / Math.max(dataPoints.length - 1, 1)
+              const y = height - padding - ((item.count / maxCount) * (height - 2 * padding))
+              return { x, y, year: item.year, count: item.count }
+            })
+
+            // Generate smooth cubic bezier SVG path
+            let dPath = `M ${points[0].x} ${points[0].y}`
+            for (let i = 0; i < points.length - 1; i++) {
+              const current = points[i]
+              const next = points[i + 1]
+              const controlX = (current.x + next.x) / 2
+              dPath += ` C ${controlX} ${current.y}, ${controlX} ${next.y}, ${next.x} ${next.y}`
+            }
+
+            const fillPath = `${dPath} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`
+
+            return (
+              <div className="relative">
+                <svg className="w-full h-14 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
+                  <defs>
+                    <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#3B82F6" />
+                      <stop offset="100%" stopColor="#0096FF" />
+                    </linearGradient>
+                    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0096FF" stopOpacity="0.35" />
+                      <stop offset="100%" stopColor="#0096FF" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Gradient Area under line */}
+                  <path d={fillPath} fill="url(#areaGrad)" />
+
+                  {/* Animated Line Stroke */}
+                  <path
+                    d={dPath}
+                    fill="none"
+                    stroke="url(#lineGrad)"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="frh-line-draw"
+                  />
+
+                  {/* Glowing Data Dots */}
+                  {points.map((pt, idx) => (
+                    <g key={idx} className="group cursor-pointer">
+                      <circle
+                        cx={pt.x}
+                        cy={pt.y}
+                        r="4"
+                        fill="#FFFFFF"
+                        stroke="#0096FF"
+                        strokeWidth="2"
+                        className="transition-transform duration-300 group-hover:scale-150 shadow-md"
+                      />
+                      <circle
+                        cx={pt.x}
+                        cy={pt.y}
+                        r="2"
+                        fill="#0096FF"
+                      />
+                    </g>
+                  ))}
+                </svg>
+
+                {/* Year Labels */}
+                <div className="flex justify-between items-center px-1 text-[9px] font-semibold text-slate-500 mt-1">
+                  {points.map((pt, idx) => (
+                    <div key={idx} className="text-center">
+                      <span className="block text-[8px] text-slate-400 font-normal">{pt.count}</span>
+                      <span>{pt.year}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            )
+          })()}
         </div>
 
         {/* Front Cover of Folder */}
         <div className="frh-folder-cover">
           <div className="frh-cover-badge">
             <SafetyCertificateOutlined />
-            <span>PPM Portfolio</span>
+            <span>PPM Records</span>
           </div>
         </div>
       </div>
@@ -787,7 +798,7 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#F4F6F9] text-slate-800 selection:bg-teal-600 selection:text-white">
+    <div className="min-h-screen flex bg-[#F4F6F9] text-slate-800 selection:bg-[#0096FF] selection:text-white">
       {/* Left: 3D Animated File-Opening Visual Hero Panel */}
       <div className="hidden md:flex md:w-1/2 lg:w-3/5">
         <LoginVisualPanel />
@@ -811,7 +822,7 @@ function Login() {
 
         <div className="w-full max-w-md vhp-form-entrance bg-white/95 backdrop-blur-xl border border-slate-200/90 p-8 md:p-10 rounded-3xl shadow-2xl shadow-slate-300/40 relative overflow-hidden">
           {/* Subtle top accent line */}
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-teal-600 via-teal-500 to-emerald-500" />
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#0096FF] via-[#0077CC] to-[#0055AA]" />
 
           {/* Header Area */}
           <div className="flex flex-col items-center gap-3 mb-8 text-center">
@@ -821,7 +832,7 @@ function Login() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">
-                PPM Enterprise Portal
+                PPM
               </h1>
               <p className="text-sm text-slate-500">
                 Sign in to manage proposals, analytics & orders
@@ -840,10 +851,10 @@ function Login() {
               ]}
             >
               <Input
-                prefix={<MailOutlined className="text-teal-600 mr-2" />}
+                prefix={<MailOutlined className="text-[#0096FF] mr-2" />}
                 placeholder="name@cmti.res.in"
                 size="large"
-                className="bg-slate-50/90 border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl hover:border-teal-600 focus:border-teal-600 h-12 text-sm"
+                className="bg-slate-50/90 border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl hover:border-[#0096FF] focus:border-[#0096FF] h-12 text-sm"
               />
             </Form.Item>
 
@@ -853,11 +864,11 @@ function Login() {
               rules={[{ required: true, message: 'Please enter your password' }]}
             >
               <Input
-                prefix={<LockOutlined className="text-teal-600 mr-2" />}
+                prefix={<LockOutlined className="text-[#0096FF] mr-2" />}
                 placeholder="Enter password"
                 size="large"
                 type={showPassword ? 'text' : 'password'}
-                className="bg-slate-50/90 border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl hover:border-teal-600 focus:border-teal-600 h-12 text-sm"
+                className="bg-slate-50/90 border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl hover:border-[#0096FF] focus:border-[#0096FF] h-12 text-sm"
               />
             </Form.Item>
 
@@ -872,7 +883,7 @@ function Login() {
               <Button
                 type="link"
                 onClick={openForgotPasswordModal}
-                className="p-0 text-xs text-teal-600 hover:text-teal-700 font-semibold"
+                className="p-0 text-xs text-[#0096FF] hover:text-[#0077CC] font-semibold"
               >
                 Forgot Password?
               </Button>
@@ -883,7 +894,8 @@ function Login() {
               htmlType="submit"
               size="large"
               loading={loading}
-              className="w-full h-12 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold rounded-xl border-0 shadow-lg shadow-teal-600/25 flex items-center justify-center gap-2 text-base transition-all duration-200"
+              style={{ backgroundColor: '#0096FF', borderColor: '#0096FF' }}
+              className="w-full h-12 text-white font-bold rounded-xl border-0 shadow-lg shadow-[#0096FF]/25 flex items-center justify-center gap-2 text-base transition-all duration-200 hover:brightness-105"
             >
               <span>Sign In</span>
               <ArrowRightOutlined className="text-sm" />

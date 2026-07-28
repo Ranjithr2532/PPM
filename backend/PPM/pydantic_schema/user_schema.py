@@ -17,10 +17,9 @@ class UserResponse(BaseModel):
     id: int
     name: str
     email: EmailStr
-    role: Optional[str]
-    center: Optional[str]
-    group: Optional[str]
-    password: Optional[str]
+    role: Optional[str] = None
+    center: Optional[str] = None
+    group: Optional[str] = None
 
     class Config:
         from_attributes = True

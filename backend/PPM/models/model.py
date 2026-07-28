@@ -81,11 +81,11 @@ class Remarks(Base):
     to = Column(String, nullable=True)
 
     # Associated Proposal/Project
-    project_id = Column(Integer, nullable=True)
+    project_id = Column(Integer, nullable=True, index=True)
 
     # Message Content & Sent Timestamp
     remarks_description = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=True)
+    created_at = Column(DateTime(timezone=False), default=datetime.utcnow, nullable=True, index=True)
     updated_at = Column(DateTime(timezone=False), onupdate=datetime.utcnow, nullable=True)
 
     # Message Delivery & Read Status (WhatsApp Style: Sent -> Delivered -> Read)

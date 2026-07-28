@@ -1,27 +1,24 @@
-import { Layout } from 'antd'
+import { lazy, Suspense } from 'react'
+import { Layout, Spin } from 'antd'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import Proposals from './pages/Proposals'
-import Configuration from './pages/Configuration'
-import Projects from './pages/Projects'
-import MasterProposals from './pages/MasterProposals'
-import Allproposals from './pages/Allproposals'
 import Login from './pages/Login'
 import CreateLogin from './pages/CreateLogin'
 import Sidebar from './components/Sidebar'
-// import DirectorProposals from './pages/Directorproposals'
-// import FinancialAnalytics from './pages/financialanalytics'
-import Analytics from './pages/Analytics'
-import ChatsPage from './pages/ChatsPage'
-
-
-
-
 import './App.css'
-import AdminNotification from './pages/AdminNotification'
-import GhMasterProposals from './pages/GhMasterProposals'
-import GhNotification from './pages/GhNotification'
-import UserAccess from './pages/AccessControl'
-import Customers from './pages/customers'
+
+// Lazy-loaded Page Components for Bundle Optimization & Code Splitting
+const Proposals = lazy(() => import('./pages/Proposals'))
+const Configuration = lazy(() => import('./pages/Configuration'))
+const Projects = lazy(() => import('./pages/Projects'))
+const MasterProposals = lazy(() => import('./pages/MasterProposals'))
+const Allproposals = lazy(() => import('./pages/Allproposals'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const ChatsPage = lazy(() => import('./pages/ChatsPage'))
+const AdminNotification = lazy(() => import('./pages/AdminNotification'))
+const GhMasterProposals = lazy(() => import('./pages/GhMasterProposals'))
+const GhNotification = lazy(() => import('./pages/GhNotification'))
+const UserAccess = lazy(() => import('./pages/AccessControl'))
+const Customers = lazy(() => import('./pages/customers'))
 
 const { Content } = Layout
 
@@ -109,39 +106,42 @@ function RoleProtectedLayout({ basePath }) {
           className="p-6"
           style={{ height: '100vh', overflowY: 'auto' }}
         >
-          <Routes>
-            <Route path="proposals" element={<ProposalsComponent />} />
-            {normalizedRole !== 'guest' && normalizedRole !== 'director' && (
-              <Route path="chats" element={<ChatsPage />} />
-            )}
-            {isAdmin && (
-              <Route path="master-proposals" element={<MasterProposals />} />
-            )}
-            <Route path="analytics" element={<AnalyticsComponent />} />
-            {/* {normalizedRole === 'director' && (
-              <Route path="financial-analytics" element={<FinancialAnalytics />} />
-            )} */}
-            {normalizedRole !== 'director' && (
-              <Route path="projects" element={<ProjectsComponent />} />
-            )}
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-full min-h-[400px]">
+              <Spin size="large" tip="Loading page..." />
+            </div>
+          }>
+            <Routes>
+              <Route path="proposals" element={<ProposalsComponent />} />
+              {normalizedRole !== 'guest' && normalizedRole !== 'director' && (
+                <Route path="chats" element={<ChatsPage />} />
+              )}
+              {isAdmin && (
+                <Route path="master-proposals" element={<MasterProposals />} />
+              )}
+              <Route path="analytics" element={<AnalyticsComponent />} />
+              {normalizedRole !== 'director' && (
+                <Route path="projects" element={<ProjectsComponent />} />
+              )}
 
-            <Route path='gh-master-proposals' element={<GhMasterProposals />} />
-            <Route path='gh-notification' element={<GhNotification />} />
+              <Route path='gh-master-proposals' element={<GhMasterProposals />} />
+              <Route path='gh-notification' element={<GhNotification />} />
 
-            {/* Only admins can access configuration */}
-            {isAdmin && (
-              <>
-                <Route path="overall-analytics" element={<Analytics />} />
-                <Route path="configuration" element={<Configuration />} />
-                <Route path="notification" element={<AdminNotification />} />
-                <Route path="access-control" element={<UserAccess />} />
-                <Route path="customers" element={<Customers />} />
-              </>
-            )}
+              {/* Only admins can access configuration */}
+              {isAdmin && (
+                <>
+                  <Route path="overall-analytics" element={<Analytics />} />
+                  <Route path="configuration" element={<Configuration />} />
+                  <Route path="notification" element={<AdminNotification />} />
+                  <Route path="access-control" element={<UserAccess />} />
+                  <Route path="customers" element={<Customers />} />
+                </>
+              )}
 
-            {/* Catch-all: redirect to proposals */}
-            <Route path="*" element={<Navigate to="proposals" replace />} />
-          </Routes>
+              {/* Catch-all: redirect to proposals */}
+              <Route path="*" element={<Navigate to="proposals" replace />} />
+            </Routes>
+          </Suspense>
         </Content>
       </Layout>
     </Layout>
