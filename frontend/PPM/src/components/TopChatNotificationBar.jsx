@@ -10,6 +10,7 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { API_BASE_URL } from '../config/api.js'
 import messagingImg from '../assets/messaging.png'
+import { decryptMessage } from '../utils/crypto.js'
 
 dayjs.extend(relativeTime)
 
@@ -25,7 +26,7 @@ const checkIsToMe = (itemTo, userName, userRole, userGroup) => {
 
   if (toVal === uName || toVal === uRole) return true
   if (uName && (toVal.includes(uName) || uName.includes(toVal))) return true
-  if (uRole === 'admin' && (toVal === 'admin' || toVal === 'manjunath' || toVal.includes('admin'))) return true
+  if (uRole === 'admin' && (toVal === 'admin' || toVal.includes('admin'))) return true
   if (uRole === 'gh' && (toVal === 'gh' || toVal === uGrp || toVal.includes('group head') || toVal.includes('gh'))) return true
   if (uRole === 'ch' && (toVal === 'ch' || toVal.includes('centre head') || toVal.includes('center head') || toVal.includes('ch'))) return true
   if (uRole === 'scientist' && (toVal === uName || toVal.includes('coordinator') || toVal.includes('project'))) return true
@@ -42,7 +43,7 @@ const checkIsFromMe = (itemFrom, userName, userRole, userGroup) => {
 
   if (fromVal === uName || fromVal === uRole) return true
   if (uName && (fromVal.includes(uName) || uName.includes(fromVal))) return true
-  if (uRole === 'admin' && (fromVal === 'admin' || fromVal === 'manjunath' || fromVal.includes('admin'))) return true
+  if (uRole === 'admin' && (fromVal === 'admin' || fromVal.includes('admin'))) return true
   if (uRole === 'gh' && (fromVal === 'gh' || fromVal === uGrp || fromVal.includes('group head') || fromVal.includes('gh'))) return true
   if (uRole === 'ch' && (fromVal === 'ch' || fromVal.includes('centre head') || fromVal.includes('center head') || fromVal.includes('ch'))) return true
   if (uRole === 'scientist' && (fromVal === uName || fromVal.includes('coordinator') || fromVal.includes('project'))) return true
@@ -113,7 +114,7 @@ export default function TopChatNotificationBar({ onOpenChat }) {
 
       const unreadList = []
 
-      proposalsList.forEach(p => {
+      for (const p of proposalsList) {
         const itemRemarks = allRemarks.filter(r => String(r.project_id) === String(p.id))
         let unreadCount = 0
         let lastUnreadMsg = null
@@ -124,7 +125,7 @@ export default function TopChatNotificationBar({ onOpenChat }) {
             unreadCount++
             if (!lastUnreadMsg || new Date(r.created_at) > new Date(lastUnreadMsg.timestamp)) {
               lastUnreadMsg = {
-                text: r.message,
+                text: r.remarks_description || r.message,
                 sender: r.from_ || r.user_name || 'System',
                 timestamp: r.created_at || r.updated_at,
                 attachmentName: r.attachment_name
@@ -147,6 +148,10 @@ export default function TopChatNotificationBar({ onOpenChat }) {
 
         if (unreadCount > 0 && lastUnreadMsg) {
           const displayTitle = p.quote_description || p.quote_reference || p.project_number || `Proposal #${p.id}`
+          let decText = lastUnreadMsg.text
+          if (decText) {
+            decText = await decryptMessage(decText, `proposal-${p.id}`)
+          }
           unreadList.push({
             key: `proposal-${p.id}`,
             id: p.id,
@@ -154,33 +159,34 @@ export default function TopChatNotificationBar({ onOpenChat }) {
             title: displayTitle,
             subtitle: p.project_number ? `Project #${p.project_number}` : `ID: #${p.id}`,
             sender: lastUnreadMsg.sender,
-            lastMessage: lastUnreadMsg.attachmentName ? `📎 [File] ${lastUnreadMsg.attachmentName}` : lastUnreadMsg.text,
+            lastMessage: lastUnreadMsg.attachmentName ? `📎 [File] ${lastUnreadMsg.attachmentName}` : decText,
             lastMessageTime: lastUnreadMsg.timestamp,
             unreadCount,
             proposalData: p
           })
         }
-      })
+      }
 
-      groupList.forEach(g => {
-        if ((g.unread_count || 0) > 0) {
-          const lastMsg = g.last_message ? (g.last_message.attachment_name ? `📎 [File] ${g.last_message.attachment_name}` : g.last_message.message) : 'New group message'
-          const lastTime = g.last_message?.created_at || g.created_at || new Date().toISOString()
-          const senderName = g.last_message?.sender_name || 'Group Member'
+      for (const g of groupList) {
+        if (g.unread_count > 0 && g.last_message) {
+          let decGrpText = g.last_message.message
+          if (decGrpText) {
+            decGrpText = await decryptMessage(decGrpText, `group-${g.id}`)
+          }
           unreadList.push({
             key: `group-${g.id}`,
             id: g.id,
             itemType: 'group',
             title: g.name,
             subtitle: `Group Chat #${g.id}`,
-            sender: senderName,
-            lastMessage: lastMsg,
-            lastMessageTime: lastTime,
+            sender: g.last_message.sender_name || 'Group Member',
+            lastMessage: g.last_message.attachment_name ? `📎 [File] ${g.last_message.attachment_name}` : decGrpText,
+            lastMessageTime: g.last_message.created_at,
             unreadCount: g.unread_count,
             groupData: g
           })
         }
-      })
+      }
 
       // Sort newest unread first
       unreadList.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime))

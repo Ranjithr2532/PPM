@@ -1,6 +1,6 @@
 from typing import Optional, List, Any
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from datetime import datetime
@@ -78,7 +78,7 @@ def check_is_to_me(item_to: Optional[str], user_name: str, user_role: str, user_
         return True
     if u_n and (u_n in to_val or to_val in u_n):
         return True
-    if u_r == 'admin' and ('admin' in to_val or 'manjunath' in to_val):
+    if u_r == 'admin' and 'admin' in to_val:
         return True
     if u_r == 'gh' and ('gh' in to_val or 'grouphead' in to_val or (u_g and u_g in to_val)):
         return True
@@ -99,7 +99,7 @@ def check_is_from_me(item_from: Optional[str], user_name: str, user_role: str, u
         return True
     if u_n and (u_n in from_val or from_val in u_n):
         return True
-    if u_r == 'admin' and ('admin' in from_val or 'manjunath' in from_val):
+    if u_r == 'admin' and 'admin' in from_val:
         return True
     if u_r == 'gh' and ('gh' in from_val or 'grouphead' in from_val or (u_g and u_g in from_val)):
         return True
@@ -211,6 +211,9 @@ def get_user_chat_history(
     user_name: str = None,
     user_role: str = None,
     user_group: str = None,
+    before_id: Optional[int] = None,
+    after_id: Optional[int] = None,
+    limit: Optional[int] = Query(None, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
     query = db.query(Remarks)
@@ -272,7 +275,22 @@ def get_user_chat_history(
             db_clean(Remarks.replyer).in_(p1_aliases)
         )
 
-    return query.all()
+    # Cursor pagination filters
+    if before_id:
+        query = query.filter(Remarks.id < before_id)
+    if after_id:
+        query = query.filter(Remarks.id > after_id)
+
+    if before_id or limit:
+        effective_limit = limit or 30
+        items = query.order_by(Remarks.id.desc()).limit(effective_limit).all()
+        items.reverse()
+        return items
+
+    if after_id:
+        return query.order_by(Remarks.id.asc()).all()
+
+    return query.order_by(Remarks.id.asc()).all()
 
 
 # ---------------- READ ONE ----------------

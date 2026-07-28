@@ -105,10 +105,16 @@ export const groupApi = {
   },
 
   /**
-   * Fetch messages of a group
+   * Fetch messages of a group with cursor pagination support
    */
-  async getMessages(groupId) {
-    const res = await fetch(`${API_BASE_URL}/group-chats/${groupId}/messages`, {
+  async getMessages(groupId, options = {}) {
+    const params = new URLSearchParams()
+    if (options.before_id) params.append('before_id', options.before_id)
+    if (options.after_id) params.append('after_id', options.after_id)
+    if (options.limit) params.append('limit', options.limit)
+
+    const url = `${API_BASE_URL}/group-chats/${groupId}/messages${params.toString() ? `?${params.toString()}` : ''}`
+    const res = await fetch(url, {
       headers: getAuthHeaders()
     })
     if (!res.ok) throw new Error('Failed to fetch group messages')

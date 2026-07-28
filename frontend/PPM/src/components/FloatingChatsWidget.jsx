@@ -38,6 +38,7 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { API_BASE_URL } from '../config/api.js'
 import { groupApi } from '../utils/groupApi.js'
+import { encryptMessage, decryptMessage } from '../utils/crypto.js'
 
 dayjs.extend(relativeTime)
 const { Text, Title } = Typography
@@ -89,7 +90,7 @@ const checkIsToMe = (itemTo, userName, userRole, userGroup) => {
 
   if (toVal === uName || toVal === uRole) return true
   if (uName && (toVal.includes(uName) || uName.includes(toVal))) return true
-  if (uRole === 'admin' && (toVal === 'admin' || toVal === 'manjunath' || toVal.includes('admin'))) return true
+  if (uRole === 'admin' && (toVal === 'admin' || toVal.includes('admin'))) return true
   if (uRole === 'gh' && (toVal === 'gh' || toVal === uGrp || toVal.includes('group head') || toVal.includes('gh'))) return true
   if (uRole === 'ch' && (toVal === 'ch' || toVal.includes('centre head') || toVal.includes('center head') || toVal.includes('ch'))) return true
   if (uRole === 'scientist' && (toVal === uName || toVal.includes('coordinator') || toVal.includes('project'))) return true
@@ -106,7 +107,7 @@ const checkIsFromMe = (itemFrom, userName, userRole, userGroup) => {
 
   if (fromVal === uName || fromVal === uRole) return true
   if (uName && (fromVal.includes(uName) || uName.includes(fromVal))) return true
-  if (uRole === 'admin' && (fromVal === 'admin' || fromVal === 'manjunath' || fromVal.includes('admin'))) return true
+  if (uRole === 'admin' && (fromVal === 'admin' || fromVal.includes('admin'))) return true
   if (uRole === 'gh' && (fromVal === 'gh' || fromVal === uGrp || fromVal.includes('group head') || fromVal.includes('gh'))) return true
   if (uRole === 'ch' && (fromVal === 'ch' || fromVal.includes('centre head') || fromVal.includes('center head') || fromVal.includes('ch'))) return true
   if (uRole === 'scientist' && (fromVal === uName || fromVal.includes('coordinator') || fromVal.includes('project'))) return true
@@ -283,11 +284,15 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
     return matched?.id || 408
   }, [currentUser, allSystemUsers, userName])
 
-  useEffect(() => {
-    groupApi.getAllUsers().then(users => {
+  const fetchSystemUsers = useCallback(async () => {
+    if (allSystemUsers.length > 0) return
+    try {
+      const users = await groupApi.getAllUsers()
       if (Array.isArray(users)) setAllSystemUsers(users)
-    }).catch(() => {})
-  }, [])
+    } catch (e) {
+      console.warn('Could not fetch system users:', e)
+    }
+  }, [allSystemUsers.length])
 
   // Active Proposal object if selected item is a proposal
   const selectedProposal = useMemo(() => {
@@ -305,24 +310,74 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
     return null
   }, [selectedChatItem, groupChats])
 
-  // Fetch Group Messages & Members
-  const fetchGroupDetails = useCallback(async (groupId) => {
+  // In-memory message cache per chat ID
+  const chatCacheRef = useRef({})
+  const activeAbortControllerRef = useRef(null)
+
+  // Fetch Group Messages & Members with Pagination and Caching
+  const fetchGroupDetails = useCallback(async (groupId, isLoadMore = false, isDelta = false) => {
     if (!groupId) return
-    setMessagesLoading(true)
+
+    const cacheKey = `group-${groupId}`
+    const existingCache = chatCacheRef.current[cacheKey] || { messages: [], members: [], hasMore: true }
+
+    if (!isLoadMore && !isDelta && existingCache.messages.length > 0) {
+      setGroupMessages(existingCache.messages)
+      setGroupMembers(existingCache.members)
+      setMessagesLoading(false)
+    } else if (!isLoadMore && !isDelta) {
+      setMessagesLoading(true)
+    }
+
     try {
+      const options = {}
+      if (isLoadMore && existingCache.messages.length > 0) {
+        const oldestId = Math.min(...existingCache.messages.map(m => m.id))
+        options.before_id = oldestId
+      } else if (isDelta && existingCache.messages.length > 0) {
+        const newestId = Math.max(...existingCache.messages.map(m => m.id))
+        options.after_id = newestId
+      } else {
+        options.limit = 30
+      }
+
       const [msgs, mbrs] = await Promise.all([
-        groupApi.getMessages(groupId),
-        groupApi.getMembers(groupId)
+        groupApi.getMessages(groupId, options),
+        isLoadMore ? Promise.resolve(existingCache.members) : groupApi.getMembers(groupId)
       ])
-      const msgList = Array.isArray(msgs) ? msgs : []
-      setGroupMessages(msgList)
-      setGroupMembers(Array.isArray(mbrs) ? mbrs : [])
+      const groupThreadKey = `group-${groupId}`
+      const decryptedList = await Promise.all(list.map(async (m) => {
+        const decText = await decryptMessage(m.message, groupThreadKey)
+        return { ...m, message: decText }
+      }))
+
+      let updatedMsgs = []
+      if (isLoadMore) {
+        updatedMsgs = [...decryptedList, ...existingCache.messages]
+      } else if (isDelta) {
+        const msgMap = new Map(existingCache.messages.map(m => [m.id, m]))
+        decryptedList.forEach(m => msgMap.set(m.id, m))
+        updatedMsgs = Array.from(msgMap.values())
+      } else {
+        updatedMsgs = decryptedList
+      }
+
+      updatedMsgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+
+      chatCacheRef.current[cacheKey] = {
+        messages: updatedMsgs,
+        members: membersList,
+        hasMore: list.length >= 30
+      }
+
+      setGroupMessages(updatedMsgs)
+      setGroupMembers(membersList)
 
       if (currentUserId) {
-        msgList.forEach(m => {
+        list.forEach(m => {
           const alreadySeen = (m.seen_by || []).some(s => s.user_id === currentUserId)
           if (!alreadySeen && m.sender_id !== currentUserId) {
-            groupApi.markMessageSeen(m.id, currentUserId).catch(() => {})
+            groupApi.markMessageSeen(m.id, currentUserId).catch(() => { })
           }
         })
       }
@@ -383,7 +438,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
       setAllRemarksList(allRemarks)
 
       const pList = Array.isArray(proposalData) ? proposalData : []
-      const proposalsWithRemarks = pList.map(item => {
+      const proposalsWithRemarks = await Promise.all(pList.map(async (item) => {
         const itemRemarks = allRemarks.filter(r => String(r.project_id) === String(item.id))
         const sorted = itemRemarks.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
         const lastMsg = sorted[0] || null
@@ -396,7 +451,12 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           return unseenMsg || unseenReply
         }).length
 
-        const displayMsgText = lastMsg?.attachment_url ? `📎 [File] ${lastMsg?.attachment_name || 'Attachment'}` : (lastMsg?.remarks_description || lastMsg?.respond_to_remarks || 'No messages yet')
+        let rawText = lastMsg?.remarks_description || lastMsg?.respond_to_remarks || ''
+        if (rawText) {
+          rawText = await decryptMessage(rawText, `proposal-${item.id}`)
+        }
+
+        const displayMsgText = lastMsg?.attachment_url ? `📎 [File] ${lastMsg?.attachment_name || 'Attachment'}` : (rawText || 'No messages yet')
 
         return {
           ...item,
@@ -404,7 +464,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           lastMessageTime: lastMsg?.updated_at || lastMsg?.created_at || null,
           unreadCount
         }
-      })
+      }))
 
       setProposals(proposalsWithRemarks)
       setGroupChats(Array.isArray(groupData) ? groupData : [])
@@ -573,24 +633,40 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
         const matchedOption = recipientOptions.find(opt => {
           const optVal = opt.value.toLowerCase().trim()
           return fromVal.includes(optVal) || optVal.includes(fromVal) ||
-                 toVal.includes(optVal) || optVal.includes(toVal) ||
-                 (optVal === 'admin' && (fromVal === 'manjunath' || toVal === 'admin')) ||
-                 (optVal === 'gh' && (fromVal === 'gh' || toVal === 'gh' || fromVal === userGroup.toLowerCase())) ||
-                 (optVal === 'ch' && (fromVal === 'ch' || toVal === 'ch'))
+            toVal.includes(optVal) || optVal.includes(toVal) ||
+            (optVal === 'admin' && (fromVal.includes('admin') || toVal.includes('admin'))) ||
+            (optVal === 'gh' && (fromVal === 'gh' || toVal === 'gh' || fromVal === userGroup.toLowerCase())) ||
+            (optVal === 'ch' && (fromVal === 'ch' || toVal === 'ch'))
         })
         if (matchedOption) {
           setTargetRecipient(matchedOption.value)
-          return
         }
       }
     }
     setTargetRecipient(recipientOptions[0].value)
   }, [selectedProposal, recipientOptions, allRemarksList, userName, userRole, userGroup])
 
-  // Fetch Proposal Messages Stream
-  const fetchMessages = useCallback(async (proposalId, targetUser) => {
+  // Fetch Proposal Messages Stream with Cursor Pagination & Caching
+  const fetchMessages = useCallback(async (proposalId, targetUser, isLoadMore = false, isDelta = false) => {
     if (!proposalId) return
-    setMessagesLoading(true)
+
+    const cacheKey = `proposal-${proposalId}-${targetUser || targetRecipient || 'all'}`
+    const existingCache = chatCacheRef.current[cacheKey] || { messages: [], raw: [], hasMore: true }
+
+    if (!isLoadMore && !isDelta && existingCache.messages.length > 0) {
+      setMessages(existingCache.messages)
+      setRawRemarksList(existingCache.raw)
+      setMessagesLoading(false)
+    } else if (!isLoadMore && !isDelta) {
+      setMessagesLoading(true)
+    }
+
+    if (activeAbortControllerRef.current && !isLoadMore && !isDelta) {
+      activeAbortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    activeAbortControllerRef.current = controller
+
     try {
       const queryParams = new URLSearchParams({ project_id: proposalId })
       const activeUser = userName || userRole.toUpperCase()
@@ -604,20 +680,32 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
       if (userRole) queryParams.append('user_role', userRole)
       if (userGroup) queryParams.append('user_group', userGroup)
 
+      if (isLoadMore && existingCache.raw.length > 0) {
+        const oldestId = Math.min(...existingCache.raw.map(r => r.id))
+        queryParams.append('before_id', oldestId)
+      } else if (isDelta && existingCache.raw.length > 0) {
+        const newestId = Math.max(...existingCache.raw.map(r => r.id))
+        queryParams.append('after_id', newestId)
+      } else {
+        queryParams.append('limit', '30')
+      }
+
       const res = await fetch(`${API_BASE_URL}/Remarkss/chat-history?${queryParams.toString()}`, {
-        headers: { accept: 'application/json' }
+        headers: { accept: 'application/json' },
+        signal: controller.signal
       })
       if (!res.ok) throw new Error('Failed to fetch messages')
       const data = await res.json()
       const list = Array.isArray(data) ? data : []
-      setRawRemarksList(list)
 
-      const events = []
-      list.forEach(item => {
+      const threadKey = `proposal-${proposalId}`
+      const events = await Promise.all(list.flatMap(async (item) => {
+        const itemEvents = []
         if (item.remarks_description || item.attachment_url) {
-          events.push({
+          const decryptedText = await decryptMessage(item.remarks_description, threadKey)
+          itemEvents.push({
             id: `msg-${item.id}`,
-            text: item.remarks_description,
+            text: decryptedText,
             sender: item.from_ || 'System',
             timestamp: item.created_at || item.updated_at,
             seen: item.message_seen,
@@ -628,19 +716,48 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           })
         }
         if (item.respond_to_remarks) {
-          events.push({
+          const decryptedReply = await decryptMessage(item.respond_to_remarks, threadKey)
+          itemEvents.push({
             id: `reply-${item.id}`,
-            text: item.respond_to_remarks,
+            text: decryptedReply,
             sender: item.replyer || item.to || 'System',
             timestamp: item.replied_at || item.updated_at,
             seen: item.reply_seen,
             isReply: true
           })
         }
-      })
+        return itemEvents
+      })).then(results => results.flat())
 
-      events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-      setMessages(events)
+      let updatedRaw = []
+      let updatedEvents = []
+
+      if (isLoadMore) {
+        updatedRaw = [...list, ...existingCache.raw]
+        updatedEvents = [...events, ...existingCache.messages]
+      } else if (isDelta) {
+        const rawMap = new Map(existingCache.raw.map(r => [r.id, r]))
+        list.forEach(r => rawMap.set(r.id, r))
+        updatedRaw = Array.from(rawMap.values())
+
+        const msgMap = new Map(existingCache.messages.map(m => [m.id, m]))
+        events.forEach(m => msgMap.set(m.id, m))
+        updatedEvents = Array.from(msgMap.values())
+      } else {
+        updatedRaw = list
+        updatedEvents = events
+      }
+
+      updatedEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+
+      chatCacheRef.current[cacheKey] = {
+        messages: updatedEvents,
+        raw: updatedRaw,
+        hasMore: list.length >= 30
+      }
+
+      setRawRemarksList(updatedRaw)
+      setMessages(updatedEvents)
 
       let needBroadcast = false
       for (const item of list) {
@@ -655,22 +772,25 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           needBroadcast = true
         }
       }
-      if (needBroadcast) {
-        window.dispatchEvent(new CustomEvent('ppm-chat-updated'))
+      if (needBroadcast && fetchAllChats) {
         fetchAllChats()
       }
     } catch (err) {
-      console.error('Error fetching messages:', err)
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching messages:', err)
+      }
     } finally {
       setMessagesLoading(false)
     }
-  }, [userName, userRole, userGroup, targetRecipient])
+  }, [userName, userRole, userGroup, targetRecipient, fetchAllChats])
 
   useEffect(() => {
     if (selectedProposal?.id) {
       fetchMessages(selectedProposal.id, targetRecipient)
     }
   }, [selectedProposal, targetRecipient, fetchMessages])
+
+
 
   const getSenderIdentifier = useCallback(() => {
     if (userRole === 'scientist') {
@@ -731,14 +851,17 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
         return isToMe && matchesThread
       })
 
+      const threadKey = `proposal-${selectedProposal.id}`
+      const encryptedText = await encryptMessage(msgText, threadKey)
+
       if (pendingMessageToReply && !selectedFile) {
         const payload = {
-          from_: pendingMessageToReply.from_,
-          to: pendingMessageToReply.to,
-          project_id: selectedProposal.id,
-          remarks_description: pendingMessageToReply.remarks_description,
-          respond_to_remarks: msgText,
-          replyer: senderVal
+          respond_to_remarks: encryptedText,
+          replyer: senderVal,
+          reply_seen: false,
+          reply_attachment_url: attachmentInfo.attachment_url || null,
+          reply_attachment_name: attachmentInfo.attachment_name || null,
+          reply_attachment_type: attachmentInfo.attachment_type || null
         }
 
         const res = await fetch(`${API_BASE_URL}/Remarkss/${pendingMessageToReply.id}`, {
@@ -755,7 +878,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           from_: senderVal,
           to: targetRecipient,
           project_id: selectedProposal.id,
-          remarks_description: msgText,
+          remarks_description: encryptedText,
           attachment_url: attachmentInfo.attachment_url || null,
           attachment_name: attachmentInfo.attachment_name || null,
           attachment_type: attachmentInfo.attachment_type || null,
@@ -798,7 +921,10 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
       if (selectedFile) {
         attachmentInfo = await groupApi.uploadAttachment(selectedFile)
       }
-      await groupApi.sendMessage(selectedGroup.id, currentUserId, inputText.trim(), attachmentInfo)
+      const groupThreadKey = `group-${selectedGroup.id}`
+      const encryptedMsg = await encryptMessage(inputText.trim(), groupThreadKey)
+
+      await groupApi.sendMessage(selectedGroup.id, currentUserId, encryptedMsg, attachmentInfo)
       setInputText('')
       setSelectedFile(null)
       fetchGroupDetails(selectedGroup.id)
@@ -877,11 +1003,16 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           )}
 
           <div className="truncate">
-            <Text className="font-bold text-white text-sm block truncate leading-tight">
-              {viewMode === 'chat'
-                ? (selectedChatItem?.itemType === 'proposal' ? selectedChatItem.title : selectedGroup?.name)
-                : 'PPM Messaging'}
-            </Text>
+            <div className="flex items-center gap-1.5 truncate">
+              <Text className="font-bold text-white text-sm truncate leading-tight">
+                {viewMode === 'chat'
+                  ? (selectedChatItem?.itemType === 'proposal' ? selectedChatItem.title : selectedGroup?.name)
+                  : 'PPM Messaging'}
+              </Text>
+              <span className="bg-emerald-800/80 text-emerald-200 text-[9px] font-medium px-1.5 py-0.2 rounded-full border border-emerald-600/50 flex items-center gap-0.5 shrink-0">
+                🔒 End-to-End Encrypted
+              </span>
+            </div>
             <Text className="text-[10px] text-emerald-200 block truncate">
               {viewMode === 'chat'
                 ? (selectedChatItem?.itemType === 'proposal' ? selectedChatItem.subtitle : `${groupMembers.length} members`)
@@ -960,11 +1091,10 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
                   <button
                     key={filter}
                     onClick={() => setChatFilter(filter)}
-                    className={`px-3 py-0.5 text-[11px] font-semibold rounded-full capitalize transition-all ${
-                      chatFilter === filter
+                    className={`px-3 py-0.5 text-[11px] font-semibold rounded-full capitalize transition-all ${chatFilter === filter
                         ? 'bg-emerald-700 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                      }`}
                   >
                     {filter}
                   </button>
@@ -972,7 +1102,10 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
               </div>
 
               <button
-                onClick={() => setCreateGroupModalOpen(true)}
+                onClick={() => {
+                  fetchSystemUsers()
+                  setCreateGroupModalOpen(true)
+                }}
                 className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1 border border-emerald-200"
               >
                 <UsergroupAddOutlined />
@@ -1063,11 +1196,10 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
                 <button
                   key={opt.value}
                   onClick={() => setTargetRecipient(opt.value)}
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                    targetRecipient === opt.value
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${targetRecipient === opt.value
                       ? 'bg-emerald-700 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   {opt.label}
                 </button>
@@ -1076,12 +1208,31 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
           )}
 
           {/* Conversation Stream */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e5ddd5]/30">
+          <div
+            className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e5ddd5]/30"
+            onScroll={(e) => {
+              if (e.target.scrollTop === 0 && !messagesLoading) {
+                if (selectedChatItem?.itemType === 'proposal' && selectedProposal?.id) {
+                  fetchMessages(selectedProposal.id, targetRecipient, true, false)
+                } else if (selectedChatItem?.itemType === 'group' && selectedGroup?.id) {
+                  fetchGroupDetails(selectedGroup.id, true, false)
+                }
+              }
+            }}
+          >
+            {/* WhatsApp-Style End-to-End Encryption Security Banner */}
+            <div className="flex justify-center my-2">
+              <div className="bg-[#ffeecd] border border-[#f5e2b8] text-[#856404] text-[11px] font-medium px-3 py-1.5 rounded-lg shadow-2xs max-w-sm text-center flex items-center justify-center gap-1.5 leading-snug">
+                <span>🔒</span>
+                <span>Messages and calls are end-to-end encrypted. No one outside of this chat can read.</span>
+              </div>
+            </div>
+
             {messagesLoading ? (
               <div className="p-8 text-center"><Spin /></div>
             ) : selectedChatItem?.itemType === 'proposal' ? (
               messages.length === 0 ? (
-                <div className="text-center text-slate-400 py-12 text-xs">
+                <div className="text-center text-slate-400 py-8 text-xs">
                   No messages yet. Send a message to start conversation!
                 </div>
               ) : (
@@ -1101,9 +1252,8 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
 
                       return (
                         <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                          <div className={`max-w-[260px] px-3 py-1.5 rounded-xl shadow-xs text-xs transition-all duration-500 ${
-                            isMe ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none' : 'bg-[#ffffff] text-slate-900 rounded-tl-none'
-                          } ${highlightUnread && !isMe && !msg.seen ? 'ring-2 ring-emerald-500 bg-emerald-50/90 shadow-md animate-pulse' : ''}`}>
+                          <div className={`max-w-[260px] px-3 py-1.5 rounded-xl shadow-xs text-xs transition-all duration-500 ${isMe ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none' : 'bg-[#ffffff] text-slate-900 rounded-tl-none'
+                            } ${highlightUnread && !isMe && !msg.seen ? 'ring-2 ring-emerald-500 bg-emerald-50/90 shadow-md animate-pulse' : ''}`}>
                             <span className="block text-[10px] font-bold text-emerald-800 mb-0.5">{msg.sender}</span>
                             {msg.attachmentUrl && (
                               isImg ? (
@@ -1143,9 +1293,8 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
 
                   return (
                     <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      <div className={`max-w-[260px] px-3 py-1.5 rounded-xl shadow-xs text-xs ${
-                        isMe ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'
-                      }`}>
+                      <div className={`max-w-[260px] px-3 py-1.5 rounded-xl shadow-xs text-xs ${isMe ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'
+                        }`}>
                         <span className="block text-[10px] font-bold text-emerald-800 mb-0.5">{msg.sender_name}</span>
                         {msg.attachment_url && (
                           isImg ? (

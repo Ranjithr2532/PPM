@@ -50,6 +50,7 @@ app.add_middleware(
 # --------------------------------------------------------------------------
 app.include_router(auth_router)
 app.include_router(user_router)
+app.include_router(count_router)
 
 # --------------------------------------------------------------------------
 # Protected Routers (Require Valid JWT Access Token)

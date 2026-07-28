@@ -80,3 +80,70 @@ def get_proposal_counts(
         "all": total_proposals
     }
 
+
+@router.get("/yearly")
+def get_yearly_proposal_counts(
+    user_name: Optional[str] = Query(None),
+    user_role: Optional[str] = Query(None),
+    user_group: Optional[str] = Query(None),
+    centre: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns yearly count of proposals:
+    Example Response:
+    {
+      "yearly_counts": [
+        {"year": "2023", "count": 45},
+        {"year": "2024", "count": 78},
+        {"year": "2025", "count": 92}
+      ],
+      "total": 215
+    }
+    """
+    filters = [Proposal.is_acknowledged == True]
+
+    if user_role and user_role.lower() == 'gh' and user_group:
+        filters.append(func.lower(Proposal.group) == user_group.lower())
+    elif user_role and user_role.lower() == 'scientist' and user_name:
+        filters.append(
+            or_(
+                func.lower(Proposal.project_co_ordinator) == user_name.lower(),
+                func.lower(Proposal.quotation_given_by_name) == user_name.lower()
+            )
+        )
+    if centre:
+        filters.append(func.lower(Proposal.center) == centre.lower())
+
+    # Fast SQL grouping by year using coalesce across enquiry_date, quote_date, created_at
+    from sqlalchemy import case
+
+    year_expr = case(
+        (func.coalesce(Proposal.enquiry_date, '') != '', func.substring(Proposal.enquiry_date, r'(20\d{2}|19\d{2})')),
+        (func.coalesce(Proposal.quote_date, '') != '', func.substring(Proposal.quote_date, r'(20\d{2}|19\d{2})')),
+        else_=func.to_char(Proposal.created_at, 'YYYY')
+    )
+
+    results = (
+        db.query(year_expr.label("year"), func.count(Proposal.id).label("count"))
+        .filter(*filters)
+        .group_by(year_expr)
+        .all()
+    )
+
+    yearly_counts = []
+    total_records = 0
+    for r in results:
+        yr = r.year or "Unknown"
+        c = r.count or 0
+        yearly_counts.append({"year": str(yr), "count": c})
+        total_records += c
+
+    sorted_result = sorted(yearly_counts, key=lambda y: (y["year"] if y["year"] != "Unknown" else "9999"))
+
+    return {
+        "yearly_counts": sorted_result,
+        "total": total_records
+    }
+
+
