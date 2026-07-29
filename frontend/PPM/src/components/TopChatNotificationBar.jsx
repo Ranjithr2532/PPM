@@ -61,7 +61,8 @@ export default function TopChatNotificationBar({ onOpenChat }) {
   })
 
   const userName = (currentUser?.name || '').trim()
-  const userRole = (currentUser?.role || currentUser?.dbRole || '').toLowerCase().trim()
+  const rawRole = (currentUser?.role || currentUser?.dbRole || '').toLowerCase().trim()
+  const userRole = (rawRole === 'group head' || rawRole === 'group_head') ? 'gh' : (rawRole === 'centre head' || rawRole === 'center head') ? 'ch' : (rawRole || 'admin')
   const userGroup = (currentUser?.group || '').trim()
   const userCenter = (currentUser?.center || '').trim()
 

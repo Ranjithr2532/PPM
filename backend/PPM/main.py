@@ -30,6 +30,7 @@ from routes.acknowledgment import router as acknowledgment_router
 from routes.dynamic_table import router as dynamic_table_router
 from routes.groupchatroutes import router as groupchat_router
 from routes.count import router as count_router
+from routes.quotation import router as quotation_router
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -51,6 +52,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(count_router)
+app.include_router(quotation_router)
 
 # --------------------------------------------------------------------------
 # Protected Routers (Require Valid JWT Access Token)

@@ -345,6 +345,10 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
         groupApi.getMessages(groupId, options),
         isLoadMore ? Promise.resolve(existingCache.members) : groupApi.getMembers(groupId)
       ])
+
+      const list = Array.isArray(msgs) ? msgs : []
+      const membersList = Array.isArray(mbrs) ? mbrs : []
+
       const groupThreadKey = `group-${groupId}`
       const decryptedList = await Promise.all(list.map(async (m) => {
         const decText = await decryptMessage(m.message, groupThreadKey)
@@ -575,41 +579,41 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
 
     if (userRole === 'scientist') {
       return [
-        { label: `Group Head (${groupName})`, value: 'gh' },
-        { label: `Centre Head (${centreName})`, value: 'ch' },
-        { label: 'Admin', value: 'admin' }
+        { label: `Group Head (${groupName})`, shortLabel: 'GH', value: 'gh' },
+        { label: `Centre Head (${centreName})`, shortLabel: 'CH', value: 'ch' },
+        { label: 'Admin', shortLabel: 'Admin', value: 'admin' }
       ]
     } else if (userRole === 'gh') {
       if (isMePC) {
         return [
-          { label: `Centre Head (${centreName})`, value: 'ch' },
-          { label: 'Admin', value: 'admin' }
+          { label: `Centre Head (${centreName})`, shortLabel: 'CH', value: 'ch' },
+          { label: 'Admin', shortLabel: 'Admin', value: 'admin' }
         ]
       }
       return [
-        { label: `Project Coordinator (${pcName || 'PC'})`, value: pcName || 'PC' },
-        { label: `Centre Head (${centreName})`, value: 'ch' },
-        { label: 'Admin', value: 'admin' }
+        { label: `Project Coordinator (${pcName || 'PC'})`, shortLabel: 'PC', value: pcName || 'PC' },
+        { label: `Centre Head (${centreName})`, shortLabel: 'CH', value: 'ch' },
+        { label: 'Admin', shortLabel: 'Admin', value: 'admin' }
       ]
     } else if (userRole === 'ch') {
       if (isMePC) {
         return [
-          { label: `Group Head (${groupName})`, value: 'gh' },
-          { label: 'Admin', value: 'admin' }
+          { label: `Group Head (${groupName})`, shortLabel: 'GH', value: 'gh' },
+          { label: 'Admin', shortLabel: 'Admin', value: 'admin' }
         ]
       }
       return [
-        { label: `Project Coordinator (${pcName || 'PC'})`, value: pcName || 'PC' },
-        { label: `Group Head (${groupName})`, value: 'gh' },
-        { label: 'Admin', value: 'admin' }
+        { label: `Project Coordinator (${pcName || 'PC'})`, shortLabel: 'PC', value: pcName || 'PC' },
+        { label: `Group Head (${groupName})`, shortLabel: 'GH', value: 'gh' },
+        { label: 'Admin', shortLabel: 'Admin', value: 'admin' }
       ]
     } else {
       const opts = []
       if (!isMePC && pcName) {
-        opts.push({ label: `Project Coordinator (${pcName})`, value: pcName })
+        opts.push({ label: `Project Coordinator (${pcName})`, shortLabel: 'PC', value: pcName })
       }
-      opts.push({ label: `Group Head (${groupName})`, value: 'gh' })
-      opts.push({ label: `Centre Head (${centreName})`, value: 'ch' })
+      opts.push({ label: `Group Head (${groupName})`, shortLabel: 'GH', value: 'gh' })
+      opts.push({ label: `Centre Head (${centreName})`, shortLabel: 'CH', value: 'ch' })
       return opts
     }
   }, [userRole, userName, selectedProposal])
@@ -640,6 +644,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
         })
         if (matchedOption) {
           setTargetRecipient(matchedOption.value)
+          return
         }
       }
     }
@@ -902,6 +907,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
       if (fileInputRef.current) fileInputRef.current.value = ''
       message.success('Message sent')
 
+      window.dispatchEvent(new Event('ppm-chat-updated'))
       await fetchMessages(selectedProposal.id)
       fetchAllChats()
     } catch (err) {
@@ -927,6 +933,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
       await groupApi.sendMessage(selectedGroup.id, currentUserId, encryptedMsg, attachmentInfo)
       setInputText('')
       setSelectedFile(null)
+      window.dispatchEvent(new Event('ppm-chat-updated'))
       fetchGroupDetails(selectedGroup.id)
       fetchAllChats()
     } catch (err) {
@@ -954,7 +961,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
     let currentGroup = null
 
     messages.forEach(msg => {
-      const dateKey = dayjs(msg.timestamp).format('YYYY-MM-DD')
+      const dateKey = dayjs(msg.created_at || msg.timestamp).format('YYYY-MM-DD')
       if (!currentGroup || currentGroup.dateKey !== dateKey) {
         currentGroup = { dateKey, items: [] }
         groups.push(currentGroup)
@@ -1188,22 +1195,50 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
       {/* VIEW MODE 2: CONVERSATION MESSAGES VIEW */}
       {viewMode === 'chat' && (
         <div className="flex-1 flex flex-col bg-[#efeae2]/30 overflow-hidden">
-          {/* Thread Switcher if Proposal */}
-          {selectedChatItem?.itemType === 'proposal' && recipientOptions.length > 0 && (
-            <div className="px-3 py-1.5 bg-white border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto shrink-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">To:</span>
-              {recipientOptions.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTargetRecipient(opt.value)}
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${targetRecipient === opt.value
-                      ? 'bg-emerald-700 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+          {/* Proposal Header Info & Thread Switcher (when itemType is proposal) */}
+          {selectedChatItem?.itemType === 'proposal' && selectedProposal && (
+            <div className="px-3.5 py-2.5 bg-white border-b border-slate-200 shadow-xs flex flex-col gap-2 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-200 shrink-0 flex items-center gap-1">
+                    🔒 Encrypted
+                  </span>
+                  {selectedProposal.proposal_status && (
+                    <Tag color="green" className="rounded-md text-[10px] font-semibold m-0 shrink-0">
+                      {selectedProposal.proposal_status}
+                    </Tag>
+                  )}
+                </div>
+                <Text className="text-[11px] text-slate-500 truncate">
+                  Coordinator: <strong className="text-slate-700">{selectedProposal.project_co_ordinator || selectedProposal.quotation_given_by_name || '-'}</strong>
+                </Text>
+              </div>
+
+              {/* Recipient Thread Switcher Tabs */}
+              {recipientOptions.length > 0 && (
+                <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-100">
+                  <div className="flex items-center gap-1.5 w-full">
+                    {recipientOptions.map((opt) => {
+                      const isActive = targetRecipient === opt.value
+                      return (
+                        <Tooltip key={opt.value} title={opt.label}>
+                          <button
+                            onClick={() => setTargetRecipient(opt.value)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-xs shrink-0 ${
+                              isActive
+                                ? 'bg-emerald-700 text-white shadow-emerald-200 border border-emerald-800'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                            }`}
+                          >
+                            <UserOutlined className="text-[10px]" />
+                            <span>{opt.shortLabel || opt.label}</span>
+                          </button>
+                        </Tooltip>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1269,7 +1304,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
                             )}
                             {msg.text && <p className="whitespace-pre-wrap leading-tight">{msg.text}</p>}
                             <div className="text-[9px] text-slate-400 text-right mt-0.5">
-                              {dayjs(msg.timestamp).format('hh:mm A')}
+                              {dayjs(msg.created_at || msg.timestamp).format('hh:mm A')}
                             </div>
                           </div>
                         </div>

@@ -53,6 +53,7 @@ import { CostEstimationModal } from './CostBreakDownAction'
 import messagingImg from '../assets/messaging.png'
 import FloatingChatsWidget from '../components/FloatingChatsWidget'
 import TopChatNotificationBar from '../components/TopChatNotificationBar'
+import { encryptMessage, decryptMessage } from '../utils/crypto.js'
 
 dayjs.extend(isSameOrAfter)
 dayjs.extend(isSameOrBefore)
@@ -1192,7 +1193,15 @@ export default function Allproposals() {
         headers: { accept: 'application/json' },
       })
       const projectMessages = response.ok ? await response.json() : []
-      setChatMessages(Array.isArray(projectMessages) ? projectMessages : [])
+      const threadKey = `proposal-${record.id}`
+      const decryptedMessages = await Promise.all(
+        (Array.isArray(projectMessages) ? projectMessages : []).map(async (m) => {
+          const decDesc = m.remarks_description ? await decryptMessage(m.remarks_description, threadKey) : m.remarks_description
+          const decReply = m.respond_to_remarks ? await decryptMessage(m.respond_to_remarks, threadKey) : m.respond_to_remarks
+          return { ...m, remarks_description: decDesc, respond_to_remarks: decReply }
+        })
+      )
+      setChatMessages(decryptedMessages)
     } catch (error) {
       console.error('Error loading chat:', error)
       message.error('Unable to load conversation')
@@ -1228,6 +1237,9 @@ export default function Allproposals() {
     if (!chatInput.trim() || !chatProject?.id) return
     setChatSending(true)
     try {
+      const threadKey = `proposal-${chatProject.id}`
+      const encryptedText = await encryptMessage(chatInput.trim(), threadKey)
+
       if (isGhRole) {
         const myGroupName = normalizeName(currentUserGroup || 'group head')
         const piName = getPiName(chatProject) || 'Scientist'
@@ -1243,7 +1255,7 @@ export default function Allproposals() {
 
         if (unansweredMsg) {
           const payload = {
-            respond_to_remarks: chatInput.trim(),
+            respond_to_remarks: encryptedText,
             replyer: currentUserGroup || 'Group Head',
             reply_seen: false,
           }
@@ -1261,7 +1273,7 @@ export default function Allproposals() {
             from_: currentUserGroup || 'Group Head',
             to: recipient,
             project_id: chatProject.id,
-            remarks_description: chatInput.trim(),
+            remarks_description: encryptedText,
             respond_to_remarks: null,
             replyer: null,
             message_seen: false,
@@ -1291,7 +1303,7 @@ export default function Allproposals() {
 
         if (unansweredMsg) {
           const payload = {
-            respond_to_remarks: chatInput.trim(),
+            respond_to_remarks: encryptedText,
             replyer: currentUserName || 'Scientist',
             reply_seen: false,
           }
@@ -1309,7 +1321,7 @@ export default function Allproposals() {
             from_: currentUserName || 'Scientist',
             to: chatThread === 'admin' ? 'admin' : getGhName(chatProject),
             project_id: chatProject.id,
-            remarks_description: chatInput.trim(),
+            remarks_description: encryptedText,
             respond_to_remarks: null,
             replyer: null,
             message_seen: false,

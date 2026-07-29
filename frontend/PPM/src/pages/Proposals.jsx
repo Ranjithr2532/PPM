@@ -58,6 +58,7 @@ import { DISPLAY_DATE_FORMAT, formatDate, formatIndianNumber } from '../config/d
 import { Checkbox } from 'antd';
 import messagingImg from '../assets/messaging.png'
 import FloatingChatsWidget from '../components/FloatingChatsWidget'
+import { encryptMessage, decryptMessage } from '../utils/crypto.js'
 import {
   openAcknowledgmentModal,
   closeAcknowledgmentModal,
@@ -510,7 +511,15 @@ function Proposals() {
         headers: { accept: 'application/json' },
       })
       const projectMessages = response.ok ? await response.json() : []
-      setChatMessages(Array.isArray(projectMessages) ? projectMessages : [])
+      const threadKey = `proposal-${record.id}`
+      const decryptedMessages = await Promise.all(
+        (Array.isArray(projectMessages) ? projectMessages : []).map(async (m) => {
+          const decDesc = m.remarks_description ? await decryptMessage(m.remarks_description, threadKey) : m.remarks_description
+          const decReply = m.respond_to_remarks ? await decryptMessage(m.respond_to_remarks, threadKey) : m.respond_to_remarks
+          return { ...m, remarks_description: decDesc, respond_to_remarks: decReply }
+        })
+      )
+      setChatMessages(decryptedMessages)
     } catch (error) {
       console.error('Error loading chat:', error)
       message.error('Unable to load conversation')
@@ -599,10 +608,13 @@ function Proposals() {
           return isFromRecipient && isToMe && !q.respond_to_remarks
         })
 
+      const threadKey = `proposal-${chatProject.id}`
+      const encryptedText = await encryptMessage(chatInput.trim(), threadKey)
+
       if (unansweredMsg) {
         // REPLY: Update the existing row with respond_to_remarks
         const payload = {
-          respond_to_remarks: chatInput.trim(),
+          respond_to_remarks: encryptedText,
           replyer: 'admin',
           reply_seen: false,  // recipient hasn't seen the reply yet
         }
@@ -621,7 +633,7 @@ function Proposals() {
           from_: 'admin',
           to: recipient,
           project_id: chatProject.id,
-          remarks_description: chatInput.trim(),
+          remarks_description: encryptedText,
           respond_to_remarks: null,
           replyer: null,
           message_seen: false,
