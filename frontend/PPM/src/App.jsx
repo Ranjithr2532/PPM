@@ -19,6 +19,7 @@ const GhMasterProposals = lazy(() => import('./pages/GhMasterProposals'))
 const GhNotification = lazy(() => import('./pages/GhNotification'))
 const UserAccess = lazy(() => import('./pages/AccessControl'))
 const Customers = lazy(() => import('./pages/customers'))
+const DocumentGenerate = lazy(() => import('./pages/Document_genrate'))
 
 const { Content } = Layout
 
@@ -126,6 +127,8 @@ function RoleProtectedLayout({ basePath }) {
 
               <Route path='gh-master-proposals' element={<GhMasterProposals />} />
               <Route path='gh-notification' element={<GhNotification />} />
+              <Route path='document-generate' element={<DocumentGenerate />} />
+              <Route path='documents-generate' element={<DocumentGenerate />} />
 
               {/* Only admins can access configuration */}
               {isAdmin && (

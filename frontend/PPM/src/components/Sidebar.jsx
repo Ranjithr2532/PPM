@@ -7,7 +7,8 @@ import {
   BellOutlined,
   UsergroupAddOutlined,
   TeamOutlined,
-  MessageOutlined
+  MessageOutlined,
+  FileWordOutlined
 } from '@ant-design/icons'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -52,7 +53,9 @@ function Sidebar() {
                         ? 'customers'
                         : section === 'chats'
                           ? 'chats'
-                          : 'proposals'
+                          : section === 'document-generate' || section === 'documents-generate'
+                            ? 'document-generate'
+                            : 'proposals'
 
   let userName = ''
   let userRole = ''
@@ -253,6 +256,7 @@ function Sidebar() {
               else if (info.key === 'customers') navigate(`${prefix}/customers`)
               else if (info.key === 'overall-analytics') navigate(`${prefix}/overall-analytics`)
               else if (info.key === 'chats') navigate(`${prefix}/chats`)
+              else if (info.key === 'document-generate') navigate(`${prefix}/document-generate`)
 
               else navigate(`${prefix}/proposals`)
             }}
@@ -283,6 +287,7 @@ function Sidebar() {
                 )
               }] : []),
               ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
+              ...(!isGuest && !isDirector ? [{ key: 'document-generate', icon: <FileWordOutlined />, label: 'Document Generator' }] : []),
 
               ...(isGHOrScientist
                 ? [
