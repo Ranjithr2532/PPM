@@ -465,9 +465,8 @@ def main():
     print(f"\nSaved: {filename}")
 
 
-# ============================================================================
-# 5. CORE API / PROGRAMMATIC SERVICE FUNCTIONS
-# ============================================================================
+
+
 
 def build_quotation_document(data: dict) -> Document:
     if not isinstance(data, dict) and hasattr(data, "dict"):
@@ -475,66 +474,285 @@ def build_quotation_document(data: dict) -> Document:
     elif not isinstance(data, dict) and hasattr(data, "model_dump"):
         data = data.model_dump()
 
-    date = data.get("date") or datetime.now().strftime("%d/%m/%Y")
+    header_code = data.get("header_code") or "ISO 9001-2015 CMTI/PPBD/001/Rev-00"
+    ref_no = data.get("ref_no") or data.get("reference") or ""
+    date = data.get("date") or datetime.now().strftime("%d.%m.%Y")
     dept = data.get("dept") or ""
     email_to = data.get("email_to") or []
     email_cc = data.get("email_cc") or []
+
     customer_lines = data.get("customer_lines") or []
     kind_attention = data.get("kind_attention") or ""
-    reference = data.get("reference") or ""
+    salutation = data.get("salutation") or "Dear Sir,"
     subject = data.get("subject") or ""
-    sac_code = data.get("sac_code") or ""
+    email_ref = data.get("email_ref") or data.get("reference") or ""
+
+    item_description = data.get("item_description") or ""
+    quote_amount = data.get("quote_amount") or ""
+
     scope_intro = data.get("scope_intro") or ""
-    scope_items = data.get("scope_items") or []
-    terms_items = data.get("terms_items") or []
-    raw_tables = data.get("tables") or []
+    scope_items = data.get("scope_items") or data.get("scope_of_work") or []
+
+    terms_items = (
+        data.get("terms_items")
+        or data.get("terms_and_conditions")
+        or (data.get("payment_terms_and_condition").split(";") if isinstance(data.get("payment_terms_and_condition"), str) else data.get("payment_terms_and_condition"))
+        or (data.get("payment_terms_and_conditions").split(";") if isinstance(data.get("payment_terms_and_conditions"), str) else data.get("payment_terms_and_conditions"))
+        or []
+    )
+    if isinstance(terms_items, str):
+        terms_items = [t.strip() for t in terms_items.split(";") if t.strip()]
+
+    validity = data.get("validity") or ""
+    payment_terms = (
+        data.get("payment_terms")
+        or data.get("payment_terms_and_condition")
+        or data.get("payment_terms_and_conditions")
+        or "100% after completion of work & submission of report."
+    )
+    delivery = data.get("delivery") or "1 Month from the date of acceptance of PO."
+
+    contact_details = data.get("contact_details") or ""
+    commercial_contact = data.get("commercial_contact") or ""
+
     signatory_name = data.get("signatory_name") or ""
     signatory_lines = data.get("signatory_lines") or []
-    signatories = data.get("signatories") or []
-
-    tables = []
-    for t in raw_tables:
-        if isinstance(t, dict):
-            tables.append(t)
-        elif hasattr(t, "dict"):
-            tables.append(t.dict())
-        elif hasattr(t, "model_dump"):
-            tables.append(t.model_dump())
 
     document = Document()
     set_a4_page(document)
 
-    add_right_aligned(document, f"Date: {date}")
+    # 1. Header Code in Section Header (Appears on every page's top-right corner)
+    section = document.sections[0]
+    header = section.header
+    p_hdr = header.paragraphs[0]
+    p_hdr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_hdr.paragraph_format.space_after = Pt(0)
+    r_hdr = p_hdr.add_run(header_code)
+    r_hdr.font.name = "Calibri"
+    r_hdr.font.size = Pt(9)
+    r_hdr.font.bold = True
+
     if dept:
-        add_right_aligned(document, f"Dept: {dept}")
+        p_dept = document.add_paragraph()
+        p_dept.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r_dept = p_dept.add_run(f"Dept: {dept}")
+        r_dept.font.size = Pt(9)
+
+    # 2. Document Title
+    add_section_heading(document, "Quotation", center=True)
+
+    if email_to:
+        add_email_field(document, "Email", email_to)
+    if email_cc:
+        add_email_field(document, "Cc", email_cc)
+
+    # 3. Ref No & Date
+    p_ref = document.add_paragraph()
+    p_ref.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    r_ref = p_ref.add_run(f"Ref No.: {ref_no}\nDate: {date}")
+    r_ref.font.size = Pt(11)
+    r_ref.font.bold = True
+
     document.add_paragraph()
 
-    add_email_field(document, "Email", email_to)
-    add_email_field(document, "Cc", email_cc)
+    # 4. Customer Address Block
+    for cline in customer_lines:
+        p_c = document.add_paragraph()
+        p_c.paragraph_format.space_after = Pt(2)
+        r_c = p_c.add_run(cline)
+        r_c.font.size = Pt(11)
 
-    add_section_heading(document, "Quotation Information:", center=True)
+    if kind_attention:
+        p_ka = document.add_paragraph()
+        p_ka.paragraph_format.space_after = Pt(4)
+        r_ka = p_ka.add_run(f"Kind Attn: {kind_attention}")
+        r_ka.font.bold = True
+        r_ka.font.size = Pt(11)
 
-    add_multiline_field(document, "Customer", customer_lines)
-    add_field(document, "Kind Attention", kind_attention)
-    add_field(document, "Reference", reference)
-    add_field(document, "Subject", subject)
-    add_field(document, "SAC Code", sac_code)
+    p_sal = document.add_paragraph()
+    p_sal.paragraph_format.space_after = Pt(6)
+    r_sal = p_sal.add_run(salutation)
+    r_sal.font.size = Pt(11)
 
-    add_section_heading(document, "Scope of work:")
-    if scope_intro:
-        p = document.add_paragraph()
-        p.paragraph_format.space_after = Pt(6)
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        add_rich_text(p, scope_intro)
-    add_bullets(document, scope_items)
+    # 5. Subject & Reference
+    if subject:
+        p_sub = document.add_paragraph()
+        p_sub.paragraph_format.space_after = Pt(4)
+        r_sub = p_sub.add_run(f"Sub: {subject}")
+        r_sub.font.bold = True
+        r_sub.font.size = Pt(11)
 
-    add_section_heading(document, "Terms and conditions:")
-    add_bullets(document, terms_items)
+    if email_ref:
+        p_eref = document.add_paragraph()
+        p_eref.paragraph_format.space_after = Pt(8)
+        r_eref = p_eref.add_run(f"Ref: {email_ref}")
+        r_eref.font.size = Pt(11)
 
-    for spec in tables:
-        add_table_block(document, spec)
+    # 6. Intro Paragraph
+    if item_description:
+        p_intro = document.add_paragraph()
+        p_intro.paragraph_format.space_after = Pt(8)
+        p_intro.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        r_intro = p_intro.add_run(f"With reference to your above enquiry, we are pleased to submit our quote for {item_description}, with the following Terms and Conditions.")
+        r_intro.font.size = Pt(11)
 
-    add_signature_block(document, name=signatory_name, designation_lines=signatory_lines, signatories=signatories)
+    # 7. Terms and Conditions
+    # Point 1: Quotation Amount (if provided)
+    if quote_amount:
+        p_q1 = document.add_paragraph()
+        p_q1.paragraph_format.space_after = Pt(6)
+        r_q1_t = p_q1.add_run("1. Quotation:\n")
+        r_q1_t.font.bold = True
+        r_q1_t.font.size = Pt(11)
+        amt_str = quote_amount if "Rs." in quote_amount or "Rupees" in quote_amount else f"Rs. {quote_amount}/-"
+        r_q1_b = p_q1.add_run(f"Our Charges towards {item_description or 'the project'} is {amt_str}.")
+        r_q1_b.font.size = Pt(11)
+
+    # Point 2: Scope of work
+    if scope_items:
+        p_s2 = document.add_paragraph()
+        p_s2.paragraph_format.space_after = Pt(4)
+        r_s2 = p_s2.add_run("2. Scope of work:")
+        r_s2.font.bold = True
+        r_s2.font.size = Pt(11)
+        add_bullets(document, scope_items)
+
+    # Point 3: Validity
+    if validity:
+        p_v3 = document.add_paragraph()
+        p_v3.paragraph_format.space_after = Pt(6)
+        r_v3_t = p_v3.add_run("3. Quotation Validity: ")
+        r_v3_t.font.bold = True
+        r_v3_t.font.size = Pt(11)
+        val_str = validity if "valid till" in validity.lower() else f"This quotation is valid till {validity}."
+        r_v3_b = p_v3.add_run(val_str)
+        r_v3_b.font.size = Pt(11)
+
+    # Point 4: Payment Terms / Terms & Conditions
+    p_pt4 = document.add_paragraph()
+    p_pt4.paragraph_format.space_after = Pt(6)
+    r_pt4_t = p_pt4.add_run("4. Payment Terms / Terms & Conditions:\n")
+    r_pt4_t.font.bold = True
+    r_pt4_t.font.size = Pt(11)
+    if terms_items:
+        add_bullets(document, terms_items)
+    else:
+        r_pt4_b = p_pt4.add_run(payment_terms)
+        r_pt4_b.font.size = Pt(11)
+
+    # Point 5: Delivery
+    p_d5 = document.add_paragraph()
+    p_d5.paragraph_format.space_after = Pt(6)
+    r_d5_t = p_d5.add_run("5. Delivery:\n")
+    r_d5_t.font.bold = True
+    r_d5_t.font.size = Pt(11)
+    r_d5_b = p_d5.add_run(delivery)
+    r_d5_b.font.size = Pt(11)
+
+    # Point 6: Bank Details
+    p_b6 = document.add_paragraph()
+    p_b6.paragraph_format.space_after = Pt(6)
+    r_b6_t = p_b6.add_run("6. Bank Details:\n")
+    r_b6_t.font.bold = True
+    r_b6_t.font.size = Pt(11)
+    r_b6_b = p_b6.add_run(
+        "Name of the Bank: State Bank of India\n"
+        "Address : Yeshwanthpur Branch, Tumkur Road, Bangalore-560022.\n"
+        "Type of Account: Current Account\n"
+        "Account No. : 10521862015"
+    )
+    r_b6_b.font.size = Pt(11)
+
+    # Point 7: GST
+    p_gst = document.add_paragraph()
+    p_gst.paragraph_format.space_after = Pt(6)
+    r_gst_t = p_gst.add_run("7. GST Charges: ")
+    r_gst_t.font.bold = True
+    r_gst_t.font.size = Pt(11)
+    r_gst_b = p_gst.add_run("In addition to the above charges, GST will be charged as applicable at the time of billing. The present rate of GST is @ 18%.")
+    r_gst_b.font.size = Pt(11)
+
+    raw_tables = data.get("tables") or []
+    for t in raw_tables:
+        if isinstance(t, dict):
+            add_table_block(document, t)
+        elif hasattr(t, "dict"):
+            add_table_block(document, t.dict())
+        elif hasattr(t, "model_dump"):
+            add_table_block(document, t.model_dump())
+
+    # Point 8: Governing Law
+    p_gl_head = document.add_paragraph()
+    p_gl_head.paragraph_format.space_after = Pt(2)
+    r_gl_t = p_gl_head.add_run("8. Governing Law and Dispute Resolution:")
+    r_gl_t.font.bold = True
+    r_gl_t.font.size = Pt(11)
+
+    p_gl_body = document.add_paragraph()
+    p_gl_body.paragraph_format.space_after = Pt(6)
+    p_gl_body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    r_gl_b = p_gl_body.add_run(
+        "This contract/order shall be governed by and construed in accordance with the laws of India, without reference to its conflict of law's provisions. The Parties agree that any disputes arising out of or in relation to this contract shall be first attempted to be resolved mutually between the Parties, failing which, such dispute shall be finally referred to arbitration to be conducted in accordance with Arbitration and Conciliation Act, 1996 as amended till date ('Rules'). The arbitration shall be held in Bengaluru, India and shall be conducted in English language by one arbitrator, appointed by both the Parties in accordance with said Rules. If parties fail to appoint a single arbitrator, then a panel of 3 is constituted, whereby each of the parties will appoint the third arbitrator, as a contingency measure. The decision of such arbitrator/s shall be final and binding on the Parties and judgment thereon may be entered in any court of competent jurisdiction."
+    )
+    r_gl_b.font.size = Pt(11)
+
+    # Point 9: Jurisdiction
+    p_jur_head = document.add_paragraph()
+    p_jur_head.paragraph_format.space_after = Pt(2)
+    r_jur_t = p_jur_head.add_run("9. Jurisdiction:")
+    r_jur_t.font.bold = True
+    r_jur_t.font.size = Pt(11)
+
+    p_jur_body = document.add_paragraph()
+    p_jur_body.paragraph_format.space_after = Pt(6)
+    p_jur_body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    r_jur_b = p_jur_body.add_run("This contract shall be deemed to have been concluded in Bangalore for all purposes and therefore only courts of Bangalore shall have jurisdiction for the purpose of any adjudication in case of disputes and differences remain unsolved inspite of arbitration.")
+    r_jur_b.font.size = Pt(11)
+
+    # Point 10: PAN
+    p_pan = document.add_paragraph()
+    p_pan.paragraph_format.space_after = Pt(6)
+    r_pan_t = p_pan.add_run("10. Our PAN No. AAATC 2085 K\n")
+    r_pan_t.font.bold = True
+    r_pan_t.font.size = Pt(11)
+    r_pan_b = p_pan.add_run("CMTI reserves the rights to rectify the errors of typographical and clerical nature and arithmetical inaccuracies in this quotation.")
+    r_pan_b.font.size = Pt(11)
+
+    # Closing Trust Sentence
+    p_trust = document.add_paragraph()
+    p_trust.paragraph_format.space_after = Pt(8)
+    p_trust.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    r_trust = p_trust.add_run("We Trust our offer meets with your requirement and we look forward to receive your order, which will receive our prompt attention and execution.\nPlease ensure to quote the reference No. and date of our letter in your Purchase order for immediate action.")
+    r_trust.font.size = Pt(11)
+
+    # Contact Info
+    if contact_details or commercial_contact:
+        p_cont = document.add_paragraph()
+        p_cont.paragraph_format.space_after = Pt(12)
+        p_cont.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        cont_str = f"Should you need any information/clarification please feel free to contact {contact_details}" if contact_details else ""
+        comm_str = f" For commercial clarification: {commercial_contact}" if commercial_contact else ""
+        r_cont = p_cont.add_run(f"{cont_str}{comm_str}")
+        r_cont.font.size = Pt(11)
+
+    # Signatory Block
+    p_sign = document.add_paragraph()
+    p_sign.paragraph_format.space_after = Pt(4)
+    r_sign = p_sign.add_run("Thanking you,\nYours sincerely,\nFor Central Manufacturing Technology Institute.\n\n")
+    r_sign.font.size = Pt(11)
+
+    if signatory_name:
+        p_name = document.add_paragraph()
+        p_name.paragraph_format.space_after = Pt(2)
+        r_name = p_name.add_run(signatory_name)
+        r_name.font.bold = True
+        r_name.font.size = Pt(11)
+
+    for sline in signatory_lines:
+        p_sline = document.add_paragraph()
+        p_sline.paragraph_format.space_after = Pt(2)
+        r_sline = p_sline.add_run(sline)
+        r_sline.font.size = Pt(11)
 
     return document
 

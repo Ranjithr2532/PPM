@@ -12,6 +12,11 @@ import {
   MessageOutlined,
   FileOutlined,
   InfoCircleOutlined,
+  FileWordOutlined,
+  FormOutlined,
+  CheckCircleOutlined,
+  FileTextOutlined,
+  PaperClipOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -39,6 +44,7 @@ import {
   Tooltip,
   Badge,
   Segmented,
+  Alert,
 } from 'antd'
 import * as XLSX from 'xlsx'
 import { ExcelRenderer } from 'react-excel-renderer'
@@ -54,6 +60,7 @@ import messagingImg from '../assets/messaging.png'
 import FloatingChatsWidget from '../components/FloatingChatsWidget'
 import TopChatNotificationBar from '../components/TopChatNotificationBar'
 import { encryptMessage, decryptMessage } from '../utils/crypto.js'
+import DocumentGenerate from './Document_genrate'
 
 dayjs.extend(isSameOrAfter)
 dayjs.extend(isSameOrBefore)
@@ -356,6 +363,10 @@ export default function Allproposals() {
   const isGhRole = userRole === 'gh'
 
   const [coordinatorModalOpen, setCoordinatorModalOpen] = useState(false)
+  const [proposalCreationMode, setProposalCreationMode] = useState('selection') // 'selection' | 'manual' | 'upload_review'
+  const [docxUploading, setDocxUploading] = useState(false)
+  const [uploadedDocName, setUploadedDocName] = useState('')
+  const [uploadedDocxFile, setUploadedDocxFile] = useState(null)
   const [costEstimationModalOpen, setCostEstimationModalOpen] = useState(false)
   const [selectedProposalForCostEstimation, setSelectedProposalForCostEstimation] = useState(null)
 
@@ -810,14 +821,14 @@ export default function Allproposals() {
     await fetchProjectDocuments(projectId)
   }, [fetchProjectDocuments])
 
-  const openUploadModalForProject = useCallback(async (projectId) => {
+  const openUploadModalForProject = useCallback(async (projectId, defaultProposalFile = null) => {
     setUploadProjectId(projectId)
     setUploadedBy(currentUserName || '')
     setUploadDescription('')
     setEnquiryFileToUpload(null)
-    setProposalFileToUpload(null)
+    setProposalFileToUpload(defaultProposalFile || null)
     setEnquiryAttachments([])
-    setProposalAttachments([])
+    setProposalAttachments((prev) => (prev && prev.length ? prev : []))
     setShowVersionEditor(false)
 
     const enquiryStage = stageConfig.find(
@@ -1353,6 +1364,10 @@ export default function Allproposals() {
   // Open/Close Coordinator Add Modal
   const openCoordinatorAddModal = () => {
     coordinatorForm.resetFields()
+    setProposalCreationMode('selection')
+    setUploadedDocName('')
+    setUploadedDocxFile(null)
+    setDocxUploading(false)
 
     if (currentUserName) {
       coordinatorForm.setFieldsValue({
@@ -1368,8 +1383,89 @@ export default function Allproposals() {
 
   const closeCoordinatorModal = () => {
     setCoordinatorModalOpen(false)
+    setProposalCreationMode('selection')
+    setUploadedDocName('')
+    setUploadedDocxFile(null)
+    setDocxUploading(false)
+    setProposalAttachments([])
     coordinatorForm.resetFields()
     setCustomerOptions([])
+  }
+
+  // Handle uploading and parsing proposal docx document
+  const handleDocxUpload = async (file) => {
+    const isDocx = file.name.toLowerCase().endsWith('.docx')
+    if (!isDocx) {
+      message.error('Invalid file format. Only Microsoft Word (.docx) files are supported.')
+      return false
+    }
+
+    setDocxUploading(true)
+    setUploadedDocName(file.name)
+    setUploadedDocxFile(file)
+
+    const formData = new FormData()
+    formData.append('mode', 'upload')
+    formData.append('file', file)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/proposals/add-proposal-coordinator`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.detail || 'Failed to parse proposal document')
+      }
+
+      const res = await response.json()
+      if (res.success && res.data) {
+        const extracted = res.data
+        const updatedValues = {}
+
+        const dateVal = extracted.enquiry_date || extracted.quote_date
+        if (dateVal) {
+          const dateStr = dateVal.trim()
+          let parsedDate = dayjs(dateStr, ['DD/MM/YYYY', 'DD.MM.YYYY', 'DD-MM-YYYY', 'YYYY-MM-DD', 'YYYY/MM/DD', 'MM/DD/YYYY'])
+          if (!parsedDate.isValid()) {
+            parsedDate = dayjs(dateStr)
+          }
+          if (parsedDate.isValid()) {
+            updatedValues.enquiry_date = parsedDate
+            updatedValues.quote_date = parsedDate
+            updatedValues.revised_negotiated_quote_date = parsedDate
+          }
+        }
+        if (extracted.customer_name) updatedValues.customer_name = extracted.customer_name
+        if (extracted.address) updatedValues.address = extracted.address
+        if (extracted.email) updatedValues.email = extracted.email
+        if (extracted.phone_no) updatedValues.phone_no = extracted.phone_no
+        if (extracted.alternate_contact_details) updatedValues.alternate_contact_details = extracted.alternate_contact_details
+        if (extracted.email_reference) updatedValues.email_reference = extracted.email_reference
+        if (extracted.quote_reference) updatedValues.quote_reference = extracted.quote_reference
+        if (extracted.quote_description) updatedValues.quote_description = extracted.quote_description
+        if (extracted.quote_amount) updatedValues.quote_amount = extracted.quote_amount
+        if (extracted.center) {
+          updatedValues.center = extracted.center
+          updatedValues.quotation_given_by_department = extracted.center
+        }
+
+        // Populate fields into form
+        coordinatorForm.setFieldsValue(updatedValues)
+
+        message.success(`Extracted details from "${file.name}". Please review and edit before submitting.`)
+        setProposalCreationMode('upload_review')
+      } else {
+        throw new Error('Could not extract details from the uploaded document.')
+      }
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Error processing document')
+    } finally {
+      setDocxUploading(false)
+    }
+    return false
   }
 
   // Search customers by name
@@ -1576,11 +1672,55 @@ export default function Allproposals() {
 
       const result = await response.json()
       const newProjectId = result?.proposal_id
-      if (newProjectId) {
-        openUploadModalForProject(newProjectId)
+      if (newProjectId && (uploadedDocxFile || (proposalAttachments && proposalAttachments.length > 0))) {
+        try {
+          message.loading({ content: 'Uploading proposal document and attached files...', key: 'coord_upload' })
+
+          const proposalStage = stageConfig.find(
+            (s) => (s.name || '').toString().trim().toLowerCase() === 'proposal',
+          )
+          const stageId = proposalStage ? proposalStage.id : 2
+
+          let mainFile = uploadedDocxFile
+          let attachmentsList = [...(proposalAttachments || [])]
+
+          if (!mainFile && attachmentsList.length > 0) {
+            mainFile = attachmentsList[0]
+            attachmentsList = attachmentsList.slice(1)
+          }
+
+          if (mainFile) {
+            const formData = new FormData()
+            formData.append('project_id', newProjectId)
+            formData.append('stage_id', stageId)
+            formData.append('uploaded_by', currentUserName || values.quotation_given_by_name || '')
+            formData.append('name', 'Proposal')
+            formData.append('version', 'v1')
+            formData.append('description', 'Proposal document created with attached files')
+            formData.append('file', mainFile)
+
+            attachmentsList.forEach((att) => {
+              formData.append('attachment', att)
+            })
+
+            const docUploadRes = await fetch(`${API_BASE_URL}/documents/`, {
+              method: 'POST',
+              body: formData,
+            })
+
+            if (docUploadRes.ok) {
+              message.success({ content: 'Proposal & all attached documents saved successfully!', key: 'coord_upload' })
+            } else {
+              console.error('Failed uploading document/attachments:', await docUploadRes.text())
+            }
+          }
+        } catch (uploadErr) {
+          console.error('Error uploading proposal documents:', uploadErr)
+        }
+      } else if (newProjectId) {
+        message.success('Proposal created successfully')
       }
 
-      message.success('Proposal created successfully')
       closeCoordinatorModal()
       await fetchProposals()
     } catch (error) {
@@ -2265,15 +2405,37 @@ export default function Allproposals() {
                         </Button>
                       )}
                       {userRole === 'scientist' && (
-                        <Button
-                          type="primary"
-                          size="large"
-                          icon={<PlusOutlined />}
-                          onClick={openCoordinatorAddModal}
-                          className="bg-gradient-to-r from-green-500 to-green-600 border-none shadow-md hover:shadow-lg"
+                        <Dropdown
+                          menu={{
+                            items: [
+                              {
+                                key: 'addProposal',
+                                icon: <PlusOutlined />,
+                                label: 'Add Proposal Form',
+                                onClick: openCoordinatorAddModal,
+                              },
+                              {
+                                key: 'createDocument',
+                                icon: <FileTextOutlined />,
+                                label: 'Create Document',
+                                onClick: () => {
+                                  openCoordinatorAddModal()
+                                  setProposalCreationMode('create_document')
+                                },
+                              },
+                            ],
+                          }}
+                          trigger={['click']}
                         >
-                          Add Proposal
-                        </Button>
+                          <Button
+                            type="primary"
+                            size="large"
+                            icon={<PlusOutlined />}
+                            className="bg-gradient-to-r from-green-500 to-green-600 border-none shadow-md hover:shadow-lg"
+                          >
+                            Add Proposal
+                          </Button>
+                        </Dropdown>
                       )}
                     </div>
                   </div>
@@ -2497,8 +2659,51 @@ export default function Allproposals() {
                     title: 'Uploaded At',
                     dataIndex: 'created_at',
                     key: 'created_at',
-                    width: 180,
+                    width: 150,
                     render: (value) => (value ? dayjs(value).format(DISPLAY_DATE_FORMAT + ' HH:mm') : '-'),
+                  },
+                  {
+                    title: 'Attachments',
+                    key: 'attachments',
+                    width: 200,
+                    render: (_, record) => {
+                      let atts = record?.attachment || record?.attachments || []
+                      if (typeof atts === 'string') {
+                        try {
+                          atts = JSON.parse(atts)
+                        } catch {
+                          atts = [atts]
+                        }
+                      }
+                      if (!Array.isArray(atts)) atts = atts ? [atts] : []
+                      const list = atts.filter((url) => url && typeof url === 'string')
+                      if (!list.length) return <span className="text-gray-400 text-xs">-</span>
+                      return (
+                        <div className="flex flex-wrap gap-1">
+                          {list.map((url, idx) => {
+                            let fileName = `Attachment ${idx + 1}`
+                            try {
+                              const parts = url.split('/')
+                              const rawName = parts[parts.length - 1].split('?')[0]
+                              if (rawName) fileName = decodeURIComponent(rawName)
+                            } catch (e) {}
+                            return (
+                              <a
+                                key={idx}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded text-xs transition-colors"
+                                title={fileName}
+                              >
+                                <PaperClipOutlined className="text-blue-500 text-xs" />
+                                <span className="max-w-[120px] truncate">{fileName}</span>
+                              </a>
+                            )
+                          })}
+                        </div>
+                      )
+                    },
                   },
                   {
                     title: 'View',
@@ -2526,7 +2731,7 @@ export default function Allproposals() {
         footer={[
           <Button key="close" onClick={() => setDocsModalVisible(false)}>Close</Button>,
         ]}
-        width={800}
+        width={900}
       >
         <Card title="Enquiry Documents" size="small" className="bg-gray-50">
           <Table
@@ -2558,8 +2763,51 @@ export default function Allproposals() {
                 title: 'Uploaded At',
                 dataIndex: 'created_at',
                 key: 'created_at',
-                width: 180,
+                width: 150,
                 render: (value) => (value ? dayjs(value).format(DISPLAY_DATE_FORMAT + ' HH:mm') : '-'),
+              },
+              {
+                title: 'Attachments',
+                key: 'attachments',
+                width: 200,
+                render: (_, record) => {
+                  let atts = record?.attachment || record?.attachments || []
+                  if (typeof atts === 'string') {
+                    try {
+                      atts = JSON.parse(atts)
+                    } catch {
+                      atts = [atts]
+                    }
+                  }
+                  if (!Array.isArray(atts)) atts = atts ? [atts] : []
+                  const list = atts.filter((url) => url && typeof url === 'string')
+                  if (!list.length) return <span className="text-gray-400 text-xs">-</span>
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {list.map((url, idx) => {
+                        let fileName = `Attachment ${idx + 1}`
+                        try {
+                          const parts = url.split('/')
+                          const rawName = parts[parts.length - 1].split('?')[0]
+                          if (rawName) fileName = decodeURIComponent(rawName)
+                        } catch (e) {}
+                        return (
+                          <a
+                            key={idx}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded text-xs transition-colors"
+                            title={fileName}
+                          >
+                            <PaperClipOutlined className="text-blue-500 text-xs" />
+                            <span className="max-w-[120px] truncate">{fileName}</span>
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )
+                },
               },
               {
                 title: 'View',
@@ -2691,128 +2939,447 @@ export default function Allproposals() {
 
       {/* Add Proposal Modal (Coordinator) */}
       <Modal
-        title="Add Proposal (Coordinator)"
+        title={
+          <div className="flex items-center justify-between pr-6">
+            <span className="text-lg font-bold text-slate-900">
+              {proposalCreationMode === 'selection'
+                ? 'Add Proposal'
+                : proposalCreationMode === 'create_document'
+                ? 'Create Document'
+                : proposalCreationMode === 'upload_review'
+                ? 'Add Proposal - Review Extracted Document'
+                : 'Add Proposal (Manual Entry)'}
+            </span>
+            {proposalCreationMode !== 'selection' && (
+              <Button
+                type="link"
+                size="small"
+                onClick={() => setProposalCreationMode('selection')}
+                className="text-xs text-blue-600 font-semibold"
+              >
+                ← Change Mode
+              </Button>
+            )}
+          </div>
+        }
         open={coordinatorModalOpen}
         onCancel={closeCoordinatorModal}
-        width={1100}
-        okText="Submit"
-        confirmLoading={coordinatorSubmitLoading}
-        onOk={() => coordinatorForm.submit()}
+        width={proposalCreationMode === 'create_document' ? 1300 : 1100}
         maskClosable={false}
+        footer={
+          proposalCreationMode === 'selection'
+            ? [
+                <Button key="cancel" onClick={closeCoordinatorModal}>
+                  Cancel
+                </Button>,
+              ]
+            : proposalCreationMode === 'create_document'
+            ? [
+                <Button
+                  key="back"
+                  onClick={() => setProposalCreationMode('selection')}
+                >
+                  ← Back to Selection
+                </Button>,
+                <Button key="cancel" onClick={closeCoordinatorModal}>
+                  Close
+                </Button>,
+              ]
+            : [
+                <Button
+                  key="back"
+                  onClick={() => setProposalCreationMode('selection')}
+                >
+                  Back
+                </Button>,
+                <Button key="cancel" onClick={closeCoordinatorModal}>
+                  Cancel
+                </Button>,
+                <Button
+                  key="submit"
+                  type="primary"
+                  loading={coordinatorSubmitLoading}
+                  onClick={() => coordinatorForm.submit()}
+                  className="bg-blue-600 hover:bg-blue-700 font-semibold"
+                >
+                  Submit Proposal
+                </Button>,
+              ]
+        }
       >
-        <Form form={coordinatorForm} layout="vertical" onFinish={handleCoordinatorSubmit}>
-          <Row gutter={[16, 16]}>
-            {COORDINATOR_ADD_FIELDS.filter((fieldName) => {
-              if (userRole === 'scientist') {
-                return !['quotation_given_by_department', 'center', 'group'].includes(fieldName)
-              }
-              return true
-            }).map((fieldName) => {
-              const field = ALL_FIELDS.find((f) => f.name === fieldName)
-              if (!field) return null
+        {proposalCreationMode === 'selection' ? (
+          <div className="py-6 px-2 space-y-6">
+            <div className="text-center max-w-lg mx-auto mb-6">
+              <h3 className="text-xl font-bold text-slate-800">
+                Choose Proposal Creation Method
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Select how you would like to create this new proposal:
+              </p>
+            </div>
 
-              const isDate = ['enquiry_date', 'quote_date', 'revised_negotiated_quote_date'].includes(fieldName)
-              const isTextArea = field.input === 'textarea'
-              const isCustomerType = fieldName === 'customer_type'
-              const isRequestType = fieldName === 'request_type'
-              const isProposalStatus = fieldName === 'proposal_status'
-              const isReadOnlyName = fieldName === 'quotation_given_by_name'
-              const isReadOnlyDept = fieldName === 'quotation_given_by_department'
-              const isReadOnlyCenter = fieldName === 'center'
-              const isReadOnlyGroup = fieldName === 'group'
-              const isCustomerName = fieldName === 'customer_name'
-              const isAddressField = fieldName === 'address'
-              const isEmailField = fieldName === 'email'
-              const isPhoneField = fieldName === 'phone_no'
-
-              return (
-                <Col span={12} key={fieldName}>
-                  <Form.Item
-                    name={fieldName}
-                    label={field.label}
-                    rules={field.required ? [{ required: true, message: `Please enter ${field.label}` }] : []}
+            <Row gutter={[20, 20]} justify="center">
+              {/* Option 1: Manual Entry */}
+              <Col xs={24} sm={12} md={8}>
+                <Card
+                  hoverable
+                  onClick={() => setProposalCreationMode('manual')}
+                  className="h-full border-2 border-slate-200 hover:border-blue-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md cursor-pointer"
+                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                    <FormOutlined className="text-2xl" />
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800 mb-2">
+                    Manual Entry
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                    Fill in all proposal details manually from scratch using standard form inputs.
+                  </p>
+                  <Button
+                    type="primary"
+                    block
+                    size="middle"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProposalCreationMode('manual')
+                    }}
+                    className="rounded-xl font-semibold bg-blue-600 hover:bg-blue-700"
                   >
-                    {isDate ? (
-                      <DatePicker style={{ width: '100%' }} format={DISPLAY_DATE_FORMAT} />
-                    ) : isCustomerType ? (
-                      <Select placeholder="Select Customer Type">
-                        {CUSTOMER_TYPE_OPTIONS.map((opt) => (
-                          <Select.Option key={opt} value={opt}>{opt}</Select.Option>
-                        ))}
-                      </Select>
-                    ) : isRequestType ? (
-                      <Select placeholder="Select Request Type">
-                        {REQUEST_TYPE_OPTIONS.map((opt) => (
-                          <Select.Option key={opt} value={opt}>{opt}</Select.Option>
-                        ))}
-                      </Select>
-                    ) : isProposalStatus ? (
-                      <Select
-                        mode="tags"
-                        showSearch
-                        allowClear
-                        placeholder="Select or type Proposal Status"
-                      >
-                        <Select.Option value="Submitted">Submitted</Select.Option>
-                        <Select.Option value="Accepted">Accepted</Select.Option>
-                        <Select.Option value="Rejected">Rejected</Select.Option>
-                        <Select.Option value="Awaiting">Awaiting</Select.Option>
-                      </Select>
-                    ) : isReadOnlyName || isReadOnlyDept || isReadOnlyCenter || isReadOnlyGroup ? (
-                      <Input disabled />
-                    ) : isCustomerName ? (
-                      <AutoComplete
-                        onSearch={searchCustomers}
-                        onSelect={handleCustomerSelect}
-                        options={customerOptions}
-                        placeholder="Search existing customers..."
-                        style={{ width: '100%' }}
-                        allowClear
-                      >
-                        <Input />
-                      </AutoComplete>
-                    ) : isAddressField ? (
-                      <AutoComplete
-                        options={addressOptions}
-                        onSearch={searchAddresses}
-                        placeholder="Type or select address..."
-                        style={{ width: '100%' }}
-                        allowClear
-                        onSelect={(value) => coordinatorForm.setFieldsValue({ address: value })}
-                      >
-                        <Input />
-                      </AutoComplete>
-                    ) : isEmailField ? (
-                      <AutoComplete
-                        options={emailOptions}
-                        onSearch={searchEmails}
-                        placeholder="Type or select email..."
-                        style={{ width: '100%' }}
-                        allowClear
-                      >
-                        <Input />
-                      </AutoComplete>
-                    ) : isPhoneField ? (
-                      <AutoComplete
-                        options={phoneOptions}
-                        onSearch={searchPhones}
-                        placeholder="Type or select phone..."
-                        style={{ width: '100%' }}
-                        allowClear
-                      >
-                        <Input />
-                      </AutoComplete>
-                    ) : isTextArea ? (
-                      <TextArea rows={3} />
+                    Create Manually
+                  </Button>
+                </Card>
+              </Col>
+
+              {/* Option 2: Upload Proposal Document */}
+              <Col xs={24} sm={12} md={8}>
+                <Card
+                  className="h-full border-2 border-slate-200 hover:border-green-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md"
+                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                    <FileWordOutlined className="text-2xl" />
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800 mb-2">
+                    Upload Document (.docx)
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                    Upload an existing Word document (.docx) to automatically extract info.
+                  </p>
+
+                  <Upload.Dragger
+                    accept=".docx"
+                    beforeUpload={handleDocxUpload}
+                    showUploadList={false}
+                    disabled={docxUploading}
+                    className="rounded-xl border-dashed border-green-300 hover:border-green-500 bg-green-50/30 p-3"
+                  >
+                    {docxUploading ? (
+                      <div className="py-2">
+                        <Spin tip="Extracting proposal details..." />
+                      </div>
                     ) : (
-                      <Input placeholder={`Enter ${field.label}`} />
+                      <div className="space-y-1">
+                        <UploadOutlined className="text-xl text-green-600" />
+                        <p className="font-semibold text-slate-700 text-xs">
+                          Click or Drag .docx
+                        </p>
+                        <p className="text-slate-400 text-[10px]">
+                          Parses quotation templates
+                        </p>
+                      </div>
                     )}
-                  </Form.Item>
-                </Col>
-              )
-            })}
-          </Row>
-        </Form>
+                  </Upload.Dragger>
+                </Card>
+              </Col>
+
+              {/* Option 3: Create Document */}
+              <Col xs={24} sm={12} md={8}>
+                <Card
+                  hoverable
+                  onClick={() => setProposalCreationMode('create_document')}
+                  className="h-full border-2 border-slate-200 hover:border-purple-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md cursor-pointer"
+                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                    <FileTextOutlined className="text-2xl" />
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800 mb-2">
+                    Create Document
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                    Generate and build official proposal documents (.docx) with live preview.
+                  </p>
+                  <Button
+                    type="primary"
+                    block
+                    size="middle"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProposalCreationMode('create_document')
+                    }}
+                    className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 border-none"
+                  >
+                    Create Document
+                  </Button>
+                </Card>
+              </Col>
+            </Row>
+          </div>
+        ) : proposalCreationMode === 'create_document' ? (
+          <div className="py-2">
+            <DocumentGenerate
+              onAddToProposals={(file, extracted, attachments = []) => {
+                setUploadedDocName(file.name)
+                setUploadedDocxFile(file)
+                if (attachments && attachments.length > 0) {
+                  setProposalAttachments(attachments)
+                }
+
+                const updatedValues = {}
+                const dateVal = extracted.enquiry_date || extracted.quote_date
+                if (dateVal) {
+                  const dateStr = String(dateVal).trim()
+                  let parsedDate = dayjs(dateStr, ['DD/MM/YYYY', 'DD.MM.YYYY', 'DD-MM-YYYY', 'YYYY-MM-DD', 'YYYY/MM/DD', 'MM/DD/YYYY'])
+                  if (!parsedDate.isValid()) {
+                    parsedDate = dayjs(dateStr)
+                  }
+                  if (parsedDate.isValid()) {
+                    updatedValues.enquiry_date = parsedDate
+                    updatedValues.quote_date = parsedDate
+                    updatedValues.revised_negotiated_quote_date = parsedDate
+                  }
+                }
+                if (extracted.customer_name) updatedValues.customer_name = extracted.customer_name
+                if (extracted.address) updatedValues.address = extracted.address
+                if (extracted.email) updatedValues.email = extracted.email
+                if (extracted.phone_no) updatedValues.phone_no = extracted.phone_no
+                if (extracted.alternate_contact_details) updatedValues.alternate_contact_details = extracted.alternate_contact_details
+                if (extracted.email_reference) updatedValues.email_reference = extracted.email_reference
+                if (extracted.quote_reference) updatedValues.quote_reference = extracted.quote_reference
+                if (extracted.quote_description) updatedValues.quote_description = extracted.quote_description
+                if (extracted.quote_amount) updatedValues.quote_amount = extracted.quote_amount
+                if (extracted.center) {
+                  updatedValues.center = extracted.center
+                  updatedValues.quotation_given_by_department = extracted.center
+                }
+
+                if (currentUserName) {
+                  updatedValues.quotation_given_by_name = currentUserName
+                  if (!updatedValues.center) updatedValues.center = currentUserCenter || ''
+                  if (!updatedValues.quotation_given_by_department) updatedValues.quotation_given_by_department = currentUserCenter ? currentUserCenter.toUpperCase() : ''
+                  updatedValues.group = currentUserGroup || ''
+                }
+
+                coordinatorForm.setFieldsValue(updatedValues)
+                setProposalCreationMode('upload_review')
+              }}
+            />
+          </div>
+        ) : (
+          <div>
+            {proposalCreationMode === 'upload_review' && (
+              <div className="mb-4 p-4 rounded-xl border border-green-200 bg-green-50/80 space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircleOutlined className="text-green-600 text-base" />
+                  <span className="font-bold text-slate-800 text-sm">
+                    Document Uploaded & Extracted
+                  </span>
+                </div>
+                <div className="text-xs text-slate-600">
+                  Successfully parsed extracted values from <strong>"{uploadedDocName}"</strong>. Please verify and edit any fields below before saving.
+                </div>
+
+                {/* Attachment Chips matching exact design in screenshot */}
+                <div className="pt-2 border-t border-green-200/60 flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mr-1">
+                    <PaperClipOutlined className="text-slate-500 text-sm" />
+                    <span>Attached Documents:</span>
+                  </div>
+
+                  {uploadedDocName && (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-blue-600">
+                      <PaperClipOutlined className="text-slate-400 text-xs" />
+                      <span className="max-w-[220px] truncate" title={uploadedDocName}>
+                        {uploadedDocName}
+                      </span>
+                    </div>
+                  )}
+
+                  {proposalAttachments && proposalAttachments.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-blue-600"
+                    >
+                      <PaperClipOutlined className="text-slate-400 text-xs" />
+                      <span className="max-w-[220px] truncate" title={file.name}>
+                        {file.name}
+                      </span>
+                      <span
+                        onClick={() => setProposalAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
+                      >
+                        ✕
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Form
+              form={coordinatorForm}
+              layout="vertical"
+              onFinish={handleCoordinatorSubmit}
+            >
+              <Row gutter={[16, 16]}>
+                {COORDINATOR_ADD_FIELDS.filter((fieldName) => {
+                  if (userRole === 'scientist') {
+                    return ![
+                      'quotation_given_by_department',
+                      'center',
+                      'group',
+                    ].includes(fieldName)
+                  }
+                  return true
+                }).map((fieldName) => {
+                  const field = ALL_FIELDS.find((f) => f.name === fieldName)
+                  if (!field) return null
+
+                  const isDate = [
+                    'enquiry_date',
+                    'quote_date',
+                    'revised_negotiated_quote_date',
+                  ].includes(fieldName)
+                  const isTextArea = field.input === 'textarea'
+                  const isCustomerType = fieldName === 'customer_type'
+                  const isRequestType = fieldName === 'request_type'
+                  const isProposalStatus = fieldName === 'proposal_status'
+                  const isReadOnlyName = fieldName === 'quotation_given_by_name'
+                  const isReadOnlyDept =
+                    fieldName === 'quotation_given_by_department'
+                  const isReadOnlyCenter = fieldName === 'center'
+                  const isReadOnlyGroup = fieldName === 'group'
+                  const isCustomerName = fieldName === 'customer_name'
+                  const isAddressField = fieldName === 'address'
+                  const isEmailField = fieldName === 'email'
+                  const isPhoneField = fieldName === 'phone_no'
+
+                  return (
+                    <Col span={12} key={fieldName}>
+                      <Form.Item
+                        name={fieldName}
+                        label={field.label}
+                        rules={[
+                          {
+                            required: true,
+                            message: `Please enter ${field.label}`,
+                          },
+                        ]}
+                      >
+                        {isDate ? (
+                          <DatePicker
+                            style={{ width: '100%' }}
+                            format={DISPLAY_DATE_FORMAT}
+                          />
+                        ) : isCustomerType ? (
+                          <Select placeholder="Select Customer Type">
+                            {CUSTOMER_TYPE_OPTIONS.map((opt) => (
+                              <Select.Option key={opt} value={opt}>
+                                {opt}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        ) : isRequestType ? (
+                          <Select placeholder="Select Request Type">
+                            {REQUEST_TYPE_OPTIONS.map((opt) => (
+                              <Select.Option key={opt} value={opt}>
+                                {opt}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        ) : isProposalStatus ? (
+                          <Select
+                            mode="tags"
+                            showSearch
+                            allowClear
+                            placeholder="Select or type Proposal Status"
+                          >
+                            <Select.Option value="Submitted">
+                              Submitted
+                            </Select.Option>
+                            <Select.Option value="Accepted">
+                              Accepted
+                            </Select.Option>
+                            <Select.Option value="Rejected">
+                              Rejected
+                            </Select.Option>
+                            <Select.Option value="Awaiting">
+                              Awaiting
+                            </Select.Option>
+                          </Select>
+                        ) : isReadOnlyName ||
+                          isReadOnlyDept ||
+                          isReadOnlyCenter ||
+                          isReadOnlyGroup ? (
+                          <Input disabled />
+                        ) : isCustomerName ? (
+                          <AutoComplete
+                            onSearch={searchCustomers}
+                            onSelect={handleCustomerSelect}
+                            options={customerOptions}
+                            placeholder="Search existing customers..."
+                            style={{ width: '100%' }}
+                            allowClear
+                          >
+                            <Input />
+                          </AutoComplete>
+                        ) : isAddressField ? (
+                          <AutoComplete
+                            options={addressOptions}
+                            onSearch={searchAddresses}
+                            placeholder="Type or select address..."
+                            style={{ width: '100%' }}
+                            allowClear
+                            onSelect={(value) =>
+                              coordinatorForm.setFieldsValue({ address: value })
+                            }
+                          >
+                            <Input />
+                          </AutoComplete>
+                        ) : isEmailField ? (
+                          <AutoComplete
+                            options={emailOptions}
+                            onSearch={searchEmails}
+                            placeholder="Type or select email..."
+                            style={{ width: '100%' }}
+                            allowClear
+                          >
+                            <Input />
+                          </AutoComplete>
+                        ) : isPhoneField ? (
+                          <AutoComplete
+                            options={phoneOptions}
+                            onSearch={searchPhones}
+                            placeholder="Type or select phone..."
+                            style={{ width: '100%' }}
+                            allowClear
+                          >
+                            <Input />
+                          </AutoComplete>
+                        ) : isTextArea ? (
+                          <TextArea rows={3} />
+                        ) : (
+                          <Input placeholder={`Enter ${field.label}`} />
+                        )}
+                      </Form.Item>
+                    </Col>
+                  )
+                })}
+              </Row>
+            </Form>
+          </div>
+        )}
       </Modal>
 
       <Modal
