@@ -14,17 +14,29 @@ class SignatorySpec(BaseModel):
 
 
 class QuotationRequest(BaseModel):
+    header_code: Optional[str] = "ISO 9001-2015 CMTI/PPBD/001/Rev-00"
+    ref_no: Optional[str] = None
     date: Optional[str] = None
     dept: Optional[str] = None
     email_to: List[str] = Field(default_factory=list)
     email_cc: List[str] = Field(default_factory=list)
     customer_lines: List[str] = Field(default_factory=list)
     kind_attention: Optional[str] = None
+    salutation: Optional[str] = "Dear Sir,"
     reference: Optional[str] = None
+    email_ref: Optional[str] = None
     subject: Optional[str] = None
+    item_description: Optional[str] = None
+    quote_amount: Optional[str] = None
     sac_code: Optional[str] = None
     scope_intro: Optional[str] = None
     scope_items: List[str] = Field(default_factory=list)
+    scope_of_work: List[str] = Field(default_factory=list)
+    validity: Optional[str] = None
+    payment_terms: Optional[str] = None
+    delivery: Optional[str] = None
+    contact_details: Optional[str] = None
+    commercial_contact: Optional[str] = None
     terms_items: List[str] = Field(default_factory=list)
     tables: List[TableSpec] = Field(default_factory=list)
     signatory_name: Optional[str] = None

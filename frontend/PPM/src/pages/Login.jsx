@@ -194,7 +194,7 @@ function LoginVisualPanel() {
           position: relative;
           width: 100%;
           height: 100%;
-          min-height: 600px;
+          min-height: 650px;
           background: #F1F5F9;
           overflow: hidden;
           display: flex;
@@ -222,11 +222,11 @@ function LoginVisualPanel() {
         /* Ambient glowing light source */
         .frh-ambient-glow {
           position: absolute;
-          width: 420px;
-          height: 420px;
+          width: 550px;
+          height: 550px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(0, 150, 255, 0.22) 0%, rgba(0, 150, 255, 0.1) 50%, transparent 70%);
-          filter: blur(60px);
+          background: radial-gradient(circle, rgba(0, 150, 255, 0.25) 0%, rgba(0, 150, 255, 0.12) 50%, transparent 70%);
+          filter: blur(70px);
           transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
           pointer-events: none;
         }
@@ -234,8 +234,8 @@ function LoginVisualPanel() {
         /* 3D Folder & Document Assembly */
         .frh-assembly {
           position: relative;
-          width: 340px;
-          height: 380px;
+          width: 440px;
+          height: 480px;
           transform-style: preserve-3d;
           transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
           animation: frh-idle-float 6s ease-in-out 1.5s infinite;
@@ -243,20 +243,20 @@ function LoginVisualPanel() {
 
         @keyframes frh-idle-float {
           0%, 100% { transform: translateY(0px) rotateX(0deg); }
-          50% { transform: translateY(-8px) rotateX(1deg); }
+          50% { transform: translateY(-10px) rotateX(1deg); }
         }
 
         /* Floor Drop Shadow */
         .frh-floor-shadow {
           position: absolute;
-          bottom: -30px;
+          bottom: -35px;
           left: 50%;
-          width: 280px;
-          height: 30px;
+          width: 380px;
+          height: 35px;
           transform: translateX(-50%) rotateX(90deg);
           border-radius: 50%;
           background: rgba(15, 23, 42, 0.35);
-          filter: blur(15px);
+          filter: blur(18px);
           opacity: 0.4;
           animation: frh-shadow-grow 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
         }
@@ -271,11 +271,11 @@ function LoginVisualPanel() {
           position: absolute;
           bottom: 20px;
           left: 30px;
-          width: 280px;
-          height: 200px;
+          width: 380px;
+          height: 260px;
           background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
           border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 18px;
+          border-radius: 20px;
           box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.05);
           transform: translateZ(-15px);
         }
@@ -284,30 +284,27 @@ function LoginVisualPanel() {
         .frh-folder-back::before {
           content: '';
           position: absolute;
-          top: -14px;
-          left: 20px;
-          width: 90px;
-          height: 16px;
+          top: -18px;
+          left: 24px;
+          width: 120px;
+          height: 20px;
           background: #1E293B;
           border-top: 1px solid rgba(255, 255, 255, 0.12);
           border-left: 1px solid rgba(255, 255, 255, 0.12);
           border-right: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 8px 8px 0 0;
+          border-radius: 10px 10px 0 0;
         }
 
-        /* --- 3D FRONT COVER (Swings Open Fast on Load) --- */
+        /* --- 3D FRONT COVER --- */
         .frh-folder-cover {
           position: absolute;
           bottom: 20px;
           left: 30px;
-          width: 280px;
-          height: 200px;
-          background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-          border: 1px solid rgba(0, 150, 255, 0.4);
-          border-radius: 18px;
+          width: 380px;
+          height: 260px;
           transform-origin: left center;
           transform-style: preserve-3d;
-          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+          box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
           animation: frh-cover-open 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
           z-index: 10;
         }
@@ -318,20 +315,38 @@ function LoginVisualPanel() {
           100% { transform: rotateY(-122deg); }
         }
 
+        .frh-cover-face {
+          position: absolute;
+          inset: 0;
+          border-radius: 20px;
+          backface-visibility: hidden;
+        }
+
+        .frh-cover-front {
+          background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+          border: 1px solid rgba(0, 150, 255, 0.4);
+        }
+
+        .frh-cover-inside {
+          background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+          border: 1px solid rgba(0, 150, 255, 0.3);
+          transform: rotateY(180deg);
+        }
+
         .frh-cover-badge {
           position: absolute;
-          top: 24px;
-          left: 24px;
+          top: 28px;
+          left: 28px;
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 6px 12px;
+          gap: 10px;
+          padding: 8px 16px;
           background: rgba(0, 150, 255, 0.15);
           border: 1px solid rgba(0, 150, 255, 0.3);
-          border-radius: 20px;
+          border-radius: 24px;
           color: #0096FF;
-          font-size: 11px;
-          font-weight: 600;
+          font-size: 13px;
+          font-weight: 700;
           letter-spacing: 0.05em;
           text-transform: uppercase;
         }
@@ -339,20 +354,20 @@ function LoginVisualPanel() {
         /* --- REVEALED DASHBOARD PAPER SHEETS (White Cards) --- */
         .frh-paper-sheet {
           position: absolute;
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(16px);
-          border: 1px solid rgba(226, 232, 240, 0.9);
-          border-radius: 16px;
-          padding: 16px 18px;
-          box-shadow: 0 20px 35px -10px rgba(15, 23, 42, 0.15);
+          background: rgba(255, 255, 255, 0.96);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(226, 232, 240, 0.95);
+          border-radius: 20px;
+          padding: 22px 24px;
+          box-shadow: 0 25px 45px -12px rgba(15, 23, 42, 0.18);
           transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        /* Sheet 1 (Top Stat Card - Slides out fast) */
+        /* Sheet 1 (Top Stat Card) */
         .frh-sheet-stat {
           bottom: 40px;
           left: 45px;
-          width: 260px;
+          width: 350px;
           z-index: 5;
           opacity: 0;
           animation: frh-paper-slide-1 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s forwards;
@@ -365,16 +380,16 @@ function LoginVisualPanel() {
           }
           100% {
             opacity: 1;
-            transform: translate3d(0px, -145px, 65px) rotateY(-2deg) rotateX(4deg);
-            box-shadow: -10px 25px 35px -10px rgba(15, 23, 42, 0.2), 0 0 20px rgba(0, 150, 255, 0.2);
+            transform: translate3d(15px, -180px, 75px) rotateY(-2deg) rotateX(4deg);
+            box-shadow: -12px 30px 45px -12px rgba(15, 23, 42, 0.22), 0 0 25px rgba(0, 150, 255, 0.25);
           }
         }
 
-        /* Sheet 2 (Bottom Yearly Proposals Bar Chart Card - Slides out fast) */
+        /* Sheet 2 (Bottom Yearly Proposals Bar Chart Card) */
         .frh-sheet-bar {
           bottom: 25px;
           left: 40px;
-          width: 270px;
+          width: 360px;
           z-index: 3;
           opacity: 0;
           animation: frh-paper-slide-2 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.75s forwards;
@@ -387,20 +402,20 @@ function LoginVisualPanel() {
           }
           100% {
             opacity: 1;
-            transform: translate3d(-5px, 15px, 15px) rotateY(1deg) rotateX(3deg);
-            box-shadow: 0 25px 40px -12px rgba(15, 23, 42, 0.18);
+            transform: translate3d(-10px, 15px, 20px) rotateY(1deg) rotateX(3deg);
+            box-shadow: 0 30px 50px -15px rgba(15, 23, 42, 0.2);
           }
         }
 
         /* SVG Animated Line Stroke Draw */
         .frh-line-draw {
-          stroke-dasharray: 400;
-          stroke-dashoffset: 400;
+          stroke-dasharray: 500;
+          stroke-dashoffset: 500;
           animation: frh-stroke-draw 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.8s forwards;
         }
 
         @keyframes frh-stroke-draw {
-          0% { stroke-dashoffset: 400; }
+          0% { stroke-dashoffset: 500; }
           100% { stroke-dashoffset: 0; }
         }
 
@@ -448,31 +463,31 @@ function LoginVisualPanel() {
 
         {/* --- SHEET 1: STAT CARD (Positioned at top) --- */}
         <div className="frh-paper-sheet frh-sheet-stat">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-slate-500 tracking-wider uppercase transition-all duration-300">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-bold text-slate-500 tracking-wider uppercase transition-all duration-300">
               {metrics[metricIndex].title}
             </span>
-            <span className="flex h-2 w-2 relative">
+            <span className="flex h-2.5 w-2.5 relative">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${metrics[metricIndex].pingColor}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${metrics[metricIndex].dotColor}`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${metrics[metricIndex].dotColor}`}></span>
             </span>
           </div>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight transition-all duration-300">
+          <div className="text-4xl font-extrabold text-slate-900 tracking-tight my-1 transition-all duration-300">
             {statCount.toLocaleString()}
           </div>
-          <div className={`mt-1 flex items-center gap-1 text-[11px] font-bold transition-all duration-300 ${metrics[metricIndex].badgeColor}`}>
-            <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20">
+          <div className={`mt-1 flex items-center gap-1.5 text-xs font-bold transition-all duration-300 ${metrics[metricIndex].badgeColor}`}>
+            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M12 7a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 11-2 0V9.414l-4.293 4.293a1 1 0 01-1.414 0L7 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L10 11.586 13.586 8H13a1 1 0 01-1-1z" clipRule="evenodd" />
             </svg>
             <span>{metrics[metricIndex].badge}</span>
           </div>
 
           {/* Mini Rotation Indicator Dots */}
-          <div className="mt-2 flex items-center justify-center gap-1.5">
+          <div className="mt-3 flex items-center justify-center gap-2">
             {metrics.map((_, idx) => (
               <span
                 key={idx}
-                className={`h-1.5 rounded-full transition-all duration-400 ${idx === metricIndex ? 'w-4 bg-[#0096FF]' : 'w-1.5 bg-slate-200'
+                className={`h-2 rounded-full transition-all duration-400 ${idx === metricIndex ? 'w-5 bg-[#0096FF]' : 'w-2 bg-slate-200'
                   }`}
               />
             ))}
@@ -481,12 +496,12 @@ function LoginVisualPanel() {
 
         {/* --- SHEET 2: YEARLY PROPOSALS ANIMATED LINE GRAPH CARD --- */}
         <div className="frh-paper-sheet frh-sheet-bar">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-semibold text-slate-500 tracking-wider uppercase">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-500 tracking-wider uppercase">
               Yearly Proposals Trend
             </span>
-            <span className="text-[10px] text-[#0096FF] font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#0096FF] animate-pulse"></span>
+            <span className="text-xs text-[#0096FF] font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#0096FF] animate-pulse"></span>
               Live DB
             </span>
           </div>
@@ -504,9 +519,9 @@ function LoginVisualPanel() {
             )
 
             const maxCount = Math.max(...dataPoints.map(d => d.count), 1)
-            const width = 234
-            const height = 50
-            const padding = 12
+            const width = 310
+            const height = 75
+            const padding = 14
 
             const points = dataPoints.map((item, idx) => {
               const x = padding + (idx * (width - 2 * padding)) / Math.max(dataPoints.length - 1, 1)
@@ -527,7 +542,7 @@ function LoginVisualPanel() {
 
             return (
               <div className="relative">
-                <svg className="w-full h-14 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
+                <svg className="w-full h-20 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
                   <defs>
                     <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
                       <stop offset="0%" stopColor="#3B82F6" />
@@ -547,7 +562,7 @@ function LoginVisualPanel() {
                     d={dPath}
                     fill="none"
                     stroke="url(#lineGrad)"
-                    strokeWidth="2.5"
+                    strokeWidth="3.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     className="frh-line-draw"
@@ -559,16 +574,16 @@ function LoginVisualPanel() {
                       <circle
                         cx={pt.x}
                         cy={pt.y}
-                        r="4"
+                        r="5"
                         fill="#FFFFFF"
                         stroke="#0096FF"
-                        strokeWidth="2"
+                        strokeWidth="2.5"
                         className="transition-transform duration-300 group-hover:scale-150 shadow-md"
                       />
                       <circle
                         cx={pt.x}
                         cy={pt.y}
-                        r="2"
+                        r="2.5"
                         fill="#0096FF"
                       />
                     </g>
@@ -576,10 +591,10 @@ function LoginVisualPanel() {
                 </svg>
 
                 {/* Year Labels */}
-                <div className="flex justify-between items-center px-1 text-[9px] font-semibold text-slate-500 mt-1">
+                <div className="flex justify-between items-center px-1 text-xs font-bold text-slate-600 mt-2">
                   {points.map((pt, idx) => (
                     <div key={idx} className="text-center">
-                      <span className="block text-[8px] text-slate-400 font-normal">{pt.count}</span>
+                      <span className="block text-[10px] text-slate-400 font-medium">{pt.count}</span>
                       <span>{pt.year}</span>
                     </div>
                   ))}
@@ -591,9 +606,20 @@ function LoginVisualPanel() {
 
         {/* Front Cover of Folder */}
         <div className="frh-folder-cover">
-          <div className="frh-cover-badge">
-            <SafetyCertificateOutlined />
-            <span>PPM Records</span>
+          {/* Front Face (Visible when closed) */}
+          <div className="frh-cover-face frh-cover-front">
+            <div className="frh-cover-badge">
+              <SafetyCertificateOutlined />
+              <span>PPM Records</span>
+            </div>
+          </div>
+
+          {/* Inside Face (Visible on left side when open) */}
+          <div className="frh-cover-face frh-cover-inside">
+            <div className="frh-cover-badge">
+              <SafetyCertificateOutlined />
+              <span>PPM Records</span>
+            </div>
           </div>
         </div>
       </div>

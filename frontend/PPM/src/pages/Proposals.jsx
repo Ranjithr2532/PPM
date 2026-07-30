@@ -11,6 +11,7 @@ import {
   CalendarOutlined,
   MessageOutlined,
   UploadOutlined,
+  InboxOutlined,
   FileTextOutlined,
   MoreOutlined,
   ClockCircleOutlined,
@@ -18,6 +19,7 @@ import {
   AppstoreOutlined,
   DollarCircleOutlined,
   PlayCircleOutlined,
+  PaperClipOutlined,
 } from '@ant-design/icons'
 import {
   AutoComplete,
@@ -43,6 +45,7 @@ import {
   Statistic,
   Dropdown,
   Segmented,
+  Upload,
   Tooltip,
   Badge,
 } from 'antd'
@@ -64,6 +67,12 @@ import {
   closeAcknowledgmentModal,
   handleAcknowledgmentSubmit,
 } from '../utils/acknowledgment.js'
+import {
+  openQuotationModal,
+  closeQuotationModal,
+  handleQuotationSubmit,
+  uploadAndParseQuotationDocx,
+} from '../utils/quotation.js'
 
 dayjs.extend(isSameOrAfter)
 dayjs.extend(isSameOrBefore)
@@ -465,7 +474,181 @@ function Proposals() {
   const [acknowledgmentLoading, setAcknowledgmentLoading] = useState(false)
   const [acknowledgmentForm] = Form.useForm()
 
+  // Quotation modal state
+  const [quotationModalOpen, setQuotationModalOpen] = useState(false)
+  const [selectedProposalForQuotation, setSelectedProposalForQuotation] = useState(null)
+  const [quotationLoading, setQuotationLoading] = useState(false)
+  const [quotationForm] = Form.useForm()
+  const [quotationScopeItems, setQuotationScopeItems] = useState([])
+  const [docxParsingLoading, setDocxParsingLoading] = useState(false)
+  const [newScopeInput, setNewScopeInput] = useState('')
+
   const [filtersOpen, setFiltersOpen] = useState(false)
+
+  // Allotment Sheet modal state
+  const [allotmentModalVisible, setAllotmentModalVisible] = useState(false)
+  const [selectedProposalForAllotment, setSelectedProposalForAllotment] = useState(null)
+  const [allotmentData, setAllotmentData] = useState(null)
+  const [loadingAllotment, setLoadingAllotment] = useState(false)
+
+  const handleOpenAllotmentModal = (record) => {
+    const projectId = record?.id
+    if (!projectId) {
+      message.error('Project ID not found')
+      return
+    }
+
+    setSelectedProposalForAllotment(record)
+    setAllotmentModalVisible(true)
+    setLoadingAllotment(true)
+    setAllotmentData(null)
+
+    fetch(`${API_BASE_URL}/proposals/payments/${projectId}`, {
+      headers: { accept: 'application/json' },
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errText = await res.text().catch(() => 'Failed to load allotment sheet')
+          throw new Error(errText || 'Failed to load allotment sheet')
+        }
+        return res.json()
+      })
+      .then((data) => {
+        setAllotmentData(data)
+      })
+      .catch((err) => {
+        console.error('Allotment sheet fetch error:', err)
+        message.error(err.message || 'Failed to load allotment sheet')
+      })
+      .finally(() => {
+        setLoadingAllotment(false)
+      })
+  }
+
+  const handleCloseAllotmentModal = () => {
+    setAllotmentModalVisible(false)
+    setSelectedProposalForAllotment(null)
+    setAllotmentData(null)
+    setLoadingAllotment(false)
+  }
+
+  const handleDownloadAllotment = async (format) => {
+    const projectId = selectedProposalForAllotment?.id
+    if (!projectId) {
+      message.error('Project ID not found')
+      return
+    }
+
+    const normalizedFormat = (format || '').toLowerCase() === 'pdf' ? 'pdf' : 'word'
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/proposals/payments/${projectId}`, {
+        headers: { accept: 'application/json' },
+      })
+      if (!res.ok) {
+        throw new Error('Failed to fetch allotment data')
+      }
+      const data = await res.json()
+      const paymentsRows = Array.isArray(data?.payments) ? data.payments : []
+
+      const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Allotment Sheet</title>
+    <style>
+      body { font-family: Arial, sans-serif; color: #000; padding: 32px; }
+      h2 { text-align: center; margin-bottom: 32px; }
+      .label { font-weight: 600; margin-right: 8px; }
+      .block { margin-bottom: 6px; }
+      table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+      th, td { border: 1px solid #000; padding: 4px; font-size: 12px; }
+      .header-table { width: 100%; border: none; margin-bottom: 8px; }
+      .header-table td { border: none; padding: 0; }
+      .header-left { text-align: left; }
+      .header-right { text-align: right; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <h2>PP &amp; BD DEPT</h2>
+      <table class="header-table">
+        <tr>
+          <td class="header-left">
+            <span class="label">Released to C -</span>
+            <span class="label">${data?.center || selectedProposalForAllotment?.center || ''}</span>
+          </td>
+          <td class="header-right">
+            <span class="label">Date:</span>
+            <span class="label">${data?.order_date || selectedProposalForAllotment?.enquiry_date || ''}</span>
+          </td>
+        </tr>
+      </table>
+      <div class="block"><span class="label">${data?.activity || selectedProposalForAllotment?.activity || selectedProposalForAllotment?.quote_description || 'Project Name'}</span></div>
+      <div class="block"><span class="label">Customer:</span><span>${(data?.party_name || selectedProposalForAllotment?.customer_name || '') + (data?.address ? ', ' + data.address : '')}</span></div>
+      <div class="block"><span class="label">Contact Person:</span><span>${data?.email || selectedProposalForAllotment?.email || ''}</span></div>
+      <div class="block"><span class="label">Email Reference:</span><span>${data?.email_reference || selectedProposalForAllotment?.email_reference || ''}</span></div>
+      <div class="block"><span class="label">Project Co-ordinator:</span><span>${data?.project_co_ordinator || selectedProposalForAllotment?.project_co_ordinator || ''}</span></div>
+      <div class="block"><span class="label">Project Number:</span><span class="label">${data?.project_number || selectedProposalForAllotment?.project_number || ''}</span></div>
+      <div class="block"><span class="label">Order Value:</span><span>${data?.order_value || selectedProposalForAllotment?.quote_amount || ''}</span></div>
+      <div class="block"><span class="label">Purchase order No:</span><span>${data?.order_number || selectedProposalForAllotment?.order_number || ''}</span></div>
+      <div class="block"><span class="label">Delivery date:</span><span>${data?.delivery_date || selectedProposalForAllotment?.delivery_date || ''}</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Full / Stage Payment</th>
+            <th>Description</th>
+            <th>Invoice No and Amount</th>
+            <th>Invoice Date</th>
+            <th>Payment Received</th>
+            <th>Payment Received Date</th>
+            <th>Balance amount and remarks</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${paymentsRows.length > 0 ? paymentsRows.map((row, idx) => `
+            <tr>
+              <td>${idx + 1}</td>
+              <td>${row.description || row.stage_name || row.remarks || row.follow_up_status || ''}</td>
+              <td>${row.invoice_no || ''}</td>
+              <td>${row.invoice_date || ''}</td>
+              <td>${row.amount_recieved || ''}</td>
+              <td>${row.recieved_date || ''}</td>
+              <td>${row.bal || ''}</td>
+            </tr>`).join('') : `
+            <tr><td colspan="7" style="text-align:center;color:#666;">No payment records available</td></tr>
+          `}
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>`
+
+      if (normalizedFormat === 'word') {
+        const blob = new Blob([html], { type: 'application/msword' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `allotment-${projectId}.doc`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } else {
+        const win = window.open('', '_blank')
+        if (!win) {
+          message.error('Popup blocked. Please allow popups to view/download PDF.')
+          return
+        }
+        win.document.open()
+        win.document.write(html + '<script>window.print();</script>')
+        win.document.close()
+      }
+    } catch (err) {
+      console.error('Allotment download error:', err)
+      message.error(err.message || 'Failed to download allotment sheet')
+    }
+  }
 
   const fetchProjectDocuments = useCallback(async (projectId) => {
     setDocsLoading(true)
@@ -2204,16 +2387,28 @@ function Proposals() {
           const isGuest = ['guest', 'role'].includes(currentUserRole?.toLowerCase().trim())
 
           const menuItems = [
-            ...(isProposalConverted(record.proposals_converted)
-              ? [
+            {
+              key: 'generators',
+              label: (
+                <span title="Document Generators" style={{ display: 'flex', justifyContent: 'center', fontSize: '16px' }}>
+                  <FileTextOutlined />
+                </span>
+              ),
+              children: [
                 {
-                  key: 'generators',
-                  label: (
-                    <span title="Document Generators" style={{ display: 'flex', justifyContent: 'center', fontSize: '16px' }}>
-                      <FileTextOutlined />
-                    </span>
-                  ),
-                  children: [
+                  key: 'quotation',
+                  label: 'Quotation Generator',
+                  onClick: () =>
+                    openQuotationModal(
+                      record,
+                      quotationForm,
+                      setSelectedProposalForQuotation,
+                      setQuotationModalOpen,
+                      setQuotationScopeItems
+                    ),
+                },
+                ...(isProposalConverted(record.proposals_converted)
+                  ? [
                     {
                       key: 'acknowledgment',
                       label: 'Acknowledgment Generator',
@@ -2225,10 +2420,19 @@ function Proposals() {
                           setAcknowledgmentModalOpen
                         ),
                     },
-                  ],
-                },
-              ]
-              : []),
+                  ]
+                  : []),
+                ...(record.project_number && String(record.project_number).trim() !== ''
+                  ? [
+                    {
+                      key: 'allotment',
+                      label: 'Project Allotment Sheet',
+                      onClick: () => handleOpenAllotmentModal(record),
+                    },
+                  ]
+                  : []),
+              ],
+            },
             ...(!isGuest
               ? [
                 { type: 'divider' },
@@ -3269,9 +3473,52 @@ function Proposals() {
                                 title: 'Uploaded At',
                                 dataIndex: 'created_at',
                                 key: 'created_at',
-                                width: 180,
+                                width: 150,
                                 render: (value) =>
                                   value ? dayjs(value).format(DISPLAY_DATE_FORMAT + ' HH:mm') : '-',
+                              },
+                              {
+                                title: 'Attachments',
+                                key: 'attachments',
+                                width: 200,
+                                render: (_, record) => {
+                                  let atts = record?.attachment || record?.attachments || []
+                                  if (typeof atts === 'string') {
+                                    try {
+                                      atts = JSON.parse(atts)
+                                    } catch {
+                                      atts = [atts]
+                                    }
+                                  }
+                                  if (!Array.isArray(atts)) atts = atts ? [atts] : []
+                                  const list = atts.filter((url) => url && typeof url === 'string')
+                                  if (!list.length) return <span className="text-gray-400 text-xs">-</span>
+                                  return (
+                                    <div className="flex flex-wrap gap-1">
+                                      {list.map((url, idx) => {
+                                        let fileName = `Attachment ${idx + 1}`
+                                        try {
+                                          const parts = url.split('/')
+                                          const rawName = parts[parts.length - 1].split('?')[0]
+                                          if (rawName) fileName = decodeURIComponent(rawName)
+                                        } catch (e) {}
+                                        return (
+                                          <a
+                                            key={idx}
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded text-xs transition-colors"
+                                            title={fileName}
+                                          >
+                                            <PaperClipOutlined className="text-blue-500 text-xs" />
+                                            <span className="max-w-[120px] truncate">{fileName}</span>
+                                          </a>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                },
                               },
                               {
                                 title: 'View',
@@ -3825,8 +4072,51 @@ function Proposals() {
               title: 'Uploaded At',
               dataIndex: 'created_at',
               key: 'created_at',
-              width: 180,
+              width: 150,
               render: (value) => (value ? dayjs(value).format(DISPLAY_DATE_FORMAT + ' HH:mm') : '-'),
+            },
+            {
+              title: 'Attachments',
+              key: 'attachments',
+              width: 200,
+              render: (_, record) => {
+                let atts = record?.attachment || record?.attachments || []
+                if (typeof atts === 'string') {
+                  try {
+                    atts = JSON.parse(atts)
+                  } catch {
+                    atts = [atts]
+                  }
+                }
+                if (!Array.isArray(atts)) atts = atts ? [atts] : []
+                const list = atts.filter((url) => url && typeof url === 'string')
+                if (!list.length) return <span className="text-gray-400 text-xs">-</span>
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {list.map((url, idx) => {
+                      let fileName = `Attachment ${idx + 1}`
+                      try {
+                        const parts = url.split('/')
+                        const rawName = parts[parts.length - 1].split('?')[0]
+                        if (rawName) fileName = decodeURIComponent(rawName)
+                      } catch (e) {}
+                      return (
+                        <a
+                          key={idx}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded text-xs transition-colors"
+                          title={fileName}
+                        >
+                          <PaperClipOutlined className="text-blue-500 text-xs" />
+                          <span className="max-w-[120px] truncate">{fileName}</span>
+                        </a>
+                      )
+                    })}
+                  </div>
+                )
+              },
             },
             {
               title: 'View',
@@ -4744,6 +5034,368 @@ function Proposals() {
             </Form.Item>
           </div>
         </Form>
+      </Modal>
+
+      {/* CMTI Quotation Generator Modal */}
+      <Modal
+        title={
+          <div className="flex flex-col">
+            <span className="text-lg font-semibold text-slate-800">
+              CMTI Quotation Generator
+            </span>
+            <span className="text-xs text-slate-400">
+              ISO 9001-2015 CMTI/PPBD/001/Rev-00 official quotation generator template (.docx)
+            </span>
+          </div>
+        }
+        open={quotationModalOpen}
+        onCancel={() => closeQuotationModal(setQuotationModalOpen, setSelectedProposalForQuotation, quotationForm, setQuotationScopeItems)}
+        width={850}
+        styles={{ body: { padding: '16px' } }}
+        footer={[
+          <Button key="cancel" onClick={() => closeQuotationModal(setQuotationModalOpen, setSelectedProposalForQuotation, quotationForm, setQuotationScopeItems)}>
+            Cancel
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            icon={<DownloadOutlined />}
+            loading={quotationLoading}
+            onClick={() => quotationForm.submit()}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            Generate & Download Quotation (.docx)
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4">
+          {/* Docx Upload & Parse Banner */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+            <p className="text-xs font-semibold text-blue-800 mb-1">
+              Upload Existing Proposal / Quotation Word Document (.docx)
+            </p>
+            <Upload.Dragger
+              maxCount={1}
+              accept=".docx"
+              showUploadList={false}
+              beforeUpload={async (file) => {
+                if (!file.name.toLowerCase().endsWith('.docx')) {
+                  message.error('Invalid file format. The document parser requires a Microsoft Word (.docx) file.')
+                  return false
+                }
+                setDocxParsingLoading(true)
+                try {
+                  const extracted = await uploadAndParseQuotationDocx(file)
+                  if (extracted) {
+                    if (extracted.scope_of_work && extracted.scope_of_work.length > 0) {
+                      setQuotationScopeItems(extracted.scope_of_work)
+                    }
+                    quotationForm.setFieldsValue({
+                      header_code: extracted.header_code || 'ISO 9001-2015 CMTI/PPBD/001/Rev-00',
+                      ref_no: extracted.ref_no || '',
+                      date: extracted.date ? dayjs(extracted.date, ['DD.MM.YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']) : dayjs(),
+                      customer_lines_str: extracted.customer_lines && extracted.customer_lines.length > 0 ? extracted.customer_lines.join('\n') : '',
+                      kind_attention: extracted.kind_attention || '',
+                      salutation: extracted.salutation || 'Dear Sir,',
+                      subject: extracted.subject || '',
+                      email_ref: extracted.email_ref || '',
+                      item_description: extracted.item_description || '',
+                      quote_amount: extracted.quote_amount || '',
+                      validity: extracted.validity || '',
+                      payment_terms: extracted.payment_terms || extracted.payment_terms_and_condition || extracted.payment_terms_and_conditions || '',
+                      delivery: extracted.delivery || '',
+                      contact_details: extracted.contact_details || '',
+                      commercial_contact: extracted.commercial_contact || '',
+                      signatory_name: extracted.signatory_name || '',
+                      signatory_designation: extracted.signatory_designation || '',
+                    })
+                  }
+                } finally {
+                  setDocxParsingLoading(false)
+                }
+                return false
+              }}
+              className="!p-2"
+            >
+              <div className="flex items-center justify-center gap-2">
+                <InboxOutlined className="text-blue-600 text-base" />
+                <span className="text-xs text-slate-600 font-medium">
+                  {docxParsingLoading ? 'Parsing document details...' : 'Click or Drag .docx file here to extract and pre-fill form fields'}
+                </span>
+              </div>
+            </Upload.Dragger>
+          </div>
+
+          <Form
+            form={quotationForm}
+            layout="vertical"
+            onFinish={(values) =>
+              handleQuotationSubmit(
+                values,
+                quotationScopeItems,
+                selectedProposalForQuotation,
+                setQuotationLoading,
+                () => closeQuotationModal(setQuotationModalOpen, setSelectedProposalForQuotation, quotationForm, setQuotationScopeItems)
+              )
+            }
+          >
+            <Row gutter={[12, 12]}>
+              <Col span={8}>
+                <Form.Item label="Header Code" name="header_code" rules={[{ required: true }]}>
+                  <Input placeholder="Enter Header Code" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="Ref No." name="ref_no">
+                  <Input placeholder="Enter Reference Number (or leave blank)" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="Date" name="date" rules={[{ required: true }]}>
+                  <DatePicker style={{ width: '100%' }} format={DISPLAY_DATE_FORMAT} />
+                </Form.Item>
+              </Col>
+
+              <Col span={16}>
+                <Form.Item label="Customer & Address (One line per entry)" name="customer_lines_str" rules={[{ required: true }]}>
+                  <TextArea rows={3} placeholder="Enter Customer Name and Address (one line per entry)" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="Kind Attention" name="kind_attention">
+                  <Input placeholder="Enter Kind Attention" />
+                </Form.Item>
+                <Form.Item label="Salutation" name="salutation">
+                  <Input placeholder="Enter Salutation" />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item label="Subject" name="subject" rules={[{ required: true }]}>
+                  <Input placeholder="Enter Subject" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Email Reference" name="email_ref" rules={[{ required: true }]}>
+                  <Input placeholder="Enter Email Reference" />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item label="Item / Work Description" name="item_description" rules={[{ required: true }]}>
+                  <Input placeholder="Enter Item / Work Description" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Quotation Charges / Amount" name="quote_amount" rules={[{ required: true }]}>
+                  <Input placeholder="Enter Quotation Amount / Charges" />
+                </Form.Item>
+              </Col>
+
+              {/* Scope of Work Section */}
+              <Col span={24}>
+                <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-700">Scope of Work Items</span>
+                    <span className="text-[11px] text-slate-400">{quotationScopeItems.length} items defined</span>
+                  </div>
+                  <div className="space-y-1.5 mb-2">
+                    {quotationScopeItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+                        <span>{idx + 1}. {item}</span>
+                        <Button
+                          size="small"
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => setQuotationScopeItems((prev) => prev.filter((_, i) => i !== idx))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      size="small"
+                      placeholder="Add scope of work item..."
+                      value={newScopeInput}
+                      onChange={(e) => setNewScopeInput(e.target.value)}
+                      onPressEnter={() => {
+                        if (newScopeInput.trim()) {
+                          setQuotationScopeItems((prev) => [...prev, newScopeInput.trim()])
+                          setNewScopeInput('')
+                        }
+                      }}
+                    />
+                    <Button
+                      size="small"
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        if (newScopeInput.trim()) {
+                          setQuotationScopeItems((prev) => [...prev, newScopeInput.trim()])
+                          setNewScopeInput('')
+                        }
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </Col>
+
+              <Col span={8}>
+                <Form.Item label="Quotation Validity" name="validity">
+                  <Input placeholder="Enter Quotation Validity" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="Payment Terms" name="payment_terms">
+                  <Input placeholder="Enter Payment Terms" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="Delivery" name="delivery">
+                  <Input placeholder="Enter Delivery Period" />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item label="Scientist Contact Info" name="contact_details">
+                  <TextArea rows={2} placeholder="Enter Scientist Contact Details" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Commercial Contact Info" name="commercial_contact">
+                  <TextArea rows={2} placeholder="Enter Commercial Contact Details" />
+                </Form.Item>
+              </Col>
+
+              <Col span={12}>
+                <Form.Item label="Signatory Name" name="signatory_name">
+                  <Input placeholder="Enter Signatory Name" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Signatory Designation" name="signatory_designation">
+                  <TextArea rows={2} placeholder="Enter Signatory Designation" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* Allotment Sheet Modal */}
+      <Modal
+        title={`Allotment Sheet - ${selectedProposalForAllotment?.quote_reference || selectedProposalForAllotment?.project_number || ''}`}
+        open={allotmentModalVisible}
+        onCancel={handleCloseAllotmentModal}
+        footer={[
+          <Button key="word" icon={<DownloadOutlined />} onClick={() => handleDownloadAllotment('word')}>
+            Download Word
+          </Button>,
+          <Button key="pdf" type="primary" icon={<DownloadOutlined />} onClick={() => handleDownloadAllotment('pdf')}>
+            Download / Print PDF
+          </Button>,
+          <Button key="close" onClick={handleCloseAllotmentModal}>
+            Close
+          </Button>,
+        ]}
+        width={900}
+      >
+        <div className="bg-white text-black p-6 max-h-[80vh] overflow-auto border border-slate-200 rounded-lg">
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-bold text-slate-900 tracking-wide">PP &amp; BD DEPT</h2>
+          </div>
+
+          {loadingAllotment && (
+            <div className="py-10 text-center text-slate-500 font-medium">Loading allotment sheet data...</div>
+          )}
+
+          {!loadingAllotment && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <div>
+                  <span className="font-bold text-slate-800 mr-2">Released to C -</span>
+                  <span className="font-semibold text-blue-600">{allotmentData?.center || selectedProposalForAllotment?.center || '-'}</span>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-800 mr-2">Date:</span>
+                  <span className="font-medium text-slate-700">{allotmentData?.order_date || selectedProposalForAllotment?.enquiry_date || '-'}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <span className="font-bold text-slate-900 text-sm">
+                  {allotmentData?.activity || selectedProposalForAllotment?.activity || selectedProposalForAllotment?.quote_description || 'Project Name'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-800 bg-white p-3 rounded-lg border border-slate-100">
+                <div><span className="font-semibold text-slate-600 mr-2">Customer:</span> {allotmentData?.party_name || selectedProposalForAllotment?.customer_name || '-'}{allotmentData?.address ? `, ${allotmentData.address}` : ''}</div>
+                <div><span className="font-semibold text-slate-600 mr-2">Contact Person / Email:</span> {allotmentData?.email || selectedProposalForAllotment?.email || '-'}</div>
+                <div><span className="font-semibold text-slate-600 mr-2">Email Reference:</span> {allotmentData?.email_reference || selectedProposalForAllotment?.email_reference || '-'}</div>
+                <div><span className="font-semibold text-slate-600 mr-2">Project Co-ordinator:</span> {allotmentData?.project_co_ordinator || selectedProposalForAllotment?.project_co_ordinator || '-'}</div>
+                <div><span className="font-semibold text-slate-600 mr-2">Project Number:</span> <span className="font-bold text-slate-900">{allotmentData?.project_number || selectedProposalForAllotment?.project_number || '-'}</span></div>
+                <div><span className="font-semibold text-slate-600 mr-2">Order Value:</span> <span className="font-semibold text-emerald-600">{allotmentData?.order_value || selectedProposalForAllotment?.quote_amount || '-'}</span></div>
+                <div><span className="font-semibold text-slate-600 mr-2">Purchase Order No:</span> {allotmentData?.order_number || selectedProposalForAllotment?.order_number || '-'}</div>
+                <div><span className="font-semibold text-slate-600 mr-2">Delivery Date:</span> {allotmentData?.delivery_date || selectedProposalForAllotment?.delivery_date || '-'}</div>
+              </div>
+
+              <div className="mt-4">
+                <h4 className="font-bold text-xs text-slate-700 mb-2">Payment Details:</h4>
+                <table className="w-full border-collapse border border-slate-300 text-xs">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Full / Stage Payment</th>
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Description</th>
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Invoice No &amp; Amount</th>
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Invoice Date</th>
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Payment Received</th>
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Received Date</th>
+                      <th className="border border-slate-300 px-2.5 py-1.5 text-left font-semibold">Balance &amp; Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allotmentData?.payments && Array.isArray(allotmentData.payments) && allotmentData.payments.length > 0 ? (
+                      allotmentData.payments.map((row, idx) => (
+                        <tr key={row.id || idx}>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{idx + 1}</td>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{row.description || row.stage_name || row.remarks || row.follow_up_status || '-'}</td>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{row.invoice_no || '-'}</td>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{row.invoice_date || '-'}</td>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{row.amount_recieved || '-'}</td>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{row.recieved_date || '-'}</td>
+                          <td className="border border-slate-300 px-2.5 py-1.5">{row.bal || '-'}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="7" className="border border-slate-300 px-2.5 py-2 text-center text-slate-400">
+                          No payment records available
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-between items-start text-xs pt-4 border-t border-slate-200 mt-6">
+                <div>
+                  <div className="font-semibold text-slate-700 mb-2">Copy to:</div>
+                  <div className="flex gap-6 text-slate-600 font-medium">
+                    <span>GH (P&amp;S)</span>
+                    <span>Sr. CAO</span>
+                    <span>GH (C-{allotmentData?.center || selectedProposalForAllotment?.center || ''})</span>
+                    <span>CH (C-{allotmentData?.center || selectedProposalForAllotment?.center || ''})</span>
+                  </div>
+                </div>
+                <div className="text-right font-bold text-slate-800">CH (PP&amp;BD)</div>
+              </div>
+              <div className="text-xs font-semibold text-slate-500 italic">Director: For kind information</div>
+            </div>
+          )}
+        </div>
       </Modal>
 
       <FloatingChatsWidget

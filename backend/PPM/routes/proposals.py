@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
  
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func , desc , or_ , and_
@@ -21,6 +21,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic_schema.response import ProposalResponse
 from typing import List as ListType
 from services.notification import create_notification
+from services.quotation_parser import parse_docx_quotation
 from datetime import date
 import re
 
@@ -1575,26 +1576,68 @@ def get_proposal_with_payments(proposal_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/add-proposal-coordinator", status_code=status.HTTP_201_CREATED)
-def add_proposal_coordinator(
-    payload: ProposalCoordinatorCreate,
+async def add_proposal_coordinator(
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    try:
-        data = payload.dict(exclude_unset=True)
-    except AttributeError:
-        data = payload.model_dump(exclude_unset=True)
+    content_type = request.headers.get("content-type", "").lower()
 
-    # Create Proposal
-    proposal = Proposal(**data)
+    # 1. Upload Proposal Document (.docx) via multipart/form-data
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        mode = form.get("mode")
+        file_obj = form.get("file")
+
+        if (mode == "upload" or file_obj) and hasattr(file_obj, "filename") and file_obj.filename:
+            filename = file_obj.filename
+            if not filename.lower().endswith(".docx"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid file format. Only Microsoft Word (.docx) files are supported."
+                )
+
+            file_bytes = await file_obj.read()
+            if not file_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Uploaded file is empty."
+                )
+
+            try:
+                extracted_data = parse_docx_quotation(file_bytes, filename=filename)
+                return {
+                    "success": True,
+                    "mode": "upload",
+                    "data": extracted_data
+                }
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(e)
+                )
+
+        # Fallback if form-data contains proposal fields for creation
+        data = {k: v for k, v in form.items() if k not in ["mode", "file"]}
+    else:
+        # 2. Manual Entry / Final Proposal Submission via JSON payload
+        try:
+            data = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON request payload format.")
+
+    # Filter data to only valid keys matching Proposal model attributes
+    valid_keys = {c.key for c in sa_inspect(Proposal).mapper.column_attrs}
+    filtered_data = {k: v for k, v in data.items() if k in valid_keys and v is not None}
+
+    # Create Proposal record in database
+    proposal = Proposal(**filtered_data)
     db.add(proposal)
     db.commit()
     db.refresh(proposal)
-    # ------------------------------------------
-    # Optional: Send Notification
-    # ------------------------------------------
+
     create_notification(
         db=db,
-        user_name=proposal.quotation_given_by_name,
+        user_name=proposal.quotation_given_by_name or "admin",
         message=f"Coordinator created proposal for {proposal.customer_name}",
         proposal_id=proposal.id,
         trigerred_by="Coordinator"
@@ -1603,7 +1646,7 @@ def add_proposal_coordinator(
     return {
         "message": "Proposal created successfully by coordinator",
         "proposal_id": proposal.id,
-        "data": data
+        "data": filtered_data
     }
 
 

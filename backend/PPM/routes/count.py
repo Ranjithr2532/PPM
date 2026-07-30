@@ -147,3 +147,66 @@ def get_yearly_proposal_counts(
     }
 
 
+@router.get("/unknown")
+def get_unknown_year_proposals(
+    user_name: Optional[str] = Query(None),
+    user_role: Optional[str] = Query(None),
+    user_group: Optional[str] = Query(None),
+    centre: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns list of proposals where year could not be determined ('Unknown'),
+    including proposal ID, activity, customer details, and dates.
+    """
+    filters = [Proposal.is_acknowledged == True]
+
+    if user_role and user_role.lower() == 'gh' and user_group:
+        filters.append(func.lower(Proposal.group) == user_group.lower())
+    elif user_role and user_role.lower() == 'scientist' and user_name:
+        filters.append(
+            or_(
+                func.lower(Proposal.project_co_ordinator) == user_name.lower(),
+                func.lower(Proposal.quotation_given_by_name) == user_name.lower()
+            )
+        )
+    if centre:
+        filters.append(func.lower(Proposal.center) == centre.lower())
+
+    from sqlalchemy import case
+
+    year_expr = case(
+        (func.coalesce(Proposal.enquiry_date, '') != '', func.substring(Proposal.enquiry_date, r'(20\d{2}|19\d{2})')),
+        (func.coalesce(Proposal.quote_date, '') != '', func.substring(Proposal.quote_date, r'(20\d{2}|19\d{2})')),
+        else_=func.to_char(Proposal.created_at, 'YYYY')
+    )
+
+    results = (
+        db.query(Proposal, year_expr.label("year"))
+        .filter(*filters)
+        .all()
+    )
+
+    unknown_list = []
+    for prop, yr in results:
+        if not yr or str(yr).strip() == "" or yr == "Unknown":
+            unknown_list.append({
+                "id": prop.id,
+                "activity": prop.activity or prop.quote_description or "",
+                "customer_name": prop.customer_name or "",
+                "quote_reference": prop.quote_reference or "",
+                "quote_description": prop.quote_description or "",
+                "enquiry_date": prop.enquiry_date or "",
+                "quote_date": prop.quote_date or "",
+                "center": prop.center or "",
+                "project_co_ordinator": prop.project_co_ordinator or "",
+                "created_at": prop.created_at.strftime("%Y-%m-%d %H:%M:%S") if prop.created_at else ""
+            })
+
+    return {
+        "unknown_proposals": unknown_list,
+        "total": len(unknown_list)
+    }
+
+
+

@@ -287,7 +287,7 @@ function Sidebar() {
                 )
               }] : []),
               ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
-              ...(!isGuest && !isDirector ? [{ key: 'document-generate', icon: <FileWordOutlined />, label: 'Document Generator' }] : []),
+              // Hidden as requested: ...(!isGuest && !isDirector ? [{ key: 'document-generate', icon: <FileWordOutlined />, label: 'Document Generator' }] : []),
 
               ...(isGHOrScientist
                 ? [
