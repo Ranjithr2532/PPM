@@ -31,6 +31,7 @@ from routes.dynamic_table import router as dynamic_table_router
 from routes.groupchatroutes import router as groupchat_router
 from routes.count import router as count_router
 from routes.quotation import router as quotation_router
+from routes.manpower import router as manpower_router
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -75,4 +76,5 @@ app.include_router(acknowledgment_router, dependencies=jwt_auth)
 app.include_router(dynamic_table_router, dependencies=jwt_auth)
 app.include_router(groupchat_router, dependencies=jwt_auth)
 app.include_router(count_router, dependencies=jwt_auth)
+app.include_router(manpower_router, dependencies=jwt_auth)
 

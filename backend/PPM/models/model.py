@@ -179,7 +179,7 @@ class Payment(Base):
     get_tds = Column(String, nullable=True)
     ld = Column(String, nullable=True)
     bal = Column(String, nullable=True)
-    
+    description = Column(String, nullable=True)
     follow_up_status = Column(String, nullable=True)
 
     project_id = Column(Integer, ForeignKey("proposals.id", ondelete="CASCADE"))
@@ -354,7 +354,15 @@ class GroupMember(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     joined_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
 
+class ManpowerRate(Base):
+    __tablename__ = "manpower_rates"
 
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    designation = Column(String, nullable=False, unique=True)
+    rate_other_activities = Column(Numeric(12, 2), nullable=False, default=0)
+    rate_design_developmental_activities = Column(Numeric(12, 2), nullable=False, default=0)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    
 class Message(Base):
     __tablename__ = "messages"
 

@@ -74,7 +74,9 @@ def create_payment(
                 detail=f"Invalid stage_id: {payload.stage_id}"
             )
 
-    payment = Payment(**payload.dict(exclude_unset=True))
+    valid_keys = {c.key for c in Payment.__table__.columns}
+    payment_data = {k: v for k, v in payload.dict(exclude_unset=True).items() if k in valid_keys}
+    payment = Payment(**payment_data)
     db.add(payment)
     db.commit()
     db.refresh(payment)
@@ -145,8 +147,9 @@ def update_payment(
                     detail=f"Invalid stage_id: {sid}"
                 )
 
+    valid_keys = {c.key for c in Payment.__table__.columns}
     for key, value in update_data.items():
-        if key not in ['updated_at', 'updated_by']:
+        if key in valid_keys and key not in ['updated_at', 'updated_by']:
             setattr(payment, key, value)
 
     # Auto-set updated_at and updated_by when payment is edited

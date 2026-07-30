@@ -41,6 +41,12 @@ function Configuration({ projectRows = [] }) {
   const [selectedCentre, setSelectedCentre] = useState(null)
   const [groupForm] = Form.useForm()
   const [currentUserRole, setCurrentUserRole] = useState('')
+  const [manpowerRateData, setManpowerRateData] = useState([])
+  const [manpowerRateLoading, setManpowerRateLoading] = useState(false)
+  const [manpowerRateModalOpen, setManpowerRateModalOpen] = useState(false)
+  const [manpowerRateSubmitLoading, setManpowerRateSubmitLoading] = useState(false)
+  const [editingManpowerRate, setEditingManpowerRate] = useState(null)
+  const [manpowerRateForm] = Form.useForm()
 
   const fetchStages = useCallback(async () => {
     setStageLoading(true)
@@ -106,6 +112,28 @@ function Configuration({ projectRows = [] }) {
     }
   }, [])
 
+  const fetchManpowerRates = useCallback(async () => {
+    setManpowerRateLoading(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/manpower-rates/`, {
+        headers: { accept: 'application/json' },
+      })
+      if (!response.ok) {
+        throw new Error('Unable to fetch manpower rates')
+      }
+      const payload = await response.json()
+      const normalized = Array.isArray(payload)
+        ? payload.map((item, index) => ({ ...item, key: item.id ?? index, slNo: index + 1 }))
+        : []
+      setManpowerRateData(normalized)
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to fetch manpower rates')
+    } finally {
+      setManpowerRateLoading(false)
+    }
+  }, [])
+
   const fetchGroupsForCentre = useCallback(async (centre) => {
     if (!centre?.id) {
       setSelectedCentre(null)
@@ -142,7 +170,76 @@ function Configuration({ projectRows = [] }) {
   useEffect(() => {
     fetchStages()
     fetchCentres()
-  }, [fetchStages, fetchCentres])
+    fetchManpowerRates()
+  }, [fetchStages, fetchCentres, fetchManpowerRates])
+
+  const openManpowerRateModal = (rate = null) => {
+    setEditingManpowerRate(rate)
+    manpowerRateForm.setFieldsValue({
+      designation: rate?.designation ?? '',
+      rate_other_activities: rate?.rate_other_activities ?? undefined,
+      rate_design_developmental_activities: rate?.rate_design_developmental_activities ?? undefined,
+    })
+    setManpowerRateModalOpen(true)
+  }
+
+  const closeManpowerRateModal = () => {
+    setManpowerRateModalOpen(false)
+    setEditingManpowerRate(null)
+    manpowerRateForm.resetFields()
+  }
+
+  const handleManpowerRateSubmit = async () => {
+    try {
+      const values = await manpowerRateForm.validateFields()
+      setManpowerRateSubmitLoading(true)
+      const isEditing = Boolean(editingManpowerRate)
+      const url = isEditing
+        ? `${API_BASE_URL}/manpower-rates/${editingManpowerRate.id}`
+        : `${API_BASE_URL}/manpower-rates/`
+      const method = isEditing ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
+        headers: { accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          designation: values.designation,
+          rate_other_activities: values.rate_other_activities,
+          rate_design_developmental_activities: values.rate_design_developmental_activities,
+        }),
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Unable to save manpower rate')
+      }
+      message.success(isEditing ? 'Manpower rate updated' : 'Manpower rate created')
+      closeManpowerRateModal()
+      fetchManpowerRates()
+    } catch (error) {
+      if (error.errorFields) return
+      console.error(error)
+      message.error(error.message || 'Unable to save manpower rate')
+    } finally {
+      setManpowerRateSubmitLoading(false)
+    }
+  }
+
+  const handleDeleteManpowerRate = async (rate) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/manpower-rates/${rate.id}`, {
+        method: 'DELETE',
+        headers: { accept: '*/*' },
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Unable to delete manpower rate')
+      }
+      message.success('Manpower rate deleted')
+      fetchManpowerRates()
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to delete manpower rate')
+    }
+  }
 
   const openStageModal = (stage = null) => {
     setEditingStage(stage)
@@ -436,6 +533,25 @@ function Configuration({ projectRows = [] }) {
     }] : []),
   ]
 
+  const manpowerRateColumns = [
+    { title: 'Sl no', dataIndex: 'slNo', key: 'slNo' },
+    { title: 'Designation', dataIndex: 'designation', key: 'designation' },
+    { title: 'Rate - Other Activities', dataIndex: 'rate_other_activities', key: 'rate_other_activities' },
+    { title: 'Rate - Design/Developmental Activities', dataIndex: 'rate_design_developmental_activities', key: 'rate_design_developmental_activities' },
+    ...(!isGuest ? [{
+      title: 'Actions',
+      key: 'actions',
+      render: (_, record) => (
+        <Space size="small">
+          <Button type="link" icon={<EditOutlined />} onClick={() => openManpowerRateModal(record)}>Edit</Button>
+          <Popconfirm title="Delete rate" description="This action cannot be undone." okText="Delete" okButtonProps={{ danger: true }} onConfirm={() => handleDeleteManpowerRate(record)}>
+            <Button type="link" danger icon={<DeleteOutlined />}>Delete</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    }] : []),
+  ]
+
   const centreColumns = [
     { title: 'Sl no', dataIndex: 'slNo', key: 'slNo' },
     {
@@ -470,11 +586,11 @@ function Configuration({ projectRows = [] }) {
       <div className="rounded-3xl bg-white p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between">
           <div></div>
-           {!isGuest && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openStageModal()}>
-            Add Stage
-          </Button>
-           )}
+          {!isGuest && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openStageModal()}>
+              Add Stage
+            </Button>
+          )}
         </div>
 
         <Table
@@ -494,13 +610,13 @@ function Configuration({ projectRows = [] }) {
           <div className="flex items-center justify-between">
             <div></div>
             {!isGuest && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => openCentreModal()}
-            >
-              Add Center
-            </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openCentreModal()}
+              >
+                Add Center
+              </Button>
             )}
           </div>
 
@@ -529,15 +645,15 @@ function Configuration({ projectRows = [] }) {
               <Button onClick={handleBackToCentres}>
                 Go Back
               </Button>
-               {!isGuest && (
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => openGroupModal()}
-              >
-                Add Group
-              </Button>
-               )}
+              {!isGuest && (
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => openGroupModal()}
+                >
+                  Add Group
+                </Button>
+              )}
             </Space>
           </div>
 
@@ -551,6 +667,28 @@ function Configuration({ projectRows = [] }) {
           />
         </div>
       )}
+
+      {/* Manpower Rates Section */}
+      <div className="rounded-3xl bg-white p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div></div>
+          {!isGuest && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openManpowerRateModal()}>
+              Add Manpower Rate
+            </Button>
+          )}
+        </div>
+
+        <Table
+          rowKey="key"
+          columns={manpowerRateColumns}
+          dataSource={manpowerRateData}
+          loading={manpowerRateLoading}
+          pagination={{ pageSize: 10 }}
+          bordered
+          title={() => 'Manpower Rates'}
+        />
+      </div>
 
       <Modal
         title={editingStage ? 'Edit Stage' : 'Add Stage'}
@@ -661,6 +799,40 @@ function Configuration({ projectRows = [] }) {
           </Form.Item>
         </Form>
       </Modal>
+      <Modal
+        title={editingManpowerRate ? 'Edit Manpower Rate' : 'Add Manpower Rate'}
+        open={manpowerRateModalOpen}
+        onCancel={closeManpowerRateModal}
+        onOk={handleManpowerRateSubmit}
+        confirmLoading={manpowerRateSubmitLoading}
+        okText={editingManpowerRate ? 'Update' : 'Create'}
+        maskClosable={false}
+      >
+        <Form form={manpowerRateForm} layout="vertical">
+          <Form.Item
+            name="designation"
+            label="Designation"
+            rules={[{ required: true, message: 'Please enter designation' }]}
+          >
+            <Input placeholder="e.g. PA, Scientist, Director" />
+          </Form.Item>
+          <Form.Item
+            name="rate_other_activities"
+            label="Revised Rate - Other Activities (₹/hour)"
+            rules={[{ required: true, message: 'Please enter rate' }]}
+          >
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="Enter rate" />
+          </Form.Item>
+          <Form.Item
+            name="rate_design_developmental_activities"
+            label="Revised Rate - Design/Developmental Activities (₹/hour)"
+            rules={[{ required: true, message: 'Please enter rate' }]}
+          >
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="Enter rate" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
     </div>
   )
 }

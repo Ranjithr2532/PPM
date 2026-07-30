@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   Form,
@@ -16,6 +16,14 @@ import {
   Badge,
   Spin,
   Progress,
+  AutoComplete,
+  InputNumber,
+  Select,
+  Radio,
+  Table,
+  Modal,
+  Drawer,
+  Popover,
 } from 'antd';
 import {
   FileWordOutlined,
@@ -28,6 +36,9 @@ import {
   ReloadOutlined,
   CalendarOutlined,
   MailOutlined,
+  RightOutlined,
+  DownOutlined,
+  UpOutlined,
   BankOutlined,
   FileTextOutlined,
   CheckCircleOutlined,
@@ -41,10 +52,77 @@ import {
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
 
-const { Title, Text, Paragraph } = Typography;
-const { TextArea } = Input;
+const MANPOWER_HEADER = "Manpower";
+const MANPOWER_COLUMNS = ["Role", "Cost Breakup", "Total Amount"];
+const DEFAULT_CUSTOM_COLUMNS = ["Description", "Total Amount"];
+const STANDARD_ROLES = [
+  { value: "Scientist B" },
+  { value: "Scientist C" },
+  { value: "Scientist D" },
+  { value: "Scientist E" },
+  { value: "Scientist F" },
+  { value: "Scientist G" },
+];
+
+function emptyRow(columns, headerName) {
+  const row = {};
+  columns.forEach((col) => {
+    if (col === "Cost Breakup") {
+      row[col] = { type: "hourly", rate: 0, hours: 0, days: 0, quantity: 1 };
+    } else if (col === "Total Amount") {
+      row[col] = 0;
+    } else {
+      row[col] = "";
+    }
+  });
+  return row;
+}
+
+const transformTablesForPreviewAndPayload = (structuredTables) => {
+  return (structuredTables || []).map((tbl) => {
+    if (tbl.header_name === MANPOWER_HEADER) {
+      const headers = ["Role", "Billing Type", "Rate", "Hours / Months", "Days", "Manpower", "Total Amount"];
+      const rows = tbl.rows.map((row) => {
+        const cb = row["Cost Breakup"] || {};
+        const type = cb.type === "monthly" ? "Monthly" : "Hourly";
+        const rate = String(cb.rate ?? 0);
+        const hoursMonths = String(cb.type === "monthly" ? (cb.months ?? 0) : (cb.hours ?? 0));
+        const days = cb.type === "monthly" ? "—" : String(cb.days ?? 0);
+        const qty = String(cb.quantity ?? 1);
+        const total = String(row["Total Amount"] ?? 0);
+        
+        return [
+          row["Role"] || "",
+          type,
+          rate,
+          hoursMonths,
+          days,
+          qty,
+          total
+        ];
+      });
+      return {
+        title: "Manpower Cost Breakdown",
+        headers,
+        rows
+      };
+    } else {
+      const headers = tbl.columns || [];
+      const rows = tbl.rows.map((row) => {
+        return headers.map((col) => String(row[col] ?? ''));
+      });
+      return {
+        title: tbl.header_name || "",
+        headers,
+        rows
+      };
+    }
+  });
+};
 
 export default function DocumentGenerate() {
+  const { Title, Text, Paragraph } = Typography;
+  const { TextArea } = Input;
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(100);
@@ -59,6 +137,7 @@ export default function DocumentGenerate() {
 
   // Dynamic state for Pricing Tables (Starts empty)
   const [tables, setTables] = useState([]);
+  const [isEnteringHeader, setIsEnteringHeader] = useState(false);
 
   // Dynamic state for Multiple Signatories
   const [signatories, setSignatories] = useState([
@@ -167,67 +246,32 @@ export default function DocumentGenerate() {
 
   // Handle table editing
   const handleAddTable = () => {
-    setTables([
-      ...tables,
-      {
-        title: '',
-        headers: ['Sl No', 'Item Description', 'Qty', 'Amount'],
-        rows: [['1', '', '', '']],
-      },
-    ]);
+    const hasManpower = tables.some((t) => t.header_name === MANPOWER_HEADER);
+    if (!hasManpower) {
+      const newTableSpec = {
+        header_name: MANPOWER_HEADER,
+        columns: MANPOWER_COLUMNS,
+        rows: [emptyRow(MANPOWER_COLUMNS, MANPOWER_HEADER)],
+      };
+      setTables([...tables, newTableSpec]);
+    } else {
+      setIsEnteringHeader(true);
+    }
+  };
+
+  const handleAddTableConfirm = (newTableSpec) => {
+    setTables([...tables, newTableSpec]);
+    setIsEnteringHeader(false);
   };
 
   const handleRemoveTable = (tIndex) => {
     setTables(tables.filter((_, i) => i !== tIndex));
   };
 
-  const handleTableTitleChange = (tIndex, value) => {
-    const updated = [...tables];
-    updated[tIndex].title = value;
-    setTables(updated);
-  };
-
-  const handleHeaderChange = (tIndex, hIndex, value) => {
-    const updated = [...tables];
-    updated[tIndex].headers[hIndex] = value;
-    setTables(updated);
-  };
-
-  const handleAddHeaderColumn = (tIndex) => {
-    const updated = [...tables];
-    updated[tIndex].headers.push(`Column ${updated[tIndex].headers.length + 1}`);
-    updated[tIndex].rows.forEach((row) => row.push(''));
-    setTables(updated);
-  };
-
-  const handleRemoveHeaderColumn = (tIndex, hIndex) => {
-    const updated = [...tables];
-    if (updated[tIndex].headers.length <= 1) {
-      message.warning('A table must have at least 1 column');
-      return;
-    }
-    updated[tIndex].headers.splice(hIndex, 1);
-    updated[tIndex].rows.forEach((row) => row.splice(hIndex, 1));
-    setTables(updated);
-  };
-
-  const handleCellChange = (tIndex, rIndex, cIndex, value) => {
-    const updated = [...tables];
-    updated[tIndex].rows[rIndex][cIndex] = value;
-    setTables(updated);
-  };
-
-  const handleAddTableRow = (tIndex) => {
-    const updated = [...tables];
-    const newRow = new Array(updated[tIndex].headers.length).fill('');
-    updated[tIndex].rows.push(newRow);
-    setTables(updated);
-  };
-
-  const handleRemoveTableRow = (tIndex, rIndex) => {
-    const updated = [...tables];
-    updated[tIndex].rows.splice(rIndex, 1);
-    setTables(updated);
+  const handleTableUpdate = (tIndex, updatedTableSpec) => {
+    const next = [...tables];
+    next[tIndex] = updatedTableSpec;
+    setTables(next);
   };
 
   // Signatory handlers
@@ -299,7 +343,7 @@ export default function DocumentGenerate() {
         scope_intro: values.scope_intro || '',
         scope_items: scopeItems,
         terms_items: termsItems,
-        tables: tables,
+        tables: transformTablesForPreviewAndPayload(tables),
         signatory_name: primarySig.name,
         signatory_lines: primarySig.lines,
         signatories: formattedSignatories,
@@ -824,20 +868,28 @@ export default function DocumentGenerate() {
                     </div>
                     <span>6. Pricing & Cost Break-Up Tables</span>
                   </Space>
-                  <Button
-                    type="primary"
-                    size="small"
-                    icon={<PlusOutlined />}
-                    onClick={handleAddTable}
-                    className="rounded-lg font-semibold bg-purple-600 hover:bg-purple-700"
-                  >
-                    Add Table
-                  </Button>
+                  {!isEnteringHeader && (
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={handleAddTable}
+                      className="rounded-lg font-semibold bg-purple-600 hover:bg-purple-700"
+                    >
+                      Add Table
+                    </Button>
+                  )}
                 </div>
               }
               className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
               styles={{ body: { padding: '24px' } }}
             >
+              <AddHeaderForm
+                existingHeaderNames={tables.map((t) => t.header_name)}
+                isEnteringHeader={isEnteringHeader}
+                onAdd={handleAddTableConfirm}
+              />
+
               {tables.length === 0 ? (
                 <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                   No breakdown tables attached. Click <strong>Add Table</strong> to insert a cost summary table.
@@ -851,8 +903,11 @@ export default function DocumentGenerate() {
                     <div className="flex items-center justify-between gap-4">
                       <Input
                         prefix={<Text className="font-semibold text-slate-400 text-xs">Table Title:</Text>}
-                        value={tbl.title}
-                        onChange={(e) => handleTableTitleChange(tIdx, e.target.value)}
+                        value={tbl.header_name}
+                        onChange={(e) => {
+                          const nextTbl = { ...tbl, header_name: e.target.value };
+                          handleTableUpdate(tIdx, nextTbl);
+                        }}
                         placeholder="e.g. Cost Break-Up Summary"
                         className="font-bold text-slate-800 rounded-xl"
                         size="large"
@@ -870,101 +925,10 @@ export default function DocumentGenerate() {
                       </Popconfirm>
                     </div>
 
-                    {/* Column Headers setup */}
-                    <div className="space-y-2">
-                      <Text className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Column Headers ({tbl.headers.length})
-                      </Text>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {tbl.headers.map((h, hIdx) => (
-                          <div
-                            key={hIdx}
-                            className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs"
-                          >
-                            <Input
-                              variant="borderless"
-                              size="small"
-                              value={h}
-                              onChange={(e) => handleHeaderChange(tIdx, hIdx, e.target.value)}
-                              className="w-28 text-xs font-semibold text-slate-700"
-                            />
-                            <Button
-                              type="text"
-                              size="small"
-                              danger
-                              icon={<DeleteOutlined style={{ fontSize: '10px' }} />}
-                              onClick={() => handleRemoveHeaderColumn(tIdx, hIdx)}
-                            />
-                          </div>
-                        ))}
-                        <Button
-                          type="dashed"
-                          size="small"
-                          icon={<PlusOutlined />}
-                          onClick={() => handleAddHeaderColumn(tIdx)}
-                          className="rounded-lg text-xs"
-                        >
-                          Add Column
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Rows Data Matrix */}
-                    <div className="space-y-2 overflow-x-auto">
-                      <Text className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Row Data Items ({tbl.rows.length})
-                      </Text>
-                      <table className="w-full border-collapse bg-white rounded-xl overflow-hidden border border-slate-200 text-sm shadow-2xs">
-                        <thead>
-                          <tr className="bg-slate-100/90 border-b border-slate-200">
-                            {tbl.headers.map((h, hIdx) => (
-                              <th key={hIdx} className="p-2.5 text-left text-xs font-bold text-slate-700">
-                                {h || `Col ${hIdx + 1}`}
-                              </th>
-                            ))}
-                            <th className="p-2.5 text-center w-12 text-xs font-bold text-slate-700">
-                              Action
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tbl.rows.map((row, rIdx) => (
-                            <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
-                              {row.map((cell, cIdx) => (
-                                <td key={cIdx} className="p-1.5">
-                                  <Input
-                                    size="small"
-                                    value={cell}
-                                    onChange={(e) =>
-                                      handleCellChange(tIdx, rIdx, cIdx, e.target.value)
-                                    }
-                                    className="rounded-md text-xs font-medium"
-                                  />
-                                </td>
-                              ))}
-                              <td className="p-1 text-center">
-                                <Button
-                                  type="text"
-                                  danger
-                                  size="small"
-                                  icon={<DeleteOutlined />}
-                                  onClick={() => handleRemoveTableRow(tIdx, rIdx)}
-                                />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <Button
-                        type="dashed"
-                        block
-                        icon={<PlusOutlined />}
-                        onClick={() => handleAddTableRow(tIdx)}
-                        className="mt-2 rounded-xl text-xs font-semibold"
-                      >
-                        Add Row to {tbl.title || 'Table'}
-                      </Button>
-                    </div>
+                    <HeaderRowsEditor
+                      headerItem={tbl}
+                      onChange={(updatedTbl) => handleTableUpdate(tIdx, updatedTbl)}
+                    />
                   </div>
                 ))
               )}
@@ -1233,37 +1197,41 @@ export default function DocumentGenerate() {
                   )}
 
                   {/* Cost Tables Preview */}
-                  {tables.length > 0 && (
-                    <div className="space-y-3 pt-2 border-t border-slate-100">
-                      {tables.map((t, idx) => (
-                        <div key={idx} className="space-y-1">
-                          {t.title && <div className="font-bold text-slate-800">{t.title}</div>}
-                          <table className="w-full border-collapse border border-slate-300 text-[10px]">
-                            <thead>
-                              <tr className="bg-blue-50/80">
-                                {t.headers.map((h, hIdx) => (
-                                  <th key={hIdx} className="border border-slate-300 p-1 font-bold text-slate-800 text-left">
-                                    {h}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {t.rows.map((r, rIdx) => (
-                                <tr key={rIdx}>
-                                  {r.map((cell, cIdx) => (
-                                    <td key={cIdx} className="border border-slate-300 p-1">
-                                      {cell}
-                                    </td>
+                  {(() => {
+                    const previewTables = transformTablesForPreviewAndPayload(tables);
+                    if (previewTables.length === 0) return null;
+                    return (
+                      <div className="space-y-3 pt-2 border-t border-slate-100">
+                        {previewTables.map((t, idx) => (
+                          <div key={idx} className="space-y-1">
+                            {t.title && <div className="font-bold text-slate-800">{t.title}</div>}
+                            <table className="w-full border-collapse border border-slate-300 text-[10px]">
+                              <thead>
+                                <tr className="bg-blue-50/80">
+                                  {t.headers.map((h, hIdx) => (
+                                    <th key={hIdx} className="border border-slate-300 p-1 font-bold text-slate-800 text-left">
+                                      {h}
+                                    </th>
                                   ))}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                              </thead>
+                              <tbody>
+                                {t.rows.map((r, rIdx) => (
+                                  <tr key={rIdx}>
+                                    {r.map((cell, cIdx) => (
+                                      <td key={cIdx} className="border border-slate-300 p-1">
+                                        {cell}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
 
                   {/* Signatories Footer */}
                   {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
@@ -1322,4 +1290,896 @@ export default function DocumentGenerate() {
       </Form>
     </div>
   );
+}
+
+function HeaderRowsEditor({ headerItem, onChange }) {
+    const { header_name: headerName, columns, rows } = headerItem;
+    const [addingColumn, setAddingColumn] = useState(false);
+    const [newColumnName, setNewColumnName] = useState("");
+    const [focusRowIndex, setFocusRowIndex] = useState(null);
+    const [ratesModalOpen, setRatesModalOpen] = useState(false);
+    const [officialRates, setOfficialRates] = useState([]);
+    const [loadingRates, setLoadingRates] = useState(false);
+    const [pendingCustomRate, setPendingCustomRate] = useState(null);
+    const [customRoleInput, setCustomRoleInput] = useState("");
+    const [customRoleModalOpen, setCustomRoleModalOpen] = useState(false);
+
+    useEffect(() => {
+        if (headerName === MANPOWER_HEADER) {
+            axios.get(`${API_BASE_URL}/manpower-rates/`)
+                .then(res => {
+                    if (Array.isArray(res.data)) {
+                        setOfficialRates(res.data);
+                    }
+                })
+                .catch(err => console.error("Failed to load manpower rates", err));
+        }
+    }, [headerName]);
+
+    const fetchOfficialRates = async () => {
+        setLoadingRates(true);
+        try {
+            const res = await axios.get(`${API_BASE_URL}/manpower-rates/`);
+            if (Array.isArray(res.data)) {
+                setOfficialRates(res.data);
+            }
+        } catch (e) {
+            console.error("Failed to fetch manpower rates", e);
+        } finally {
+            setLoadingRates(false);
+        }
+    };
+
+    const roleOptions = useMemo(() => {
+        if (officialRates.length > 0) {
+            return officialRates.map(r => ({
+                value: r.designation,
+                rate_other: r.rate_other_activities,
+                rate_dev: r.rate_design_developmental_activities
+            }));
+        }
+        return STANDARD_ROLES;
+    }, [officialRates]);
+
+    // Auto-complete descriptions storage
+    const [savedDescriptions, setSavedDescriptions] = useState(() => {
+        try {
+            const stored = localStorage.getItem("costEstimation_savedDescriptions");
+            return stored ? JSON.parse(stored) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const saveDescriptionToMemory = (text, rateValue = 0) => {
+        const trimmed = text?.trim();
+        if (!trimmed) return;
+        setSavedDescriptions((prev) => {
+            const existingIdx = prev.findIndex(
+                (item) => item.value.toLowerCase() === trimmed.toLowerCase()
+            );
+            let updated;
+            if (existingIdx > -1) {
+                updated = [...prev];
+                updated[existingIdx] = { value: prev[existingIdx].value, rate: rateValue > 0 ? rateValue : prev[existingIdx].rate };
+            } else {
+                updated = [...prev, { value: trimmed, rate: rateValue }];
+            }
+            localStorage.setItem("costEstimation_savedDescriptions", JSON.stringify(updated));
+            return updated;
+        });
+    };
+
+    const computeRowAmount = (cb) => {
+        if (!cb) return 0;
+        const rate = cb.rate ?? 0;
+        const quantity = cb.quantity ?? 1;
+        const type = cb.type ?? "hourly";
+        if (type === "monthly") {
+            const months = cb.months ?? 0;
+            return rate * months * quantity;
+        } else {
+            const hours = cb.hours ?? 0;
+            const days = cb.days ?? 0;
+            return rate * hours * days * quantity;
+        }
+    };
+
+    const updateRow = (index, key, value) => {
+        const next = [...rows];
+        next[index] = { ...next[index], [key]: value };
+        onChange({ ...headerItem, rows: next });
+    };
+
+    const updateManpowerField = (index, key, val) => {
+        const next = [...rows];
+        const currentCb = next[index]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+        
+        let updatedCb = { ...currentCb, [key]: val ?? 0 };
+        
+        if (key === "type") {
+            updatedCb = {
+                type: val,
+                rate: currentCb.rate ?? 0,
+                quantity: currentCb.quantity ?? 1,
+                hours: val === "hourly" ? (currentCb.hours || 0) : 0,
+                days: val === "hourly" ? (currentCb.days || 0) : 0,
+                months: val === "monthly" ? (currentCb.months || 0) : 0,
+            };
+        }
+        
+        const newAmount = computeRowAmount(updatedCb);
+        
+        next[index] = {
+            ...next[index],
+            "Cost Breakup": updatedCb,
+            "Total Amount": newAmount
+        };
+        onChange({ ...headerItem, rows: next });
+
+        if (key === "rate" && val > 0) {
+            const roleName = next[index]["Role"];
+            if (roleName) {
+                saveDescriptionToMemory(roleName, val);
+            }
+        }
+    };
+
+    const addRow = () => {
+        const nextRows = [...rows, emptyRow(columns, headerName)];
+        onChange({ ...headerItem, rows: nextRows });
+        setFocusRowIndex(nextRows.length - 1);
+    };
+
+    useEffect(() => {
+        if (focusRowIndex !== null) {
+            const inputEl = document.getElementById(`row-desc-${focusRowIndex}`);
+            if (inputEl) {
+                inputEl.focus();
+            }
+            setFocusRowIndex(null);
+        }
+    }, [focusRowIndex]);
+
+    const removeRow = (index) => {
+        onChange({ ...headerItem, rows: rows.filter((_, i) => i !== index) });
+    };
+
+    const removeColumn = (colName) => {
+        const nextColumns = columns.filter((c) => c !== colName);
+        const nextRows = rows.map((r) => {
+            const nextRow = { ...r };
+            delete nextRow[colName];
+            return nextRow;
+        });
+        onChange({ ...headerItem, columns: nextColumns, rows: nextRows });
+    };
+
+    const renameColumn = (oldName, newName) => {
+        const trimmed = newName.trim();
+        if (!trimmed) return;
+        if (trimmed === oldName) return;
+        if (columns.includes(trimmed)) {
+            message.warning("Column name already exists");
+            return;
+        }
+        const nextColumns = columns.map((c) => (c === oldName ? trimmed : c));
+        const nextRows = rows.map((r) => {
+            const nextRow = { ...r };
+            if (oldName in nextRow) {
+                nextRow[trimmed] = nextRow[oldName];
+                delete nextRow[oldName];
+            }
+            return nextRow;
+        });
+        onChange({ ...headerItem, columns: nextColumns, rows: nextRows });
+    };
+
+    const [editingCol, setEditingCol] = useState(null);
+    const [tempColName, setTempColName] = useState("");
+
+    const startEditingCol = (col) => {
+        setEditingCol(col);
+        setTempColName(col);
+    };
+
+    const confirmRenameCol = (oldName) => {
+        const trimmed = tempColName.trim();
+        if (!trimmed) {
+            setEditingCol(null);
+            return;
+        }
+        if (trimmed === oldName) {
+            setEditingCol(null);
+            return;
+        }
+        if (columns.includes(trimmed)) {
+            message.warning("Column name already exists");
+            setEditingCol(null);
+            return;
+        }
+        renameColumn(oldName, trimmed);
+        setEditingCol(null);
+    };
+
+    const confirmAddColumn = () => {
+        const trimmed = newColumnName.trim();
+        if (!trimmed) {
+            setAddingColumn(false);
+            return;
+        }
+        if (columns.includes(trimmed)) {
+            message.warning("Column already exists");
+            return;
+        }
+
+        const amountIndex = columns.indexOf("Total Amount");
+        const nextColumns =
+            amountIndex === -1
+                ? [...columns, trimmed]
+                : [...columns.slice(0, amountIndex), trimmed, ...columns.slice(amountIndex)];
+
+        const nextRows = rows.map((r) => ({ ...r, [trimmed]: "" }));
+        onChange({ ...headerItem, columns: nextColumns, rows: nextRows });
+        setNewColumnName("");
+        setAddingColumn(false);
+    };
+
+    const previewTotal = useMemo(() => {
+        if (headerName === MANPOWER_HEADER) {
+            return rows.reduce((sum, r) => {
+                const cb = r["Cost Breakup"] || {};
+                const type = cb.type ?? "hourly";
+                if (type === "monthly") {
+                    return sum + (cb.rate || 0) * (cb.months || 0) * (cb.quantity || 1);
+                } else {
+                    return sum + (cb.rate || 0) * (cb.hours || 0) * (cb.days || 0) * (cb.quantity || 1);
+                }
+            }, 0);
+        }
+        if (columns.includes("Total Amount")) {
+            return rows.reduce((sum, r) => sum + (Number(r["Total Amount"]) || 0), 0);
+        }
+        return null;
+    }, [rows, columns, headerName]);
+
+    const tableColumns = [];
+
+    if (headerName === MANPOWER_HEADER) {
+        tableColumns.push(
+            {
+                title: "Role",
+                dataIndex: "Role",
+                key: "Role",
+                width: 160,
+                render: (_, record, index) => (
+                    <AutoComplete
+                        id={`row-desc-${index}`}
+                        value={record["Role"] || ""}
+                        options={roleOptions}
+                        filterOption={(inputValue, option) =>
+                            option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                        }
+                        onSelect={(value, option) => {
+                            updateRow(index, "Role", value);
+                            if (option && (option.rate_other || option.rate_dev)) {
+                                const suggestedRate = option.rate_other || option.rate_dev || 0;
+                                const currentCb = record["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+                                if (!currentCb.rate || currentCb.rate === 0) {
+                                    updateManpowerField(index, "rate", suggestedRate);
+                                }
+                            }
+                        }}
+                        onChange={(value) => updateRow(index, "Role", value)}
+                        style={{ width: "100%" }}
+                    >
+                        <Input 
+                            placeholder="Enter role..." 
+                            style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
+                        />
+                    </AutoComplete>
+                ),
+            },
+            {
+                title: "Type",
+                key: "type",
+                width: 90,
+                render: (_, record, index) => {
+                    const cb = record["Cost Breakup"] || {};
+                    const type = cb.type ?? "hourly";
+                    return (
+                        <Select
+                            value={type}
+                            onChange={(v) => updateManpowerField(index, "type", v)}
+                            options={[
+                                { label: "Hourly", value: "hourly" },
+                                { label: "Monthly", value: "monthly" },
+                            ]}
+                            style={{ width: "100%" }}
+                        />
+                    );
+                },
+            },
+            {
+                title: "Rate",
+                key: "rate",
+                width: 100,
+                render: (_, record, index) => {
+                    const cb = record["Cost Breakup"] || {};
+                    const roleName = record["Role"] || "";
+                    const matchedRate = officialRates.find(
+                        (r) => r.designation.toLowerCase() === roleName.trim().toLowerCase()
+                    );
+
+                    const inputEl = (
+                        <InputNumber
+                            min={0}
+                            controls={false}
+                            value={cb.rate === 0 ? undefined : cb.rate}
+                            onChange={(v) => updateManpowerField(index, "rate", v)}
+                            placeholder="Rate"
+                            style={{ width: "100%" }}
+                        />
+                    );
+
+                    if (!matchedRate) return inputEl;
+
+                    const popoverContent = (
+                        <div className="p-2 space-y-1.5 min-w-[210px]">
+                            <div className="text-[11px] font-bold text-slate-700 border-b pb-1">
+                                Official Admin Rates for {matchedRate.designation}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => updateManpowerField(index, "rate", Number(matchedRate.rate_other_activities))}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg text-xs font-bold text-blue-700 flex items-center justify-between transition-colors cursor-pointer"
+                            >
+                                <span>Other Activities</span>
+                                <span className="font-black">₹{Number(matchedRate.rate_other_activities).toLocaleString("en-IN")}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => updateManpowerField(index, "rate", Number(matchedRate.rate_design_developmental_activities))}
+                                className="w-full text-left px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-bold text-emerald-700 flex items-center justify-between transition-colors cursor-pointer"
+                            >
+                                <span>Design & Dev</span>
+                                <span className="font-black">₹{Number(matchedRate.rate_design_developmental_activities).toLocaleString("en-IN")}</span>
+                            </button>
+                        </div>
+                    );
+
+                    return (
+                        <Popover content={popoverContent} trigger="click" placement="top">
+                            {inputEl}
+                        </Popover>
+                    );
+                },
+            },
+            {
+                title: "Hrs / Mos",
+                key: "hours_months",
+                width: 95,
+                render: (_, record, index) => {
+                    const cb = record["Cost Breakup"] || {};
+                    const type = cb.type ?? "hourly";
+                    const isMonthly = type === "monthly";
+                    const val = isMonthly ? cb.months : cb.hours;
+                    return (
+                        <InputNumber
+                            min={0}
+                            controls={false}
+                            value={val === 0 ? undefined : val}
+                            onChange={(v) => updateManpowerField(index, isMonthly ? "months" : "hours", v)}
+                            placeholder={isMonthly ? "Mos" : "Hrs"}
+                            style={{ width: "100%" }}
+                        />
+                    );
+                },
+            },
+            {
+                title: "Days",
+                key: "days",
+                width: 70,
+                render: (_, record, index) => {
+                    const cb = record["Cost Breakup"] || {};
+                    const type = cb.type ?? "hourly";
+                    const isMonthly = type === "monthly";
+                    if (isMonthly) {
+                        return <span style={{ color: "#ccc", display: "block", textAlign: "center" }}>—</span>;
+                    }
+                    return (
+                        <InputNumber
+                            min={0}
+                            controls={false}
+                            value={cb.days === 0 ? undefined : cb.days}
+                            onChange={(v) => updateManpowerField(index, "days", v)}
+                            placeholder="Days"
+                            style={{ width: "100%" }}
+                        />
+                    );
+                },
+            },
+            {
+                title: "Qty",
+                key: "quantity",
+                width: 80,
+                render: (_, record, index) => {
+                    const cb = record["Cost Breakup"] || {};
+                    return (
+                        <InputNumber
+                            min={0}
+                            controls={false}
+                            value={cb.quantity === 0 ? undefined : cb.quantity}
+                            onChange={(v) => updateManpowerField(index, "quantity", v)}
+                            placeholder="0"
+                            style={{ width: "100%" }}
+                        />
+                    );
+                },
+            },
+            {
+                title: "Amount",
+                dataIndex: "Total Amount",
+                key: "Total Amount",
+                width: 100,
+                render: (_, record, index) => (
+                    <InputNumber
+                        min={0}
+                        controls={false}
+                        value={record["Total Amount"]}
+                        onChange={(v) => updateRow(index, "Total Amount", v ?? 0)}
+                        style={{ width: "100%" }}
+                    />
+                ),
+            }
+        );
+    } else {
+        tableColumns.push(
+            ...columns.map((col) => {
+                const isEditing = editingCol === col;
+                const isFirstCol = col === columns[0];
+                return {
+                    title: (
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                            {isEditing ? (
+                                <Input
+                                    size="small"
+                                    value={tempColName}
+                                    onChange={(e) => setTempColName(e.target.value)}
+                                    onBlur={() => confirmRenameCol(col)}
+                                    onPressEnter={() => confirmRenameCol(col)}
+                                    autoFocus
+                                    style={{ width: 90 }}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            ) : (
+                                <span>{col}</span>
+                            )}
+                            {!isFirstCol && col !== "Total Amount" && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                                    {!isEditing && (
+                                        <Button
+                                            size="small"
+                                            type="text"
+                                            icon={<EditOutlined style={{ fontSize: 10 }} />}
+                                            style={{ padding: 0, width: 16, height: 16, minWidth: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                            onClick={() => startEditingCol(col)}
+                                            title="Rename column"
+                                        />
+                                    )}
+                                    <Popconfirm
+                                        title={`Delete column "${col}"?`}
+                                        onConfirm={() => removeColumn(col)}
+                                        okText="Yes"
+                                        cancelText="No"
+                                    >
+                                        <Button
+                                            size="small"
+                                            type="text"
+                                            danger
+                                            icon={<DeleteOutlined style={{ fontSize: 10 }} />}
+                                            style={{ padding: 0, width: 16, height: 16, minWidth: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                            title="Delete column"
+                                        />
+                                    </Popconfirm>
+                                </div>
+                            )}
+                        </div>
+                    ),
+                    dataIndex: col,
+                    key: col,
+                    render: (_, record, index) => {
+                        if (col === "Total Amount") {
+                            return (
+                                <InputNumber
+                                    min={0}
+                                    controls={false}
+                                    value={record[col]}
+                                    onChange={(v) => updateRow(index, col, v ?? 0)}
+                                    style={{ width: 120 }}
+                                />
+                            );
+                        }
+                        if (isFirstCol) {
+                            return (
+                                <AutoComplete
+                                    id={`row-desc-${index}`}
+                                    value={record[col] || ""}
+                                    options={savedDescriptions}
+                                    filterOption={(inputValue, option) =>
+                                        option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                    }
+                                    onChange={(value) => updateRow(index, col, value)}
+                                    onSelect={(value) => {
+                                        updateRow(index, col, value);
+                                        const match = savedDescriptions.find((item) => item.value === value);
+                                        if (match && match.rate > 0) {
+                                            const currentCb = record["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+                                            const updatedCb = { ...currentCb, rate: match.rate };
+                                            const newAmount = computeRowAmount(updatedCb);
+                                            const nextRows = [...rows];
+                                            nextRows[index] = {
+                                                ...nextRows[index],
+                                                [col]: value,
+                                                "Cost Breakup": updatedCb,
+                                                "Total Amount": newAmount,
+                                            };
+                                            onChange({ ...headerItem, rows: nextRows });
+                                        }
+                                    }}
+                                    onBlur={(e) => {
+                                        const val = e.target.value;
+                                        const currentCb = record["Cost Breakup"] || {};
+                                        const rate = currentCb.rate || 0;
+                                        saveDescriptionToMemory(val, rate);
+                                    }}
+                                    style={{ width: "100%" }}
+                                >
+                                    <Input 
+                                        placeholder={`Enter ${col.toLowerCase()}...`}
+                                        style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
+                                    />
+                                </AutoComplete>
+                            );
+                        }
+                        return <Input value={record[col]} onChange={(e) => updateRow(index, col, e.target.value)} />;
+                    },
+                };
+            }),
+            {
+                title: addingColumn ? (
+                    <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                        <Input
+                            size="small"
+                            autoFocus
+                            placeholder="Column name"
+                            value={newColumnName}
+                            onChange={(e) => setNewColumnName(e.target.value)}
+                            onPressEnter={confirmAddColumn}
+                            style={{ width: 110 }}
+                        />
+                        <Button size="small" type="primary" onClick={confirmAddColumn}>
+                            Add
+                        </Button>
+                        <Button size="small" danger onClick={() => { setAddingColumn(false); setNewColumnName(""); }}>
+                            Cancel
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        size="small"
+                        type="text"
+                        icon={<PlusOutlined />}
+                        onClick={() => setAddingColumn(true)}
+                        title="Add column"
+                    />
+                ),
+                key: "__add_column__",
+                width: addingColumn ? 250 : 50,
+            }
+        );
+    }
+
+    tableColumns.push({
+        title: "",
+        key: "actions",
+        width: 50,
+        render: (_, __, index) => (
+            <Popconfirm title="Remove row?" onConfirm={() => removeRow(index)}>
+                <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+        ),
+    });
+
+    const applyOfficialRateToTable = (designation, rate, activityTypeLabel, customRoleOverride = null) => {
+        const isOthers = designation.toLowerCase().includes("other");
+
+        // If user selected "Others" and custom role name is not provided yet, open custom role input modal!
+        if (isOthers && !customRoleOverride) {
+            setPendingCustomRate({ designation, rate, activityTypeLabel });
+            setCustomRoleInput("");
+            setCustomRoleModalOpen(true);
+            return;
+        }
+
+        const finalRoleName = (customRoleOverride || designation).trim();
+        const numRate = Number(rate) || 0;
+        let nextRows = [...rows];
+
+        // Prevent Duplicate: Check if exact same role and same rate already exists
+        const isDuplicate = nextRows.some(r => {
+            const role = (r["Role"] || "").trim().toLowerCase();
+            const cb = r["Cost Breakup"] || {};
+            return role === finalRoleName.toLowerCase() && Number(cb.rate) === numRate;
+        });
+
+        if (isDuplicate) {
+            message.warning(`"${finalRoleName}" (₹${numRate}) is already added in the table.`);
+            return;
+        }
+
+        // Find the first completely empty row (no role and no rate filled)
+        let targetIndex = nextRows.findIndex(r => {
+            const hasRole = r["Role"] && r["Role"].trim() !== "";
+            const cb = r["Cost Breakup"] || {};
+            const hasRate = cb.rate && cb.rate > 0;
+            return !hasRole && !hasRate;
+        });
+
+        if (targetIndex === -1) {
+            // Append a brand new row
+            const newRow = emptyRow(MANPOWER_COLUMNS, MANPOWER_HEADER);
+            newRow["Role"] = finalRoleName;
+            const currentCb = newRow["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+            const updatedCb = { ...currentCb, rate: numRate };
+            newRow["Cost Breakup"] = updatedCb;
+            newRow["Total Amount"] = computeRowAmount(updatedCb);
+            nextRows.push(newRow);
+        } else {
+            // Populate into existing empty row
+            const currentCb = nextRows[targetIndex]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+            const updatedCb = { ...currentCb, rate: numRate };
+            nextRows[targetIndex] = {
+                ...nextRows[targetIndex],
+                "Role": finalRoleName,
+                "Cost Breakup": updatedCb,
+                "Total Amount": computeRowAmount(updatedCb)
+            };
+        }
+
+        onChange({ ...headerItem, rows: nextRows });
+        message.success(`Inserted ${finalRoleName} (${activityTypeLabel}: ₹${rate}) into table`);
+    };
+
+    const handleConfirmCustomRole = () => {
+        const roleName = customRoleInput.trim();
+        if (!roleName) {
+            message.warning("Please enter a role name");
+            return;
+        }
+        if (pendingCustomRate) {
+            applyOfficialRateToTable(
+                pendingCustomRate.designation,
+                pendingCustomRate.rate,
+                pendingCustomRate.activityTypeLabel,
+                roleName
+            );
+        }
+        setCustomRoleModalOpen(false);
+        setPendingCustomRate(null);
+        setCustomRoleInput("");
+    };
+
+    return (
+        <div className="space-y-3">
+            {headerName === MANPOWER_HEADER && (
+                <div className="flex items-center justify-between bg-blue-50/80 border border-blue-200/70 rounded-xl px-3.5 py-2 text-xs">
+                    <span className="text-slate-700 font-medium flex items-center gap-1.5">
+                        <InfoCircleOutlined className="text-blue-600 font-bold text-sm" />
+                        Check standard rates configured by Admin for each role.
+                    </span>
+                    <Button
+                        size="small"
+                        type="primary"
+                        icon={<InfoCircleOutlined />}
+                        onClick={() => {
+                            fetchOfficialRates();
+                            setRatesModalOpen(true);
+                        }}
+                        className="text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                    >
+                        {ratesModalOpen ? "Close Reference" : "View Rates Reference"}
+                    </Button>
+                </div>
+            )}
+
+            <Table
+                rowKey={(_, index) => String(index)}
+                columns={tableColumns}
+                dataSource={rows}
+                pagination={false}
+                bordered
+                size="small"
+                scroll={{ x: 'max-content' }}
+                footer={() => (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", width: "100%" }}>
+                        <div />
+                        <Button 
+                            icon={<PlusOutlined />} 
+                            onClick={addRow}
+                            style={{ justifySelf: "center" }}
+                        >
+                            Add Row
+                        </Button>
+                        {previewTotal !== null && (
+                            <div style={{ textAlign: "right", fontWeight: 600 }}>
+                                Total: {previewTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                        )}
+                    </div>
+                )}
+            />
+
+            <Drawer
+                title={
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                        <InfoCircleOutlined className="text-blue-600" />
+                        <span>Official Manpower Rates Reference</span>
+                    </div>
+                }
+                placement="right"
+                open={ratesModalOpen}
+                onClose={() => setRatesModalOpen(false)}
+                mask={false}
+                width={480}
+                styles={{
+                    body: { padding: "16px" },
+                    header: { padding: "16px 20px" }
+                }}
+            >
+                <div className="space-y-4">
+                    <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs text-slate-700 flex items-center gap-2">
+                        <InfoCircleOutlined className="text-blue-600 font-bold text-sm shrink-0" />
+                        <span>Click any rate cell in the table below to <strong>auto-fill</strong> it into your table!</span>
+                    </div>
+
+                    <Table
+                        rowKey="id"
+                        dataSource={officialRates}
+                        loading={loadingRates}
+                        pagination={false}
+                        bordered
+                        size="small"
+                        columns={[
+                            {
+                                title: "Designation / Role",
+                                dataIndex: "designation",
+                                key: "designation",
+                                render: (text) => (
+                                    <span className="font-extrabold text-slate-800 text-xs">{text}</span>
+                                ),
+                            },
+                            {
+                                title: "Other Activities",
+                                dataIndex: "rate_other_activities",
+                                key: "rate_other_activities",
+                                align: "right",
+                                render: (val, record) => (
+                                    <button
+                                        type="button"
+                                        onClick={() => applyOfficialRateToTable(record.designation, val, "Other Activities")}
+                                        className="w-full text-right px-2.5 py-1 bg-blue-50/80 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-lg border border-blue-200/80 transition-all cursor-pointer active:scale-95"
+                                        title="Click to insert into table"
+                                    >
+                                        ₹{Number(val).toLocaleString("en-IN")}
+                                    </button>
+                                ),
+                            },
+                            {
+                                title: "Design & Dev",
+                                dataIndex: "rate_design_developmental_activities",
+                                key: "rate_design_developmental_activities",
+                                align: "right",
+                                render: (val, record) => (
+                                    <button
+                                        type="button"
+                                        onClick={() => applyOfficialRateToTable(record.designation, val, "Design & Dev")}
+                                        className="w-full text-right px-2.5 py-1 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg border border-emerald-200/80 transition-all cursor-pointer active:scale-95"
+                                        title="Click to insert into table"
+                                    >
+                                        ₹{Number(val).toLocaleString("en-IN")}
+                                    </button>
+                                ),
+                            },
+                        ]}
+                    />
+                </div>
+            </Drawer>
+
+            <Modal
+                title={
+                    <div className="flex items-center gap-2 text-slate-800 font-bold">
+                        <UserOutlined className="text-blue-600" />
+                        <span>Enter Custom Role / Designation</span>
+                    </div>
+                }
+                open={customRoleModalOpen}
+                onCancel={() => {
+                    setCustomRoleModalOpen(false);
+                    setPendingCustomRate(null);
+                }}
+                onOk={handleConfirmCustomRole}
+                okText="Add to Table"
+                cancelText="Cancel"
+                okButtonProps={{ className: "bg-blue-600 hover:bg-blue-700 font-bold" }}
+                width={420}
+                destroyOnClose
+            >
+                <div className="py-2 space-y-3">
+                    <p className="text-xs text-slate-600 font-medium">
+                        You selected the <strong>{pendingCustomRate?.activityTypeLabel}</strong> rate (<strong>₹{pendingCustomRate?.rate}</strong>) for Others. Please enter the specific designation/role name:
+                    </p>
+                    <Input
+                        placeholder="e.g. Junior Research Fellow, Lab Assistant, Project Associate..."
+                        value={customRoleInput}
+                        onChange={(e) => setCustomRoleInput(e.target.value)}
+                        onPressEnter={handleConfirmCustomRole}
+                        autoFocus
+                    />
+                </div>
+            </Modal>
+        </div>
+    );
+}
+
+function AddHeaderForm({ existingHeaderNames, onAdd, isEnteringHeader, activeHeaderName }) {
+    const [customName, setCustomName] = useState("");
+
+    const handleAddCustom = () => {
+        const name = customName.trim();
+        if (!name) {
+            message.warning("Enter a header name");
+            return;
+        }
+        if (existingHeaderNames.includes(name)) {
+            message.warning("A header with this name already exists");
+            return;
+        }
+        const isManpower = name === MANPOWER_HEADER;
+        onAdd({
+            header_name: name,
+            columns: isManpower ? MANPOWER_COLUMNS : DEFAULT_CUSTOM_COLUMNS,
+            rows: [emptyRow(isManpower ? MANPOWER_COLUMNS : DEFAULT_CUSTOM_COLUMNS, name)],
+        });
+        setCustomName("");
+    };
+
+    if (isEnteringHeader) {
+        return (
+            <div style={{ border: "1px dashed #ccc", padding: 12, borderRadius: 6, marginBottom: 16 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                    <Input
+                        autoFocus
+                        placeholder="Enter Table Name"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        onPressEnter={handleAddCustom}
+                    />
+                    <Button type="primary" icon={<PlusOutlined />} onClick={handleAddCustom}>
+                        Create
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    if (activeHeaderName !== MANPOWER_HEADER) {
+        return null;
+    }
+
+    return (
+        <div style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
+            Role, Cost Breakup (rate × hours × days × quantity), Amount - calculated automatically.
+        </div>
+    );
 }
