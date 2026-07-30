@@ -639,6 +639,8 @@ function Login() {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('')
   const [forgotPasswordOtp, setForgotPasswordOtp] = useState('')
   const [forgotPasswordNewPassword, setForgotPasswordNewPassword] = useState('')
+  const [forgotPasswordConfirmPassword, setForgotPasswordConfirmPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
 
   const [showRoleSelection, setShowRoleSelection] = useState(false)
   const [pendingUserData, setPendingUserData] = useState(null)
@@ -706,6 +708,8 @@ function Login() {
     setForgotPasswordEmail('')
     setForgotPasswordOtp('')
     setForgotPasswordNewPassword('')
+    setForgotPasswordConfirmPassword('')
+    setShowNewPassword(false)
     setForgotPasswordOpen(true)
   }
 
@@ -715,6 +719,8 @@ function Login() {
     setForgotPasswordEmail('')
     setForgotPasswordOtp('')
     setForgotPasswordNewPassword('')
+    setForgotPasswordConfirmPassword('')
+    setShowNewPassword(false)
   }
 
   const handleRequestOtp = async () => {
@@ -763,6 +769,11 @@ function Login() {
   const handleResetPassword = async () => {
     if (!forgotPasswordNewPassword || forgotPasswordNewPassword.length < 6) {
       message.error('Password must be at least 6 characters long')
+      return
+    }
+
+    if (forgotPasswordNewPassword !== forgotPasswordConfirmPassword) {
+      message.error('New password and confirm password do not match')
       return
     }
 

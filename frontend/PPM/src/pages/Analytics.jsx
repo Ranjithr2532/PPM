@@ -2599,48 +2599,95 @@ function Analytics() {
                 <div className="space-y-6">
                   {/* Statistics Cards */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                    {/* 1. Total Submitted Card */}
                     <Card
-                      className="bg-gradient-to-br from-slate-500 to-slate-700 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-slate-600 to-slate-800 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === null ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === null ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === null
+                          ? '0 20px 30px -10px rgba(14, 165, 233, 0.45), 0 0 0 2.5px #38bdf8'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === null ? 1 : 0.8,
                       }}
                       onClick={() => setStatusFilter(null)}
                     >
-                      <FileTextOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === null && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-cyan-400 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <FileTextOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Submitted</span>}
                         value={statistics.allCount}
                         valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
                       />
                     </Card>
+
+                    {/* 2. Pending Card */}
                     <Card
-                      className="bg-gradient-to-br from-red-500 to-red-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === 'proposals' ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === 'proposals' ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === 'proposals'
+                          ? '0 20px 30px -10px rgba(244, 63, 94, 0.5), 0 0 0 2.5px #fb7185'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === 'proposals' ? 1 : 0.8,
                       }}
                       onClick={() => {
                         setStatusFilter('proposals')
                         setProjectNumberFilter([])
                       }}
                     >
-                      <ClockCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === 'proposals' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-rose-300 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <ClockCircleOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Pending</span>}
                         value={statistics.totalProposals}
                         valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
                       />
                     </Card>
+
+                    {/* 3. Converted Card */}
                     <Card
-                      className="bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === 'totalProjects' ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === 'totalProjects' ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === 'totalProjects'
+                          ? '0 20px 30px -10px rgba(168, 85, 247, 0.5), 0 0 0 2.5px #c084fc'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === 'totalProjects' ? 1 : 0.8,
                       }}
                       onClick={() => setStatusFilter('totalProjects')}
                     >
-                      <CheckCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === 'totalProjects' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-purple-300 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <CheckCircleOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Converted</span>}
                         value={statistics.totalProjects}
@@ -2659,15 +2706,31 @@ function Analytics() {
                         </div>
                       )}
                     </Card>
+
+                    {/* 4. Tech Completed Card */}
                     <Card
-                      className="bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === 'technicallyCompleted' ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === 'technicallyCompleted' ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === 'technicallyCompleted'
+                          ? '0 20px 30px -10px rgba(245, 158, 11, 0.5), 0 0 0 2.5px #fbbf24'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === 'technicallyCompleted' ? 1 : 0.8,
                       }}
                       onClick={() => setStatusFilter('technicallyCompleted')}
                     >
-                      <AppstoreOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === 'technicallyCompleted' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-amber-300 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <AppstoreOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Tech Completed</span>}
                         value={statistics.technicallyCompleted}
@@ -2686,15 +2749,31 @@ function Analytics() {
                         </div>
                       )}
                     </Card>
+
+                    {/* 5. Fin Not Completed Card */}
                     <Card
-                      className="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-teal-600 to-emerald-700 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === 'financiallyNotCompleted' ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === 'financiallyNotCompleted' ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === 'financiallyNotCompleted'
+                          ? '0 20px 30px -10px rgba(13, 148, 136, 0.5), 0 0 0 2.5px #2dd4bf'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === 'financiallyNotCompleted' ? 1 : 0.8,
                       }}
                       onClick={() => setStatusFilter('financiallyNotCompleted')}
                     >
-                      <StopOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === 'financiallyNotCompleted' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-teal-300 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <StopOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Fin. Not Completed</span>}
                         value={statistics.financiallyNotCompleted}
@@ -2713,15 +2792,31 @@ function Analytics() {
                         </div>
                       )}
                     </Card>
+
+                    {/* 6. Financially Completed Card */}
                     <Card
-                      className="bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-emerald-600 to-green-700 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === 'financiallyCompleted' ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === 'financiallyCompleted' ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === 'financiallyCompleted'
+                          ? '0 20px 30px -10px rgba(16, 185, 129, 0.5), 0 0 0 2.5px #34d399'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === 'financiallyCompleted' ? 1 : 0.8,
                       }}
                       onClick={() => setStatusFilter('financiallyCompleted')}
                     >
-                      <DollarCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === 'financiallyCompleted' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-300 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <DollarCircleOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Financially Completed</span>}
                         value={statistics.financiallyCompleted}
@@ -2740,15 +2835,31 @@ function Analytics() {
                         </div>
                       )}
                     </Card>
+
+                    {/* 7. Ongoing Projects Card */}
                     <Card
-                      className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
+                      className="bg-gradient-to-br from-sky-600 to-blue-700 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
                       style={{
-                        borderRadius: '16px',
-                        border: statusFilter === 'pendingProjects' ? '7px solid #06b6d4' : '7px solid transparent'
+                        borderRadius: '20px',
+                        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transform: statusFilter === 'pendingProjects' ? 'translateY(-6px) scale(1.02)' : 'translateY(0) scale(1)',
+                        boxShadow: statusFilter === 'pendingProjects'
+                          ? '0 20px 30px -10px rgba(2, 132, 199, 0.5), 0 0 0 2.5px #38bdf8'
+                          : '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        opacity: statusFilter === 'pendingProjects' ? 1 : 0.8,
                       }}
                       onClick={() => setStatusFilter('pendingProjects')}
                     >
-                      <PlayCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
+                      {statusFilter === 'pendingProjects' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-sky-300 shadow-sm" />
+                          <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1.5 z-10">
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping"></span>
+                            <span>ACTIVE</span>
+                          </div>
+                        </>
+                      )}
+                      <PlayCircleOutlined className="absolute right-4 top-4 text-white opacity-20 text-3xl" />
                       <Statistic
                         title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Ongoing Projects</span>}
                         value={statistics.pendingProjects}
@@ -3496,6 +3607,41 @@ function Analytics() {
                     className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${isGraphFullscreen ? 'fixed inset-0 z-50 flex flex-col' : ''}`}
                     style={isGraphFullscreen ? { background: 'white' } : {}}
                   >
+                    {/* Active Card Selection Banner */}
+                    {(() => {
+                      const filterLabels = {
+                        null: 'All Submitted Proposals & Projects',
+                        proposals: 'Pending Proposals',
+                        totalProjects: 'Converted Projects',
+                        technicallyCompleted: 'Technically Completed Projects',
+                        financiallyNotCompleted: 'Financially Not Completed Projects',
+                        financiallyCompleted: 'Financially Completed Projects',
+                        pendingProjects: 'Ongoing Projects',
+                      }
+                      const currentFilterName = filterLabels[statusFilter] || 'All Submitted Data'
+                      return (
+                        <div className="mb-3.5 px-4 py-2.5 bg-gradient-to-r from-sky-50 via-teal-50 to-emerald-50 border border-sky-200/80 rounded-xl flex items-center justify-between text-xs font-semibold text-slate-700 shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-2.5 w-2.5 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-600"></span>
+                            </span>
+                            <span>
+                              Currently viewing graph based on selected card filter: <span className="text-cyan-800 font-bold uppercase tracking-wider bg-white px-2 py-0.5 rounded border border-cyan-200 shadow-2xs ml-1">{currentFilterName}</span>
+                            </span>
+                          </div>
+                          {statusFilter !== null && (
+                            <button
+                              onClick={() => setStatusFilter(null)}
+                              className="text-[11px] text-cyan-600 hover:text-cyan-800 underline font-bold cursor-pointer transition-colors"
+                            >
+                              Reset Card Filter
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })()}
+
                     <div className="flex flex-col gap-3 pb-4 md:flex-row md:items-center md:justify-between">
                       <div>
                         <Title level={4} className="!mb-1">
