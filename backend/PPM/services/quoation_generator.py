@@ -206,9 +206,10 @@ def add_bullets(document, items):
         item = item.strip()
         if not item:
             continue
+        clean_item = re.sub(r"^[\s•\-\*–]+", "", item).strip()
         p = document.add_paragraph(style="List Bullet")
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        add_rich_text(p, item)
+        add_rich_text(p, clean_item)
 
 
 def shade_cell(cell, hex_color):
@@ -250,10 +251,14 @@ def add_table_block(document, table_spec):
 def clear_table_borders(table):
     """Remove all table and cell borders completely to prevent dotted lines in Word."""
     tblPr = table._tbl.tblPr
+    for child in list(tblPr):
+        if child.tag.endswith('tblBorders'):
+            tblPr.remove(child)
+
     tblBorders = OxmlElement('w:tblBorders')
     for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
         border = OxmlElement(f'w:{border_name}')
-        border.set(qn('w:val'), 'none')
+        border.set(qn('w:val'), 'nil')
         border.set(qn('w:sz'), '0')
         border.set(qn('w:space'), '0')
         border.set(qn('w:color'), 'auto')
@@ -263,10 +268,14 @@ def clear_table_borders(table):
     for row in table.rows:
         for cell in row.cells:
             tcPr = cell._tc.get_or_add_tcPr()
+            for child in list(tcPr):
+                if child.tag.endswith('tcBorders'):
+                    tcPr.remove(child)
+
             tcBorders = OxmlElement('w:tcBorders')
             for border_name in ['top', 'left', 'bottom', 'right']:
                 border = OxmlElement(f'w:{border_name}')
-                border.set(qn('w:val'), 'none')
+                border.set(qn('w:val'), 'nil')
                 border.set(qn('w:sz'), '0')
                 border.set(qn('w:space'), '0')
                 border.set(qn('w:color'), 'auto')
@@ -317,6 +326,7 @@ def add_signature_block(document, name=None, designation_lines=None, signatories
         num_cols = 2
         num_rows = (len(valid_signatories) + 1) // 2
         table = document.add_table(rows=num_rows, cols=num_cols)
+        table.style = 'Normal Table'
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         clear_table_borders(table)
@@ -485,7 +495,7 @@ def build_quotation_document(data: dict) -> Document:
     kind_attention = data.get("kind_attention") or ""
     salutation = data.get("salutation") or "Dear Sir,"
     subject = data.get("subject") or ""
-    email_ref = data.get("email_ref") or data.get("reference") or ""
+    email_ref = data.get("email_ref") or data.get("email_reference") or data.get("reference") or (email_to[0] if isinstance(email_to, list) and email_to else (email_to if isinstance(email_to, str) else ""))
 
     item_description = data.get("item_description") or ""
     quote_amount = data.get("quote_amount") or ""
@@ -493,24 +503,28 @@ def build_quotation_document(data: dict) -> Document:
     scope_intro = data.get("scope_intro") or ""
     scope_items = data.get("scope_items") or data.get("scope_of_work") or []
 
-    terms_items = (
+    raw_terms = (
         data.get("terms_items")
         or data.get("terms_and_conditions")
-        or (data.get("payment_terms_and_condition").split(";") if isinstance(data.get("payment_terms_and_condition"), str) else data.get("payment_terms_and_condition"))
-        or (data.get("payment_terms_and_conditions").split(";") if isinstance(data.get("payment_terms_and_conditions"), str) else data.get("payment_terms_and_conditions"))
+        or data.get("payment_terms_and_condition")
+        or data.get("payment_terms_and_conditions")
         or []
     )
-    if isinstance(terms_items, str):
-        terms_items = [t.strip() for t in terms_items.split(";") if t.strip()]
+    if isinstance(raw_terms, str):
+        terms_items = [t.strip() for line in raw_terms.split("\n") for t in line.split(";") if t.strip()]
+    elif isinstance(raw_terms, list):
+        terms_items = [str(t).strip() for t in raw_terms if str(t).strip()]
+    else:
+        terms_items = []
 
     validity = data.get("validity") or ""
     payment_terms = (
         data.get("payment_terms")
         or data.get("payment_terms_and_condition")
         or data.get("payment_terms_and_conditions")
-        or "100% after completion of work & submission of report."
+        or ""
     )
-    delivery = data.get("delivery") or "1 Month from the date of acceptance of PO."
+    delivery = data.get("delivery") or ""
 
     contact_details = data.get("contact_details") or ""
     commercial_contact = data.get("commercial_contact") or ""

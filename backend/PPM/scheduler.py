@@ -30,18 +30,22 @@ def check_delivery_notifications():
 
         for proposal in proposals:
             # Use extended delivery if present, else delivery date
-            delivery_str = proposal.extended_delivery_date or proposal.delivery_date
-            if not delivery_str:
+            delivery_val = proposal.extended_delivery_date or proposal.delivery_date
+            if not delivery_val:
                 continue
 
-            # Parse date - handle multiple formats
+            # Parse date - handle date/datetime objects or strings
             delivery_date = None
-            for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y'):
-                try:
-                    delivery_date = datetime.strptime(str(delivery_str).strip(), fmt).date()
-                    break
-                except:
-                    continue
+            if isinstance(delivery_val, (date, datetime)):
+                delivery_date = delivery_val if isinstance(delivery_val, date) else delivery_val.date()
+            else:
+                delivery_str = str(delivery_val).strip()
+                for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%d.%m.%Y'):
+                    try:
+                        delivery_date = datetime.strptime(delivery_str, fmt).date()
+                        break
+                    except:
+                        continue
 
             if not delivery_date:
                 continue

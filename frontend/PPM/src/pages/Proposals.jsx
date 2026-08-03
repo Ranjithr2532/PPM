@@ -16,6 +16,7 @@ import {
   MoreOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
+  CheckCircleFilled,
   AppstoreOutlined,
   DollarCircleOutlined,
   PlayCircleOutlined,
@@ -90,10 +91,35 @@ const CUSTOMER_TYPE_OPTIONS = [
   'Others',
 ]
 
+const isEnquiryDateError = (enquiryDate) => {
+  if (
+    enquiryDate === null ||
+    enquiryDate === undefined ||
+    String(enquiryDate).trim() === '' ||
+    String(enquiryDate).trim() === 'null' ||
+    String(enquiryDate).trim() === 'undefined'
+  ) {
+    return true
+  }
+  const dateStr = String(enquiryDate).trim()
+  let parsed = dayjs(dateStr)
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD-MM-YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD/MM/YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    return true
+  }
+  return parsed.isBefore(dayjs('1900-01-01'), 'day')
+}
+
 const DATE_FIELD_OPTIONS = [
   { value: 'proposals_converted', label: 'Proposals Converted' },
   { value: 'proposals_not_converted', label: 'Proposals not Converted' },
   { value: 'ongoing_projects', label: 'Ongoing Projects' },
+  { value: 'error_enquiry_date', label: 'Error Enquiry Dates' },
   { value: 'enquiry_date', label: 'Enquiry Date' },
   { value: 'quote_date', label: 'Quote Date' },
   { value: 'revised_negotiated_quote_date', label: 'Revised Quote Date' },
@@ -384,6 +410,7 @@ function Proposals() {
   const [isAcknowledgedFilter, setIsAcknowledgedFilter] = useState(null)
   const [smallValueProjectFilter, setSmallValueProjectFilter] = useState(null)
   const [selectedDateField, setSelectedDateField] = useState('enquiry_date')
+  const [errorDateFilter, setErrorDateFilter] = useState(null)
   const [startDate, setStartDate] = useState(null)
   const [endDate, setEndDate] = useState(null)
   const [importPreview, setImportPreview] = useState(null)
@@ -919,6 +946,9 @@ function Proposals() {
         headers: { accept: 'application/json' },
       })
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Session expired for security purposes. Please re-authorize / log in again to continue.')
+        }
         throw new Error('Unable to fetch proposals')
       }
       const payload = await response.json()
@@ -1751,8 +1781,10 @@ function Proposals() {
       })
     }
 
-    // Apply date range filtering or converted status filtering
-    if (selectedDateField === 'proposals_converted') {
+    // Apply date range filtering, error date filtering, or converted status filtering
+    if (errorDateFilter === 'enquiry_date' || selectedDateField === 'error_enquiry_date') {
+      filtered = filtered.filter((item) => isEnquiryDateError(item.enquiry_date))
+    } else if (selectedDateField === 'proposals_converted') {
       filtered = filtered.filter((item) => {
         const value = String(item.proposals_converted || '').toLowerCase().trim()
         return value === 'yes'
@@ -1804,7 +1836,7 @@ function Proposals() {
     }
 
     setFilteredData(filtered)
-  }, [searchText, centreFilter, orderDateRange, statusFilter, projectNumberFilter, isAcknowledgedFilter, smallValueProjectFilter, tableData, selectedDateField, startDate, endDate, showDuplicatesOnly])
+  }, [searchText, centreFilter, orderDateRange, statusFilter, projectNumberFilter, isAcknowledgedFilter, smallValueProjectFilter, tableData, selectedDateField, errorDateFilter, startDate, endDate, showDuplicatesOnly])
 
   // Get unique centers for filter
   const uniqueCentres = useMemo(() => {
@@ -1830,9 +1862,10 @@ function Proposals() {
     if (groupFilter.length > 0) count++
     if (isAcknowledgedFilter !== null) count++
     if (smallValueProjectFilter !== null) count++
+    if (errorDateFilter !== null) count++
     if (selectedDateField && startDate && endDate) count++
     return count
-  }, [projectNumberFilter, centreFilter, groupFilter, isAcknowledgedFilter, smallValueProjectFilter, selectedDateField, startDate, endDate])
+  }, [projectNumberFilter, centreFilter, groupFilter, isAcknowledgedFilter, smallValueProjectFilter, errorDateFilter, selectedDateField, startDate, endDate])
 
   const departmentOptions = useMemo(
     () =>
@@ -2736,155 +2769,164 @@ function Proposals() {
                   {/* Statistics Cards */}
                   {(() => {
                     const handleStatusCardClick = (val) => {
-                      setStatusFilter(val)
+                      setStatusFilter((prev) => (prev === val ? null : val))
                       setShowNewMessagesOnly(false)
                       setShowPendingReplyOnly(false)
                       setShowDuplicatesOnly(false)
                     }
 
+                    const cards = [
+                      {
+                        key: null,
+                        title: 'Total Submitted',
+                        value: statistics.totalProposals + statistics.totalProjects,
+                        bgClass: 'bg-gradient-to-br from-teal-500 to-teal-600',
+                        icon: <FileTextOutlined className="text-2xl" />,
+                      },
+                      {
+                        key: 'proposals',
+                        title: 'Pending',
+                        value: statistics.totalProposals,
+                        bgClass: 'bg-gradient-to-br from-red-500 to-red-600',
+                        icon: <ClockCircleOutlined className="text-2xl" />,
+                        extra: statistics.pendingBreakdown && (
+                          <div className="mt-2 text-[11px] text-white/80 font-medium">
+                            Ongoing: {statistics.pendingBreakdown.ongoing} | Rejected: {statistics.pendingBreakdown.rejected}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'totalProjects',
+                        title: 'Converted to Projects',
+                        value: statistics.totalProjects,
+                        bgClass: 'bg-gradient-to-br from-purple-500 to-purple-600',
+                        icon: <CheckCircleOutlined className="text-2xl" />,
+                        extra: Object.keys(statistics.projectCodeBreakdown).length > 0 && (
+                          <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
+                            {Object.entries(statistics.projectCodeBreakdown)
+                              .filter(([, count]) => count > 0)
+                              .map(([code, count], idx, arr) => (
+                                <span key={code}>
+                                  {code}: {count}
+                                  {idx < arr.length - 1 ? ' |' : ''}
+                                </span>
+                              ))}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'technicallyCompleted',
+                        title: 'Tech Completed',
+                        value: statistics.technicallyCompleted,
+                        bgClass: 'bg-gradient-to-br from-orange-500 to-orange-600',
+                        icon: <AppstoreOutlined className="text-2xl" />,
+                        extra: Object.keys(statistics.technicallyCompletedBreakdown).length > 0 && (
+                          <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
+                            {Object.entries(statistics.technicallyCompletedBreakdown)
+                              .filter(([, count]) => count > 0)
+                              .map(([code, count], idx, arr) => (
+                                <span key={code}>
+                                  {code}: {count}
+                                  {idx < arr.length - 1 ? ' |' : ''}
+                                </span>
+                              ))}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'financiallyCompleted',
+                        title: 'Fin Completed',
+                        value: statistics.financiallyCompleted,
+                        bgClass: 'bg-gradient-to-br from-green-500 to-green-600',
+                        icon: <DollarCircleOutlined className="text-2xl" />,
+                        extra: Object.keys(statistics.financiallyCompletedBreakdown).length > 0 && (
+                          <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
+                            {Object.entries(statistics.financiallyCompletedBreakdown)
+                              .filter(([, count]) => count > 0)
+                              .map(([code, count], idx, arr) => (
+                                <span key={code}>
+                                  {code}: {count}
+                                  {idx < arr.length - 1 ? ' |' : ''}
+                                </span>
+                              ))}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'pendingProjects',
+                        title: 'Ongoing Projects',
+                        value: statistics.pendingProjects,
+                        bgClass: 'bg-gradient-to-br from-blue-500 to-blue-600',
+                        icon: <PlayCircleOutlined className="text-2xl" />,
+                        extra: Object.keys(statistics.ongoingProjectsBreakdown).length > 0 && (
+                          <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
+                            {Object.entries(statistics.ongoingProjectsBreakdown)
+                              .filter(([, count]) => count > 0)
+                              .map(([code, count], idx, arr) => (
+                                <span key={code}>
+                                  {code}: {count}
+                                  {idx < arr.length - 1 ? ' |' : ''}
+                                </span>
+                              ))}
+                          </div>
+                        ),
+                      },
+                    ]
+
                     return (
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
-                        {/* Card 1: Total Proposals */}
-                        <Card
-                          className="bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                          style={{ borderRadius: '16px', border: 'none', minHeight: '135px' }}
-                          onClick={() => handleStatusCardClick(null)}
-                        >
-                          <FileTextOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
-                          <Statistic
-                            title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Submitted</span>}
-                            value={statistics.totalProposals + statistics.totalProjects}
-                            valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
-                          />
-                        </Card>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                        {cards.map((card) => {
+                          const isSelected = statusFilter === card.key
+                          const isAnySelected = statusFilter !== null
 
-                        {/* Card 2: Pending Proposals */}
-                        <Card
-                          className="bg-gradient-to-br from-red-500 to-red-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                          style={{ borderRadius: '16px', border: 'none', minHeight: '135px' }}
-                          onClick={() => handleStatusCardClick('proposals')}
-                        >
-                          <ClockCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
-                          <Statistic
-                            title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Pending</span>}
-                            value={statistics.totalProposals}
-                            valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
-                          />
-                          {statistics.pendingBreakdown && (
-                            <div className="mt-2 text-[11px] text-white/80 font-medium">
-                              Ongoing: {statistics.pendingBreakdown.ongoing} | Rejected: {statistics.pendingBreakdown.rejected}
-                            </div>
-                          )}
-                        </Card>
+                          return (
+                            <div
+                              key={card.key ?? 'all'}
+                              onClick={() => handleStatusCardClick(card.key)}
+                              style={{
+                                borderRadius: '16px',
+                                minHeight: '135px',
+                                border: isSelected ? '4px solid #ffffff' : '4px solid transparent',
+                                boxShadow: isSelected
+                                  ? '0 20px 25px -5px rgba(0,0,0,0.3), 0 0 15px rgba(255,255,255,0.6)'
+                                  : undefined,
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              }}
+                              className={`
+                                relative cursor-pointer text-white p-5 select-none flex flex-col justify-between overflow-hidden ${card.bgClass}
+                                transform box-border
+                                ${
+                                  isSelected
+                                    ? '-translate-y-2 opacity-100 z-10'
+                                    : isAnySelected
+                                    ? 'opacity-70 hover:opacity-100 hover:-translate-y-1 shadow-md'
+                                    : 'opacity-100 hover:-translate-y-1 shadow-md hover:shadow-lg'
+                                }
+                              `}
+                            >
+                              <div className="absolute right-4 top-4 text-white opacity-25 text-2xl">
+                                {card.icon}
+                              </div>
+                              <div>
+                                <div className="text-white/90 text-xs font-semibold uppercase tracking-wider mb-1">
+                                  {card.title}
+                                </div>
+                                <div className="text-3xl font-extrabold text-white tracking-tight">
+                                  {card.value}
+                                </div>
+                              </div>
+                              {card.extra}
 
-                        {/* Card 3: Converted to Projects */}
-                        <Card
-                          className="bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                          style={{ borderRadius: '16px', border: 'none', minHeight: '135px' }}
-                          onClick={() => handleStatusCardClick('totalProjects')}
-                        >
-                          <CheckCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
-                          <Statistic
-                            title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Converted</span>}
-                            value={statistics.totalProjects}
-                            valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
-                          />
-                          {Object.keys(statistics.projectCodeBreakdown).length > 0 && (
-                            <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
-                              {Object.entries(statistics.projectCodeBreakdown)
-                                .filter(([, count]) => count > 0)
-                                .map(([code, count], idx, arr) => (
-                                  <span key={code}>
-                                    {code}: {count}
-                                    {idx < arr.length - 1 ? ' |' : ''}
-                                  </span>
-                                ))}
+                              {/* Animated Thick Bottom Indicator Bar (width: 0% -> 100%) */}
+                              <div className="absolute bottom-0 left-0 right-0 h-[6px] bg-black/10">
+                                <div
+                                  className="h-full bg-white transition-all duration-500 ease-out rounded-full shadow-[0_0_8px_rgba(255,255,255,0.9)]"
+                                  style={{ width: isSelected ? '100%' : '0%' }}
+                                />
+                              </div>
                             </div>
-                          )}
-                        </Card>
-
-                        {/* Card 4: Technically Completed */}
-                        <Card
-                          className="bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                          style={{ borderRadius: '16px', border: 'none', minHeight: '135px' }}
-                          onClick={() => handleStatusCardClick('technicallyCompleted')}
-                        >
-                          <AppstoreOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
-                          <Statistic
-                            title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Tech Completed</span>}
-                            value={statistics.technicallyCompleted}
-                            valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
-                          />
-                          {Object.keys(statistics.technicallyCompletedBreakdown).length > 0 && (
-                            <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
-                              {Object.entries(statistics.technicallyCompletedBreakdown)
-                                .filter(([, count]) => count > 0)
-                                .map(([code, count], idx, arr) => (
-                                  <span key={code}>
-                                    {code}: {count}
-                                    {idx < arr.length - 1 ? ' |' : ''}
-                                  </span>
-                                ))}
-                            </div>
-                          )}
-                        </Card>
-
-                        {/* Card 5: Financially Completed */}
-                        <Card
-                          className="bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                          style={{ borderRadius: '16px', border: 'none', minHeight: '135px' }}
-                          onClick={() => handleStatusCardClick('financiallyCompleted')}
-                        >
-                          <DollarCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
-                          <Statistic
-                            title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Fin Completed</span>}
-                            value={statistics.financiallyCompleted}
-                            valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
-                          />
-                          {Object.keys(statistics.financiallyCompletedBreakdown).length > 0 && (
-                            <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
-                              {Object.entries(statistics.financiallyCompletedBreakdown)
-                                .filter(([, count]) => count > 0)
-                                .map(([code, count], idx, arr) => (
-                                  <span key={code}>
-                                    {code}: {count}
-                                    {idx < arr.length - 1 ? ' |' : ''}
-                                  </span>
-                                ))}
-                            </div>
-                          )}
-                        </Card>
-
-                        {/* Card 6: Ongoing Projects */}
-                        <Card
-                          className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer relative overflow-hidden"
-                          style={{ borderRadius: '16px', border: 'none', minHeight: '135px' }}
-                          onClick={() => handleStatusCardClick('pendingProjects')}
-                        >
-                          <PlayCircleOutlined className="absolute right-4 top-4 text-white opacity-25 text-3xl" />
-                          <Statistic
-                            title={<span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Ongoing</span>}
-                            value={statistics.pendingProjects}
-                            valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}
-                          />
-                          {Object.keys(statistics.ongoingProjectsBreakdown).length > 0 && (
-                            <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
-                              {Object.entries(statistics.ongoingProjectsBreakdown)
-                                .filter(([, count]) => count > 0)
-                                .map(([code, count], idx, arr) => (
-                                  <span key={code}>
-                                    {code}: {count}
-                                    {idx < arr.length - 1 ? ' |' : ''}
-                                  </span>
-                                ))}
-                            </div>
-                          )}
-                          {statistics.onHoldProjects > 0 && (
-                            <div className="mt-1 text-[11px] text-white/80 font-medium">
-                              On hold: {statistics.onHoldProjects}
-                            </div>
-                          )}
-                        </Card>
+                          )
+                        })}
                       </div>
                     )
                   })()}
@@ -3646,6 +3688,7 @@ function Proposals() {
                           setGroupFilter([])
                           setIsAcknowledgedFilter(null)
                           setSmallValueProjectFilter(null)
+                          setErrorDateFilter(null)
                           setSelectedDateField('enquiry_date')
                           setStartDate(null)
                           setEndDate(null)
@@ -3712,6 +3755,7 @@ function Proposals() {
                       groupFilter.length > 0 ||
                       isAcknowledgedFilter !== null ||
                       smallValueProjectFilter !== null ||
+                      errorDateFilter !== null ||
                       (selectedDateField && startDate && endDate)) && (
                         <div className="flex flex-wrap items-center gap-2 py-1">
                           {projectNumberFilter.map((code) => (
@@ -3737,6 +3781,11 @@ function Proposals() {
                           {smallValueProjectFilter !== null && (
                             <Tag closable onClose={() => setSmallValueProjectFilter(null)}>
                               SVP: {smallValueProjectFilter ? 'Yes' : 'No'}
+                            </Tag>
+                          )}
+                          {errorDateFilter !== null && (
+                            <Tag closable onClose={() => setErrorDateFilter(null)}>
+                              Error Dates: Enquiry Dates
                             </Tag>
                           )}
                           {selectedDateField && startDate && endDate && (
@@ -3809,6 +3858,19 @@ function Proposals() {
                             >
                               <Select.Option value={true}>Yes</Select.Option>
                               <Select.Option value={false}>No</Select.Option>
+                            </Select>
+                          </Col>
+
+                          <Col xs={24} sm={12} md={6}>
+                            <div className="mb-1 text-xs font-semibold text-slate-600">Error Dates</div>
+                            <Select
+                              placeholder="Select Error Date Filter"
+                              value={errorDateFilter}
+                              onChange={setErrorDateFilter}
+                              allowClear
+                              style={{ width: '100%' }}
+                            >
+                              <Select.Option value="enquiry_date">Enquiry Dates</Select.Option>
                             </Select>
                           </Col>
 

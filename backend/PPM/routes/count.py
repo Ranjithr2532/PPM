@@ -58,16 +58,13 @@ def get_proposal_counts(
 
     technically_completed = db.query(func.count(Proposal.id)).filter(
         *filters,
-        Proposal.technical_completed_year.isnot(None),
-        func.trim(Proposal.technical_completed_year) != ''
+        Proposal.technical_completed_year.isnot(None)
     ).scalar() or 0
 
     financially_completed = db.query(func.count(Proposal.id)).filter(
         *filters,
         Proposal.technical_completed_year.isnot(None),
-        func.trim(Proposal.technical_completed_year) != '',
-        Proposal.financial_completed_year.isnot(None),
-        func.trim(Proposal.financial_completed_year) != ''
+        Proposal.financial_completed_year.isnot(None)
     ).scalar() or 0
 
     return {
@@ -119,8 +116,8 @@ def get_yearly_proposal_counts(
     from sqlalchemy import case
 
     year_expr = case(
-        (func.coalesce(Proposal.enquiry_date, '') != '', func.substring(Proposal.enquiry_date, r'(20\d{2}|19\d{2})')),
-        (func.coalesce(Proposal.quote_date, '') != '', func.substring(Proposal.quote_date, r'(20\d{2}|19\d{2})')),
+        (Proposal.enquiry_date.isnot(None), func.to_char(Proposal.enquiry_date, 'YYYY')),
+        (Proposal.quote_date.isnot(None), func.to_char(Proposal.quote_date, 'YYYY')),
         else_=func.to_char(Proposal.created_at, 'YYYY')
     )
 
@@ -176,8 +173,8 @@ def get_unknown_year_proposals(
     from sqlalchemy import case
 
     year_expr = case(
-        (func.coalesce(Proposal.enquiry_date, '') != '', func.substring(Proposal.enquiry_date, r'(20\d{2}|19\d{2})')),
-        (func.coalesce(Proposal.quote_date, '') != '', func.substring(Proposal.quote_date, r'(20\d{2}|19\d{2})')),
+        (Proposal.enquiry_date.isnot(None), func.to_char(Proposal.enquiry_date, 'YYYY')),
+        (Proposal.quote_date.isnot(None), func.to_char(Proposal.quote_date, 'YYYY')),
         else_=func.to_char(Proposal.created_at, 'YYYY')
     )
 

@@ -97,9 +97,10 @@ def add_bullets(document, items):
         item = item.strip()
         if not item:
             continue
+        clean_item = re.sub(r"^[\s•\-\*–]+", "", item).strip()
         p = document.add_paragraph(style="List Bullet")
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        add_rich_text(p, item)
+        add_rich_text(p, clean_item)
 
 
 def shade_cell(cell, hex_color):
@@ -145,10 +146,14 @@ def add_table_block(document, table_spec):
 
 def clear_table_borders(table):
     tblPr = table._tbl.tblPr
+    for child in list(tblPr):
+        if child.tag.endswith('tblBorders'):
+            tblPr.remove(child)
+
     tblBorders = OxmlElement('w:tblBorders')
     for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
         border = OxmlElement(f'w:{border_name}')
-        border.set(qn('w:val'), 'none')
+        border.set(qn('w:val'), 'nil')
         border.set(qn('w:sz'), '0')
         border.set(qn('w:space'), '0')
         border.set(qn('w:color'), 'auto')
@@ -158,10 +163,14 @@ def clear_table_borders(table):
     for row in table.rows:
         for cell in row.cells:
             tcPr = cell._tc.get_or_add_tcPr()
+            for child in list(tcPr):
+                if child.tag.endswith('tcBorders'):
+                    tcPr.remove(child)
+
             tcBorders = OxmlElement('w:tcBorders')
             for border_name in ['top', 'left', 'bottom', 'right']:
                 border = OxmlElement(f'w:{border_name}')
-                border.set(qn('w:val'), 'none')
+                border.set(qn('w:val'), 'nil')
                 border.set(qn('w:sz'), '0')
                 border.set(qn('w:space'), '0')
                 border.set(qn('w:color'), 'auto')
@@ -216,6 +225,7 @@ def add_signature_block(document, name=None, designation_lines=None, signatories
         num_cols = 2
         num_rows = (len(valid_signatories) + 1) // 2
         table = document.add_table(rows=num_rows, cols=num_cols)
+        table.style = 'Normal Table'
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         clear_table_borders(table)
 
@@ -298,6 +308,7 @@ def build_proposal_document(data: dict) -> Document:
 
     # Quotation Information Block
     p_qinfo = document.add_paragraph()
+    p_qinfo.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_qinfo.paragraph_format.space_before = Pt(8)
     p_qinfo.paragraph_format.space_after = Pt(4)
     r_qinfo = p_qinfo.add_run("Quotation Information:")

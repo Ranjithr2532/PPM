@@ -25,6 +25,29 @@ from services.quotation_parser import parse_docx_quotation
 from datetime import date
 import re
 
+DATE_COLUMNS = {
+    "enquiry_date",
+    "quote_date",
+    "revised_negotiated_quote_date",
+    "order_date",
+    "delivery_date",
+    "extended_delivery_date",
+    "date_of_actual_commencement",
+    "technical_completed_year",
+    "financial_completed_year",
+    "dispatch_date",
+    "project_allotment_date",
+    "review_meeting_date",
+}
+
+def sanitize_date_value(val: Any) -> Optional[Any]:
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ('', 'none', 'null', 'nan', 'nat', '-'):
+        return None
+    return s
+
 def sanitize_amount(val):
     """
     Sanitize amount values from Excel import.
@@ -139,6 +162,11 @@ def create_proposal(payload: ProposalCreate, db: Session = Depends(get_db)) -> P
         data["revised_negotiated_quote_date"] = payload.revised_negotiated_quote_date
     if getattr(payload, "revised_negotiated_quote_amount", None) is not None:
         data["revised_negotiated_quote_amount"] = payload.revised_negotiated_quote_amount
+
+    # Sanitize date columns so empty strings become None
+    for date_key in DATE_COLUMNS:
+        if date_key in data:
+            data[date_key] = sanitize_date_value(data[date_key])
 
     proposal = Proposal(**data)
     db.add(proposal)
@@ -714,17 +742,14 @@ def get_global_proposal_stats(db: Session = Depends(get_db)):
     # Technically completed
     technically_completed = db.query(func.count(Proposal.id)).filter(
         Proposal.is_acknowledged == True,
-        Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != ''
+        Proposal.technical_completed_year.isnot(None)
     ).scalar()
     
     # Financially completed
     financially_completed = db.query(func.count(Proposal.id)).filter(
         Proposal.is_acknowledged == True,
         Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != '',
-        Proposal.financial_completed_year.isnot(None),
-        Proposal.financial_completed_year != ''
+        Proposal.financial_completed_year.isnot(None)
     ).scalar()
     
     # Ongoing projects
@@ -814,17 +839,14 @@ def get_proposal_stats_by_center(center: str, db: Session = Depends(get_db)):
     # Technically completed
     technically_completed = db.query(func.count(Proposal.id)).filter(
         base_filter,
-        Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != ''
+        Proposal.technical_completed_year.isnot(None)
     ).scalar()
     
     # Financially completed
     financially_completed = db.query(func.count(Proposal.id)).filter(
         base_filter,
         Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != '',
-        Proposal.financial_completed_year.isnot(None),
-        Proposal.financial_completed_year != ''
+        Proposal.financial_completed_year.isnot(None)
     ).scalar()
     
     # Ongoing projects
@@ -863,7 +885,7 @@ def get_proposal_stats_by_group(group: str, db: Session = Depends(get_db)):
     group_match = func.lower(Proposal.group) == group_lower
     
     # 2. Proposal has no group set, but is assigned to a member
-    no_group = or_(Proposal.group == None, Proposal.group == '')
+    no_group = or_(Proposal.group.is_(None), Proposal.group == '')
     assigned_to_member = or_(
         func.lower(Proposal.quotation_given_by_name).in_(group_user_names) if group_user_names else False,
         func.lower(Proposal.project_co_ordinator).in_(group_user_names) if group_user_names else False,
@@ -887,17 +909,14 @@ def get_proposal_stats_by_group(group: str, db: Session = Depends(get_db)):
     # Technically completed
     technically_completed = db.query(func.count(Proposal.id)).filter(
         base_filter,
-        Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != ''
+        Proposal.technical_completed_year.isnot(None)
     ).scalar()
     
     # Financially completed
     financially_completed = db.query(func.count(Proposal.id)).filter(
         base_filter,
         Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != '',
-        Proposal.financial_completed_year.isnot(None),
-        Proposal.financial_completed_year != ''
+        Proposal.financial_completed_year.isnot(None)
     ).scalar()
     
     # Ongoing projects
@@ -955,17 +974,14 @@ def get_proposal_stats_by_scientist(name: str, db: Session = Depends(get_db)):
     # Technically completed
     technically_completed = db.query(func.count(Proposal.id)).filter(
         base_filter,
-        Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != ''
+        Proposal.technical_completed_year.isnot(None)
     ).scalar()
     
     # Financially completed
     financially_completed = db.query(func.count(Proposal.id)).filter(
         base_filter,
         Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != '',
-        Proposal.financial_completed_year.isnot(None),
-        Proposal.financial_completed_year != ''
+        Proposal.financial_completed_year.isnot(None)
     ).scalar()
     
     # Ongoing projects
@@ -996,19 +1012,17 @@ def proposal_vs_project(db: Session = Depends(get_db)):
     remained = total - converted
 
     tech_completed = db.query(Proposal).filter(
-        Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != ''
+        Proposal.technical_completed_year.isnot(None)
     ).count()
 
     fin_completed = db.query(Proposal).filter(
-        Proposal.financial_completed_year.isnot(None),
-        Proposal.financial_completed_year != ''
+        Proposal.financial_completed_year.isnot(None)
     ).count()
 
     ongoing_projects = db.query(Proposal).filter(
         Proposal.project_number.isnot(None),
         Proposal.project_number != '',
-        (Proposal.technical_completed_year.is_(None) | (Proposal.technical_completed_year == ''))
+        Proposal.technical_completed_year.is_(None)
     ).count()
 
     return {
@@ -1036,8 +1050,7 @@ def technically_completed_by_dept(db: Session = Depends(get_db)):
         Proposal.center,
         func.count(Proposal.id).label('count')
     ).filter(
-        Proposal.technical_completed_year.isnot(None),
-        Proposal.technical_completed_year != ''
+        Proposal.technical_completed_year.isnot(None)
     ).group_by(
         Proposal.center
     ).all()
@@ -1117,6 +1130,8 @@ def update_proposal(
         update_data["revised_negotiated_quote_amount"] = payload.revised_negotiated_quote_amount
 
     for key, value in update_data.items():
+        if key in DATE_COLUMNS:
+            value = sanitize_date_value(value)
         setattr(proposal, key, value)
 
     db.commit()
@@ -1189,7 +1204,7 @@ def coordinator_update(payload: CoordinatorUpdate, db: Session = Depends(get_db)
 
     # Apply updates
     proposal.co_ordinator_remarks = payload.co_ordinator_remarks
-    proposal.extended_delivery_date = payload.extended_delivery_date
+    proposal.extended_delivery_date = sanitize_date_value(payload.extended_delivery_date)
     proposal.if_not_reason = payload.if_not_reason
 
     # ⭐ NEW FIELD HERE
@@ -1201,7 +1216,7 @@ def coordinator_update(payload: CoordinatorUpdate, db: Session = Depends(get_db)
         proposal.proposal_status = payload.proposal_status
 
     if payload.technical_completed_year:
-        proposal.technical_completed_year = payload.technical_completed_year
+        proposal.technical_completed_year = sanitize_date_value(payload.technical_completed_year)
 
     db.commit()
     db.refresh(proposal)
@@ -1404,7 +1419,12 @@ def bulk_create_proposals(
         if revised_flag is not None:
             data["revised_negotiated"] = revised_flag
         if revised_date is not None:
-            data["revised_negotiated_quote_date"] = revised_date
+            data["revised_negotiated_quote_date"] = sanitize_date_value(revised_date)
+
+        # Sanitize all DATE_COLUMNS in data
+        for k in list(data.keys()):
+            if k in DATE_COLUMNS:
+                data[k] = sanitize_date_value(data[k])
         
         # Handle status field from Excel (case-insensitive)
         status_value = row.get("status") or row.get("Status")
@@ -1607,6 +1627,23 @@ async def add_proposal_coordinator(
 
             try:
                 extracted_data = parse_docx_quotation(file_bytes, filename=filename)
+
+                # Auto-lookup customer_type if customer_name is present
+                cust_name = extracted_data.get("customer_name")
+                if cust_name:
+                    clean_name = cust_name.strip().lower()
+                    cust_rec = db.query(Customer).filter(func.lower(Customer.name) == clean_name).first()
+                    if cust_rec and cust_rec.customer_type:
+                        extracted_data["customer_type"] = cust_rec.customer_type
+                    else:
+                        prop_rec = db.query(Proposal).filter(
+                            func.lower(Proposal.customer_name) == clean_name,
+                            Proposal.customer_type != None,
+                            Proposal.customer_type != ""
+                        ).order_by(Proposal.id.desc()).first()
+                        if prop_rec and prop_rec.customer_type:
+                            extracted_data["customer_type"] = prop_rec.customer_type
+
                 return {
                     "success": True,
                     "mode": "upload",
@@ -1724,36 +1761,28 @@ def trigger_delivery_notifications(db: Session = Depends(get_db)):
     ).all()
     admin_names = [u.name for u in admin_users if u and u.name]
 
-    # Get all incomplete proposals (NULL or empty string means incomplete)
-    from sqlalchemy import or_
+    # Get all incomplete proposals (NULL means incomplete for DATE columns)
     proposals = db.query(Proposal).filter(
-        or_(
-            Proposal.technical_completed_year.is_(None),
-            Proposal.technical_completed_year == ''
-        ),
-        or_(
-            Proposal.financial_completed_year.is_(None),
-            Proposal.financial_completed_year == ''
-        )
+        Proposal.technical_completed_year.is_(None),
+        Proposal.financial_completed_year.is_(None)
     ).all()
 
     for proposal in proposals:
-        delivery_str = None
-        if proposal.extended_delivery_date and str(proposal.extended_delivery_date).strip():
-            delivery_str = str(proposal.extended_delivery_date).strip()
-        elif proposal.delivery_date and str(proposal.delivery_date).strip():
-            delivery_str = str(proposal.delivery_date).strip()
-
-        if not delivery_str:
+        delivery_val = proposal.extended_delivery_date or proposal.delivery_date
+        if not delivery_val:
             continue
 
         delivery_date = None
-        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%d.%m.%Y'):
-            try:
-                delivery_date = datetime.strptime(delivery_str, fmt).date()
-                break
-            except:
-                continue
+        if isinstance(delivery_val, (date, datetime)):
+            delivery_date = delivery_val if isinstance(delivery_val, date) else delivery_val.date()
+        else:
+            delivery_str = str(delivery_val).strip()
+            for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%d.%m.%Y'):
+                try:
+                    delivery_date = datetime.strptime(delivery_str, fmt).date()
+                    break
+                except:
+                    continue
 
         if not delivery_date:
             continue
@@ -1807,23 +1836,26 @@ def trigger_delivery_notifications(db: Session = Depends(get_db)):
     # Only for admin role
     # -------------------------------------------------
     payments = db.query(Payment).filter(
-        Payment.invoice_date.isnot(None),
-        Payment.invoice_date != ''
+        Payment.invoice_date.isnot(None)
     ).all()
 
     for payment in payments:
-        invoice_date_str = payment.invoice_date.strip()
-        if not invoice_date_str:
+        inv_val = payment.invoice_date
+        if not inv_val:
             continue
 
         # Parse invoice date
         invoice_date = None
-        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%d.%m.%Y'):
-            try:
-                invoice_date = datetime.strptime(invoice_date_str, fmt).date()
-                break
-            except:
-                continue
+        if isinstance(inv_val, (date, datetime)):
+            invoice_date = inv_val if isinstance(inv_val, date) else inv_val.date()
+        else:
+            invoice_date_str = str(inv_val).strip()
+            for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%d.%m.%Y'):
+                try:
+                    invoice_date = datetime.strptime(invoice_date_str, fmt).date()
+                    break
+                except:
+                    continue
 
         if not invoice_date:
             continue
