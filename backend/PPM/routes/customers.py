@@ -143,6 +143,48 @@ def get_customer_addresses(
     return sorted(addresses)
 
 
+# LOOKUP CUSTOMER TYPE AND DETAILS BY CUSTOMER NAME
+@router.get("/lookup-type")
+def lookup_customer_type(
+    name: str = Query(..., description="Customer name to lookup details & type for"),
+    db: Session = Depends(get_db)
+):
+    """Returns known customer_type, address, email, and phone_no for a given customer name."""
+    if not name or not name.strip():
+        return {"customer_name": "", "customer_type": ""}
+
+    clean_name = name.strip().lower()
+
+    # 1. Search in Customer table
+    cust = db.query(Customer).filter(func.lower(Customer.name) == clean_name).first()
+    if cust and cust.customer_type:
+        return {
+            "customer_name": cust.name,
+            "customer_type": cust.customer_type,
+            "address": cust.address or "",
+            "email": cust.email or "",
+            "phone_no": cust.phone_no or "",
+        }
+
+    # 2. Fallback: Search in Proposals table
+    prop = db.query(Proposal).filter(
+        func.lower(Proposal.customer_name) == clean_name,
+        Proposal.customer_type != None,
+        Proposal.customer_type != ""
+    ).order_by(Proposal.id.desc()).first()
+
+    if prop and prop.customer_type:
+        return {
+            "customer_name": prop.customer_name,
+            "customer_type": prop.customer_type,
+            "address": prop.address or "",
+            "email": prop.email or "",
+            "phone_no": prop.phone_no or "",
+        }
+
+    return {"customer_name": name, "customer_type": ""}
+
+
 # GET SINGLE CUSTOMER
 @router.get("/{customer_id}", response_model=CustomerResponse)
 def get_customer(customer_id: int, db: Session = Depends(get_db)):

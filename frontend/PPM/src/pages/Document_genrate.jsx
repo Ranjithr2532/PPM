@@ -13,10 +13,10 @@ import {
     message,
     Tooltip,
     Tag,
-    Badge,
     Spin,
     Progress,
     Upload,
+    AutoComplete,
 } from 'antd';
 import {
     FileWordOutlined,
@@ -120,7 +120,13 @@ export default function DocumentGenerate({ onAddToProposals }) {
         return '';
     };
 
-    // Auto-fetch center and logged-in user info on mount
+    // Customer suggestions state
+    const [customerSuggestions, setCustomerSuggestions] = useState([]);
+    const [customerOptions, setCustomerOptions] = useState([]);
+    const [addressOptions, setAddressOptions] = useState([]);
+    const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+    // Auto-fetch center, logged-in user info, and customer database on mount
     useEffect(() => {
         const fetchedCenter = getUserCenter();
         const fetchedDesignation = getUserDesignation();
@@ -147,7 +153,112 @@ export default function DocumentGenerate({ onAddToProposals }) {
         } catch (e) {
             console.error('Error populating user signatory:', e);
         }
+
+        // Fetch customer list with addresses from proposals/customer db
+        const fetchCustomers = async () => {
+            try {
+                const res = await axios.get(`${API_BASE_URL}/customers/from-proposals`);
+                if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+                    setCustomerSuggestions(res.data);
+                } else {
+                    const resFallback = await axios.get(`${API_BASE_URL}/customers/`);
+                    if (resFallback.data && Array.isArray(resFallback.data)) {
+                        setCustomerSuggestions(
+                            resFallback.data.map((c) => ({
+                                ...c,
+                                addresses: c.address ? [c.address] : [],
+                            }))
+                        );
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading customer suggestions:', err);
+            }
+        };
+        fetchCustomers();
     }, [form]);
+
+    // Handle searching customers by name, address, email or phone
+    const handleCustomerSearch = (searchText) => {
+        if (!searchText || searchText.trim().length < 1) {
+            setCustomerOptions([]);
+            return;
+        }
+        const query = searchText.trim().toLowerCase();
+        const matches = customerSuggestions
+            .filter((c) => {
+                const name = (c.name || '').toLowerCase();
+                const addr = Array.isArray(c.addresses)
+                    ? c.addresses.join(' ').toLowerCase()
+                    : (c.address || '').toLowerCase();
+                const email = (c.email || '').toLowerCase();
+                const phone = (c.phone_no || '').toLowerCase();
+                return (
+                    name.includes(query) ||
+                    addr.includes(query) ||
+                    email.includes(query) ||
+                    phone.includes(query)
+                );
+            })
+            .slice(0, 15)
+            .map((c) => {
+                const firstAddr =
+                    Array.isArray(c.addresses) && c.addresses.length > 0
+                        ? c.addresses[0]
+                        : c.address || '';
+                return {
+                    value: c.name,
+                    label: (
+                        <div className="py-1">
+                            <div className="font-bold text-slate-800 text-xs">{c.name}</div>
+                            {firstAddr && (
+                                <div className="text-[11px] text-slate-500 truncate max-w-md">
+                                    {firstAddr}
+                                </div>
+                            )}
+                        </div>
+                    ),
+                    customer: c,
+                };
+            });
+        setCustomerOptions(matches);
+    };
+
+    // Handle selecting customer option
+    const handleCustomerSelect = (value, option) => {
+        if (option && option.customer) {
+            const c = option.customer;
+            setSelectedCustomer(c);
+
+            const addrs = Array.isArray(c.addresses)
+                ? c.addresses
+                : c.address
+                ? [c.address]
+                : [];
+            setAddressOptions(addrs.map((a) => ({ value: a, label: a })));
+
+            const firstAddr = addrs[0] || '';
+            const formatted = firstAddr ? `${c.name}\n${firstAddr}` : c.name;
+
+            form.setFieldsValue({
+                customer_raw: formatted,
+                email_to: c.email || form.getFieldValue('email_to') || '',
+                kind_attention: c.alternate_contact_details || form.getFieldValue('kind_attention') || '',
+            });
+
+            message.info(`Selected "${c.name}" — Name & Address populated!`);
+        }
+    };
+
+    // Handle selecting address from address options
+    const handleAddressSelect = (addressVal) => {
+        const currentRaw = form.getFieldValue('customer_raw') || '';
+        const lines = currentRaw.split('\n');
+        const custName = lines[0] || (selectedCustomer ? selectedCustomer.name : '');
+        const formatted = addressVal ? `${custName}\n${addressVal}` : custName;
+        form.setFieldsValue({ customer_raw: formatted });
+        message.info('Updated document customer address');
+    };
 
     // Handle adding scope point
     const handleAddScopeItem = () => {
@@ -375,11 +486,26 @@ export default function DocumentGenerate({ onAddToProposals }) {
                 if (!extractedData.customer_name && customer_lines[0]) {
                     extractedData.customer_name = customer_lines[0];
                 }
+                if (!extractedData.customer_type) {
+                    if (selectedCustomer && selectedCustomer.customer_type) {
+                        extractedData.customer_type = selectedCustomer.customer_type;
+                    } else if (extractedData.customer_name) {
+                        const found = customerSuggestions.find(
+                            (c) => c.name && c.name.trim().toLowerCase() === extractedData.customer_name.trim().toLowerCase()
+                        );
+                        if (found && found.customer_type) {
+                            extractedData.customer_type = found.customer_type;
+                        }
+                    }
+                }
                 if (!extractedData.address && customer_lines.length > 1) {
                     extractedData.address = customer_lines.slice(1).join(', ');
                 }
                 if (!extractedData.email && email_to.length > 0) {
                     extractedData.email = email_to.join(', ');
+                }
+                if (!extractedData.email_reference) {
+                    extractedData.email_reference = extractedData.email || email_to.join(', ') || values.reference || '';
                 }
                 if (!extractedData.quote_reference && values.reference) {
                     extractedData.quote_reference = values.reference;
@@ -390,14 +516,16 @@ export default function DocumentGenerate({ onAddToProposals }) {
                 if (!extractedData.center && values.dept) {
                     extractedData.center = values.dept;
                 }
-                if (!extractedData.enquiry_date && values.date) {
-                    extractedData.enquiry_date = values.date;
+                if (values.kind_attention) {
+                    extractedData.kind_attention = values.kind_attention;
                 }
-                if (!extractedData.payment_terms_and_condition && termsItems.length > 0) {
-                    extractedData.payment_terms_and_condition = termsItems.join('; ');
-                    extractedData.payment_terms_and_conditions = termsItems.join('; ');
-                    extractedData.payment_terms = termsItems.join('; ');
-                    extractedData.terms_and_conditions = termsItems;
+                // Ensure kind_attention name (e.g. Manjunath) does not populate alternate_contact_details number field
+                if (extractedData.alternate_contact_details && values.kind_attention) {
+                    const altStr = String(extractedData.alternate_contact_details).trim().toLowerCase();
+                    const kindStr = String(values.kind_attention).trim().toLowerCase();
+                    if (altStr === kindStr || kindStr.includes(altStr) || altStr.includes(kindStr)) {
+                        extractedData.alternate_contact_details = '';
+                    }
                 }
 
                 message.success(`Document "${filename}" generated & extracted into Proposal Form!`);
@@ -446,979 +574,516 @@ export default function DocumentGenerate({ onAddToProposals }) {
     const progressPercent = calculateProgress();
 
     return (
-        <div className="w-full min-h-screen py-4 px-4 sm:px-6 lg:px-8 space-y-6 font-sans antialiased text-slate-800">
-            {/* Simple Header Banner */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-                <div>
-                    <Title level={2} style={{ margin: 0, color: '#0f172a', fontWeight: 700, fontSize: '24px' }}>
-                        Proposal Generator
-                    </Title>
+        <div className="w-full min-h-screen bg-[#F8FAFC] py-6 px-4 sm:px-6 lg:px-10 font-sans antialiased text-[#0F172A]">
+            
+            {/* Enterprise Header Area */}
+            <div className="max-w-7xl mx-auto mb-8 space-y-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <FileWordOutlined className="text-blue-600" />
+                    <span>Document Studio</span>
+                    <span>/</span>
+                    <span className="text-slate-700">Proposal Generator</span>
                 </div>
-                <Button
-                    type="primary"
-                    size="large"
-                    icon={<DownloadOutlined />}
-                    loading={loading}
-                    onClick={() => form.submit()}
-                    style={{
-                        backgroundColor: '#10b981',
-                        borderColor: '#10b981',
-                        borderRadius: '10px',
-                        height: '44px',
-                        paddingLeft: '24px',
-                        paddingRight: '24px',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                    }}
-                >
-                    Generate & Export (.docx)
-                </Button>
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/90 shadow-sm">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight m-0">
+                                Official Document Studio
+                            </h1>
+                            <Tag className="bg-blue-50 text-blue-700 border-blue-200 font-bold rounded-full px-3 py-0.5 text-xs">
+                                PRO DOCUMENT V2.0
+                            </Tag>
+                        </div>
+                        <p className="text-slate-500 text-sm m-0">
+                            Build, format, and stream enterprise proposal documents with real-time A4 preview and instant proposal extraction.
+                        </p>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        {/* Live Completion Progress Widget */}
+                        <div className="hidden sm:flex flex-col items-end gap-1 px-4 py-2 bg-slate-50 rounded-xl border border-slate-200/80">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Document Readiness: <strong className="text-blue-600">{progressPercent}%</strong>
+                            </span>
+                            <Progress
+                                percent={progressPercent}
+                                size="small"
+                                showInfo={false}
+                                strokeColor={{ '0%': '#2563EB', '100%': '#16A34A' }}
+                                className="w-36 m-0"
+                            />
+                        </div>
+
+                        <Button
+                            type="primary"
+                            size="large"
+                            icon={<DownloadOutlined />}
+                            loading={loading && !addToProposalsLoading}
+                            onClick={() => {
+                                setActionType('download');
+                                form.submit();
+                            }}
+                            className="bg-[#2563EB] hover:bg-[#1E40AF] border-none rounded-xl h-11 px-6 font-semibold shadow-md hover:shadow-lg transition-all duration-200"
+                        >
+                            Export DOCX
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             {/* Main Studio Workspace Grid: Left Column Editor | Right Column Live Preview */}
-            <Form
-                form={form}
-                layout="vertical"
-                onFinish={handleSubmit}
-                initialValues={{
-                    date: new Date().toLocaleDateString('en-GB'),
-                    dept: '',
-                    email_to: '',
-                    email_cc: '',
-                    customer_raw: '',
-                    kind_attention: '',
-                    reference: '',
-                    subject: '',
-                    sac_code: '',
-                    scope_intro: '',
-                }}
-                className="w-full"
-            >
-                <Row gutter={[24, 24]}>
-                    {/* Left Column: Input Form Studio (7 Cols on desktop) */}
-                    <Col xs={24} lg={15} xl={15} className="space-y-6">
+            <div className="max-w-7xl mx-auto">
+                <Form
+                    form={form}
+                    layout="vertical"
+                    onFinish={handleSubmit}
+                    initialValues={{
+                        date: new Date().toLocaleDateString('en-GB'),
+                        dept: '',
+                        email_to: '',
+                        email_cc: '',
+                        customer_raw: '',
+                        kind_attention: '',
+                        reference: '',
+                        subject: '',
+                        sac_code: '',
+                        scope_intro: '',
+                    }}
+                    className="w-full"
+                >
+                    <Row gutter={[24, 24]}>
+                        {/* Left Column: Input Form Studio (15 Cols on desktop) */}
+                        <Col xs={24} lg={15} xl={15} className="space-y-6">
 
-                        {/* Card 1: Basic Metadata & Template Settings */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                                            <FileWordOutlined className="text-lg" />
-                                        </div>
-                                        <span>1. Document Metadata & Settings</span>
-                                    </Space>
-                                    <Tag color="blue" className="rounded-md font-mono text-xs">SECTION 01</Tag>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            <Text className="text-slate-500 text-xs mb-4 block">
-                                Specify document header attributes including issue date, department code, and export filename.
-                            </Text>
-
-                            <Row gutter={16}>
-                                <Col xs={24} sm={12} md={6}>
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">Proposal Date <span className="text-red-500">*</span></Text>}
-                                        name="date"
-                                        rules={[{ required: true, message: 'Date is required' }]}
-                                    >
-                                        <Input
-                                            prefix={<CalendarOutlined className="text-slate-400" />}
-                                            placeholder="DD/MM/YYYY"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-                                </Col>
-
-                                <Col xs={24} sm={12} md={6}>
-                                    <Form.Item
-                                        label={
-                                            <Space size={4}>
-                                                <Text className="text-xs font-semibold text-slate-700">Dept / Division</Text>
-                                                <Tooltip title="Auto-fetched from logged-in account user center. Click reload to refresh.">
-                                                    <InfoCircleOutlined className="text-slate-400 text-xs" />
-                                                </Tooltip>
-                                            </Space>
-                                        }
-                                        name="dept"
-                                    >
-                                        <Input
-                                            prefix={<ApartmentOutlined className="text-slate-400" />}
-                                            placeholder="e.g. C-SMPM"
-                                            size="large"
-                                            className="rounded-xl"
-                                            suffix={
-                                                <Tooltip title="Re-sync with logged-in user center">
-                                                    <ReloadOutlined
-                                                        className="cursor-pointer text-blue-600 hover:text-blue-800 transition-colors"
-                                                        onClick={() => {
-                                                            const c = getUserCenter();
-                                                            if (c) {
-                                                                form.setFieldsValue({ dept: c });
-                                                                message.info(`Updated department code to ${c}`);
-                                                            } else {
-                                                                message.warning('No user center found in current account');
-                                                            }
-                                                        }}
-                                                    />
-                                                </Tooltip>
-                                            }
-                                        />
-                                    </Form.Item>
-                                </Col>
-
-                                <Col xs={24} sm={12} md={6}>
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">Save Filename</Text>}
-                                        name="filename"
-                                    >
-                                        <Input
-                                            placeholder="Proposal_Name.docx"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-                                </Col>
-
-                                <Col xs={24} sm={12} md={6}>
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">SAC Code</Text>}
-                                        name="sac_code"
-                                    >
-                                        <Input
-                                            placeholder="e.g. 998313"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                        </Card>
-
-                        {/* Card 2: Email & Distribution List */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                                            <MailOutlined className="text-lg" />
-                                        </div>
-                                        <span>2. Distribution & Email List</span>
-                                    </Space>
-                                    <Tag color="indigo" className="rounded-md font-mono text-xs">SECTION 02</Tag>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            <Text className="text-slate-500 text-xs mb-4 block">
-                                Primary and copy email addresses to embed in the Proposal header block.
-                            </Text>
-
-                            <Row gutter={16}>
-                                <Col xs={24} md={12}>
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">Email - To (Comma separated)</Text>}
-                                        name="email_to"
-                                    >
-                                        <Input
-                                            prefix={<MailOutlined className="text-slate-400" />}
-                                            placeholder="client@company.com, purchase@company.com"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-                                </Col>
-
-                                <Col xs={24} md={12}>
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">Email - Cc (Comma separated)</Text>}
-                                        name="email_cc"
-                                    >
-                                        <Input
-                                            prefix={<MailOutlined className="text-slate-400" />}
-                                            placeholder="head@cmti.res.in, accounts@cmti.res.in"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                        </Card>
-
-                        {/* Card 3: Customer Information & Subject */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                                            <BankOutlined className="text-lg" />
-                                        </div>
-                                        <span>3. Customer & Proposal Context</span>
-                                    </Space>
-                                    <Tag color="emerald" className="rounded-md font-mono text-xs">SECTION 03</Tag>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            <Row gutter={16}>
-                                <Col xs={24} md={12}>
-                                    <Form.Item
-                                        label={
-                                            <Text className="text-xs font-semibold text-slate-700">
-                                                Customer Name & Address <span className="text-red-500">*</span>
-                                            </Text>
-                                        }
-                                        name="customer_raw"
-                                        rules={[{ required: true, message: 'Customer details are required' }]}
-                                        tooltip="Line 1: Company / Client Name. Following lines: Street address & Pincode."
-                                    >
-                                        <TextArea
-                                            rows={4}
-                                            placeholder="M/s. ABC Industries Ltd.&#10;Plot No. 45, Industrial Area&#10;Bengaluru - 560058"
-                                            className="rounded-xl font-sans"
-                                        />
-                                    </Form.Item>
-                                </Col>
-
-                                <Col xs={24} md={12}>
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">Kind Attention</Text>}
-                                        name="kind_attention"
-                                    >
-                                        <Input
-                                            placeholder="e.g. Mr. Rajesh Sharma (General Manager)"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-
-                                    <Form.Item
-                                        label={<Text className="text-xs font-semibold text-slate-700">Reference</Text>}
-                                        name="reference"
-                                    >
-                                        <Input
-                                            placeholder="e.g. Email enquiry dated 12/07/2026"
-                                            size="large"
-                                            className="rounded-xl"
-                                        />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-
-                            <Form.Item
-                                label={
-                                    <Text className="text-xs font-semibold text-slate-700">
-                                        Proposal Subject <span className="text-red-500">*</span>
-                                    </Text>
-                                }
-                                name="subject"
-                                rules={[{ required: true, message: 'Subject line is required' }]}
-                                tooltip="Wrap text with **double asterisks** to emphasize figures or key text in bold."
-                            >
-                                <Input
-                                    prefix={<FileTextOutlined className="text-slate-400" />}
-                                    placeholder="Proposal for Design, Fabrication & Testing of..."
-                                    size="large"
-                                    className="rounded-xl font-medium"
-                                />
-                            </Form.Item>
-                        </Card>
-
-                        {/* Card 4: Scope of Work */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
-                                            <FileTextOutlined className="text-lg" />
-                                        </div>
-                                        <span>4. Scope of Work</span>
-                                    </Space>
-                                    <Tag color="cyan" className="rounded-md font-mono text-xs">{scopeItems.length} POINTS</Tag>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            <Form.Item
-                                label={<Text className="text-xs font-semibold text-slate-700">Introductory Paragraph (Optional)</Text>}
-                                name="scope_intro"
-                            >
-                                <TextArea
-                                    rows={2}
-                                    placeholder="With reference to your enquiry, we are pleased to submit our formal technical & financial Proposal..."
-                                    className="rounded-xl"
-                                />
-                            </Form.Item>
-
-                            <Divider orientation="left" style={{ margin: '16px 0 12px 0', fontSize: '13px', color: '#64748b' }}>
-                                Scope Bullet Points List
-                            </Divider>
-
-                            {scopeItems.length === 0 ? (
-                                <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-4">
-                                    No scope points added yet. Type a point below and click <strong>Add Scope Point</strong>.
-                                </div>
-                            ) : (
-                                <div className="space-y-2 mb-4">
-                                    {scopeItems.map((item, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="flex items-start justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 hover:bg-slate-100/60 transition-colors"
-                                        >
-                                            <Text className="text-slate-800 text-sm leading-relaxed flex-1 mr-3">
-                                                <span className="font-bold text-blue-600 mr-2">•</span>
-                                                {item}
-                                            </Text>
-                                            <Button
-                                                type="text"
-                                                danger
-                                                size="small"
-                                                icon={<DeleteOutlined />}
-                                                onClick={() => handleRemoveScopeItem(idx)}
-                                                className="hover:bg-red-50 rounded-lg"
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            <Row gutter={8}>
-                                <Col flex="auto">
-                                    <Input
-                                        placeholder="Enter scope item point (use **text** for bold)"
-                                        value={newScopeInput}
-                                        onChange={(e) => setNewScopeInput(e.target.value)}
-                                        onPressEnter={(e) => {
-                                            e.preventDefault();
-                                            handleAddScopeItem();
-                                        }}
-                                        size="large"
-                                        className="rounded-xl"
-                                    />
-                                </Col>
-                                <Col flex="none">
-                                    <Button
-                                        type="primary"
-                                        ghost
-                                        icon={<PlusOutlined />}
-                                        onClick={handleAddScopeItem}
-                                        size="large"
-                                        className="rounded-xl font-semibold border-blue-500 text-blue-600"
-                                    >
-                                        Add Point
-                                    </Button>
-                                </Col>
-                            </Row>
-
-                            {/* Scope Attachments Section */}
-                            <Divider orientation="left" style={{ margin: '20px 0 12px 0', fontSize: '13px', color: '#64748b' }}>
-                                Scope Attachments & Documents
-                            </Divider>
-
-                            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-xs font-semibold text-slate-700">
-                                        <PaperClipOutlined className="text-blue-500 text-sm" />
-                                        <span>Attach Proposal Documents / Annexures</span>
-                                    </Space>
-
-                                    <Upload
-                                        beforeUpload={(file) => {
-                                            setScopeAttachments((prev) => [...prev, file]);
-                                            return false;
-                                        }}
-                                        showUploadList={false}
-                                        multiple
-                                    >
-                                        <Button
-                                            size="small"
-                                            type="primary"
-                                            ghost
-                                            icon={<UploadOutlined />}
-                                            className="rounded-lg text-xs border-blue-500 text-blue-600 font-semibold"
-                                        >
-                                            Attach Files
-                                        </Button>
-                                    </Upload>
-                                </div>
-
-                                <Text className="text-slate-500 text-[11px] block">
-                                    Upload technical specs, drawings, or annexures to consider as Proposal document attachments.
-                                </Text>
-
-                                {scopeAttachments.length > 0 && (
-                                    <div className="pt-2 border-t border-slate-200/80">
-                                        <div className="flex items-center gap-1.5 mb-2 text-xs font-medium text-slate-600">
-                                            <PaperClipOutlined className="text-slate-500 text-sm" />
-                                            <span>Attached Documents ({scopeAttachments.length})</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {scopeAttachments.map((file, idx) => (
-                                                <div
-                                                    key={`${file.name}-${idx}`}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-blue-600"
-                                                >
-                                                    <PaperClipOutlined className="text-slate-400 text-xs" />
-                                                    <span className="max-w-[200px] truncate" title={file.name}>
-                                                        {file.name}
-                                                    </span>
-                                                    <span
-                                                        onClick={() => setScopeAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                                                        className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
-                                                    >
-                                                        ✕
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </Card>
-
-                        {/* Card 5: Terms & Conditions */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                                            <CheckCircleOutlined className="text-lg" />
-                                        </div>
-                                        <span>5. Terms and Conditions</span>
-                                    </Space>
-                                    <Tag color="gold" className="rounded-md font-mono text-xs">{termsItems.length} CLAUSES</Tag>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            {termsItems.length === 0 ? (
-                                <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-4">
-                                    No terms & conditions added yet. Type a term below and click <strong>Add Clause</strong>.
-                                </div>
-                            ) : (
-                                <div className="space-y-2 mb-4">
-                                    {termsItems.map((item, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="flex items-start justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 hover:bg-slate-100/60 transition-colors"
-                                        >
-                                            <Text className="text-slate-800 text-sm leading-relaxed flex-1 mr-3">
-                                                <span className="font-bold text-amber-600 mr-2">{idx + 1}.</span>
-                                                {item}
-                                            </Text>
-                                            <Button
-                                                type="text"
-                                                danger
-                                                size="small"
-                                                icon={<DeleteOutlined />}
-                                                onClick={() => handleRemoveTermItem(idx)}
-                                                className="hover:bg-red-50 rounded-lg"
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            <Row gutter={8}>
-                                <Col flex="auto">
-                                    <Input
-                                        placeholder="Enter commercial or delivery clause"
-                                        value={newTermInput}
-                                        onChange={(e) => setNewTermInput(e.target.value)}
-                                        onPressEnter={(e) => {
-                                            e.preventDefault();
-                                            handleAddTermItem();
-                                        }}
-                                        size="large"
-                                        className="rounded-xl"
-                                    />
-                                </Col>
-                                <Col flex="none">
-                                    <Button
-                                        type="primary"
-                                        ghost
-                                        icon={<PlusOutlined />}
-                                        onClick={handleAddTermItem}
-                                        size="large"
-                                        className="rounded-xl font-semibold border-amber-500 text-amber-600"
-                                    >
-                                        Add Clause
-                                    </Button>
-                                </Col>
-                            </Row>
-                        </Card>
-
-                        {/* Card 6: Dynamic Tables Studio */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                                            <PrinterOutlined className="text-lg" />
-                                        </div>
-                                        <span>6. Pricing & Cost Break-Up Tables</span>
-                                    </Space>
-                                    <Button
-                                        type="primary"
-                                        size="small"
-                                        icon={<PlusOutlined />}
-                                        onClick={handleAddTable}
-                                        className="rounded-lg font-semibold bg-purple-600 hover:bg-purple-700"
-                                    >
-                                        Add Table
-                                    </Button>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            {tables.length === 0 ? (
-                                <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                                    No breakdown tables attached. Click <strong>Add Table</strong> to insert a cost summary table.
-                                </div>
-                            ) : (
-                                tables.map((tbl, tIdx) => (
-                                    <div
-                                        key={tIdx}
-                                        className="p-4 mb-6 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-4 shadow-sm"
-                                    >
-                                        <div className="flex items-center justify-between gap-4">
-                                            <Input
-                                                prefix={<Text className="font-semibold text-slate-400 text-xs">Table Title:</Text>}
-                                                value={tbl.title}
-                                                onChange={(e) => handleTableTitleChange(tIdx, e.target.value)}
-                                                placeholder="e.g. Cost Break-Up Summary"
-                                                className="font-bold text-slate-800 rounded-xl"
-                                                size="large"
-                                            />
-                                            <Popconfirm
-                                                title="Delete Table"
-                                                description="Are you sure you want to remove this pricing table?"
-                                                onConfirm={() => handleRemoveTable(tIdx)}
-                                                okText="Yes"
-                                                cancelText="No"
-                                            >
-                                                <Button danger type="text" icon={<DeleteOutlined />}>
-                                                    Remove
-                                                </Button>
-                                            </Popconfirm>
-                                        </div>
-
-                                        {/* Column Headers setup */}
-                                        <div className="space-y-2">
-                                            <Text className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                                Column Headers ({tbl.headers.length})
-                                            </Text>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                {tbl.headers.map((h, hIdx) => (
-                                                    <div
-                                                        key={hIdx}
-                                                        className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs"
-                                                    >
-                                                        <Input
-                                                            variant="borderless"
-                                                            size="small"
-                                                            value={h}
-                                                            onChange={(e) => handleHeaderChange(tIdx, hIdx, e.target.value)}
-                                                            className="w-28 text-xs font-semibold text-slate-700"
-                                                        />
-                                                        <Button
-                                                            type="text"
-                                                            size="small"
-                                                            danger
-                                                            icon={<DeleteOutlined style={{ fontSize: '10px' }} />}
-                                                            onClick={() => handleRemoveHeaderColumn(tIdx, hIdx)}
-                                                        />
-                                                    </div>
-                                                ))}
-                                                <Button
-                                                    type="dashed"
-                                                    size="small"
-                                                    icon={<PlusOutlined />}
-                                                    onClick={() => handleAddHeaderColumn(tIdx)}
-                                                    className="rounded-lg text-xs"
-                                                >
-                                                    Add Column
-                                                </Button>
-                                            </div>
-                                        </div>
-
-                                        {/* Rows Data Matrix */}
-                                        <div className="space-y-2 overflow-x-auto">
-                                            <Text className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                                Row Data Items ({tbl.rows.length})
-                                            </Text>
-                                            <table className="w-full border-collapse bg-white rounded-xl overflow-hidden border border-slate-200 text-sm shadow-2xs">
-                                                <thead>
-                                                    <tr className="bg-slate-100/90 border-b border-slate-200">
-                                                        {tbl.headers.map((h, hIdx) => (
-                                                            <th key={hIdx} className="p-2.5 text-left text-xs font-bold text-slate-700">
-                                                                {h || `Col ${hIdx + 1}`}
-                                                            </th>
-                                                        ))}
-                                                        <th className="p-2.5 text-center w-12 text-xs font-bold text-slate-700">
-                                                            Action
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {tbl.rows.map((row, rIdx) => (
-                                                        <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
-                                                            {row.map((cell, cIdx) => (
-                                                                <td key={cIdx} className="p-1.5">
-                                                                    <Input
-                                                                        size="small"
-                                                                        value={cell}
-                                                                        onChange={(e) =>
-                                                                            handleCellChange(tIdx, rIdx, cIdx, e.target.value)
-                                                                        }
-                                                                        className="rounded-md text-xs font-medium"
-                                                                    />
-                                                                </td>
-                                                            ))}
-                                                            <td className="p-1 text-center">
-                                                                <Button
-                                                                    type="text"
-                                                                    danger
-                                                                    size="small"
-                                                                    icon={<DeleteOutlined />}
-                                                                    onClick={() => handleRemoveTableRow(tIdx, rIdx)}
-                                                                />
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                            <Button
-                                                type="dashed"
-                                                block
-                                                icon={<PlusOutlined />}
-                                                onClick={() => handleAddTableRow(tIdx)}
-                                                className="mt-2 rounded-xl text-xs font-semibold"
-                                            >
-                                                Add Row to {tbl.title || 'Table'}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </Card>
-
-                        {/* Card 7: Signatories & Approval Blocks */}
-                        <Card
-                            title={
-                                <div className="flex items-center justify-between">
-                                    <Space className="text-slate-900 font-bold text-lg">
-                                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                                            <UserOutlined className="text-lg" />
-                                        </div>
-                                        <span>7. Signatory & Approval Blocks</span>
-                                    </Space>
-                                    <Button
-                                        type="primary"
-                                        ghost
-                                        icon={<PlusOutlined />}
-                                        onClick={handleAddSignatory}
-                                        size="small"
-                                        className="rounded-lg font-semibold"
-                                    >
-                                        + Add Signatory
-                                    </Button>
-                                </div>
-                            }
-                            className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/80 bg-white"
-                            styles={{ body: { padding: '24px' } }}
-                        >
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {signatories.map((sig, sIdx) => (
-                                    <div
-                                        key={sIdx}
-                                        className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3 relative shadow-2xs"
-                                    >
-                                        <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                                            <Text className="font-bold text-slate-800 text-xs uppercase tracking-wider">
-                                                Signatory #{sIdx + 1}
-                                            </Text>
-                                            <Space>
-                                                <Button
-                                                    type="link"
-                                                    size="small"
-                                                    icon={<ReloadOutlined />}
-                                                    onClick={() => {
-                                                        try {
-                                                            const rawUser = window.localStorage.getItem('ppm_user');
-                                                            if (rawUser) {
-                                                                const parsedUser = JSON.parse(rawUser);
-                                                                const desig = getUserDesignation();
-                                                                const center = getUserCenter();
-                                                                const lines = [desig, center, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
-                                                                const updated = [...signatories];
-                                                                updated[sIdx] = {
-                                                                    name: parsedUser.name || updated[sIdx].name,
-                                                                    lines_raw: lines,
-                                                                };
-                                                                setSignatories(updated);
-                                                                message.info('Populated signatory details from logged-in account');
-                                                            }
-                                                        } catch (e) {
-                                                            message.warning('Could not read user account details');
-                                                        }
-                                                    }}
-                                                    className="p-0 text-xs font-semibold text-blue-600 hover:text-blue-800"
-                                                >
-                                                    Fill My Profile
-                                                </Button>
-                                                {signatories.length > 1 && (
-                                                    <Button
-                                                        type="text"
-                                                        danger
-                                                        size="small"
-                                                        icon={<DeleteOutlined />}
-                                                        onClick={() => handleRemoveSignatory(sIdx)}
-                                                    />
-                                                )}
-                                            </Space>
-                                        </div>
-
-                                        <div>
-                                            <Text className="text-xs font-semibold text-slate-600 mb-1 block">
-                                                Signatory Name
-                                            </Text>
-                                            <Input
-                                                placeholder="e.g. Dr. Rajesh Kumar"
-                                                value={sig.name}
-                                                onChange={(e) =>
-                                                    handleSignatoryChange(sIdx, 'name', e.target.value)
-                                                }
-                                                size="large"
-                                                className="rounded-xl font-semibold"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <Text className="text-xs font-semibold text-slate-600 mb-1 block">
-                                                Designation Line(s) (One per line)
-                                            </Text>
-                                            <TextArea
-                                                rows={3}
-                                                placeholder="Scientist-D&#10;C-SMPM&#10;CMTI, Bengaluru"
-                                                value={sig.lines_raw}
-                                                onChange={(e) =>
-                                                    handleSignatoryChange(sIdx, 'lines_raw', e.target.value)
-                                                }
-                                                className="rounded-xl font-sans"
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="mt-4 flex justify-start">
-                                <Button
-                                    type="dashed"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleAddSignatory}
-                                    size="large"
-                                    className="rounded-xl border-blue-500 text-blue-600 font-semibold"
-                                >
-                                    Add Another Signatory
-                                </Button>
-                            </div>
-                        </Card>
-                    </Col>
-
-                    {/* Right Column: Live A4 Document Preview & Quick Export Sidebar (5 Cols on desktop) */}
-                    <Col xs={24} lg={9} xl={9} className="space-y-6">
-                        <div className="sticky top-6 space-y-6">
-
-                            {/* Document Preview Toolbar & Container */}
+                            {/* Card 1: Basic Metadata & Template Settings */}
                             <Card
                                 title={
-                                    <div className="flex items-center justify-between">
-                                        <Space className="text-slate-900 font-bold text-base">
-                                            <EyeOutlined className="text-blue-600" /> Live Document Preview
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
+                                                <FileWordOutlined className="text-lg" />
+                                            </div>
+                                            <span>1. Document Metadata & Header Settings</span>
                                         </Space>
-                                        <Space size="xs">
-                                            <Tooltip title="Zoom Out">
-                                                <Button
-                                                    type="text"
-                                                    size="small"
-                                                    icon={<CompressOutlined />}
-                                                    onClick={() => setPreviewZoom(Math.max(70, previewZoom - 10))}
-                                                />
-                                            </Tooltip>
-                                            <Text className="text-xs font-mono font-bold text-slate-500 px-1">{previewZoom}%</Text>
-                                            <Tooltip title="Zoom In">
-                                                <Button
-                                                    type="text"
-                                                    size="small"
-                                                    icon={<ExpandOutlined />}
-                                                    onClick={() => setPreviewZoom(Math.min(130, previewZoom + 10))}
-                                                />
-                                            </Tooltip>
-                                        </Space>
+                                        <Tag className="bg-slate-100 text-slate-600 border-slate-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
+                                            SECTION 01
+                                        </Tag>
                                     </div>
                                 }
-                                className="shadow-xl rounded-2xl border border-slate-200/90 bg-slate-900/5 backdrop-blur-xs"
-                                styles={{ body: { padding: '16px' } }}
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
                             >
-                                {/* Simulated A4 Paper Card */}
-                                <div
-                                    className="bg-white rounded-xl p-6 shadow-2xl border border-slate-200/80 transition-transform duration-200 overflow-y-auto max-h-[calc(100vh-220px)] min-h-[550px] space-y-4 font-sans text-xs text-slate-800 select-none"
-                                    style={{
-                                        transform: `scale(${previewZoom / 100})`,
-                                        transformOrigin: 'top center',
-                                    }}
-                                >
-                                    {/* Document Right Header */}
-                                    <div className="text-right text-slate-600 space-y-0.5 border-b border-slate-100 pb-3">
-                                        <div className="font-semibold">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
-                                        {formValues.dept && <div className="font-semibold text-blue-700">Dept: {formValues.dept}</div>}
-                                    </div>
+                                <p className="text-slate-500 text-xs mb-5 block m-0">
+                                    Specify document header attributes including issue date, department center code, and target export filename.
+                                </p>
 
-                                    {/* Emails */}
-                                    {(formValues.email_to || formValues.email_cc) && (
-                                        <div className="space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-100 font-mono text-[11px]">
-                                            {formValues.email_to && (
-                                                <div>
-                                                    <strong className="text-slate-700">Email: </strong>
-                                                    <span className="text-blue-600">{formValues.email_to}</span>
-                                                </div>
-                                            )}
-                                            {formValues.email_cc && (
-                                                <div>
-                                                    <strong className="text-slate-700">Cc: </strong>
-                                                    <span className="text-blue-600">{formValues.email_cc}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
+                                <Row gutter={[16, 16]}>
+                                    <Col xs={24} sm={12} md={6}>
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Proposal Date <span className="text-red-500">*</span></span>}
+                                            name="date"
+                                            rules={[{ required: true, message: 'Date is required' }]}
+                                        >
+                                            <Input
+                                                prefix={<CalendarOutlined className="text-slate-400" />}
+                                                placeholder="DD/MM/YYYY"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+                                    </Col>
 
-                                    {/* Heading */}
-                                    <div className="text-center font-bold text-sm text-slate-900 tracking-wide uppercase py-1 border-b border-slate-200">
-                                        Proposal Information
-                                    </div>
+                                    <Col xs={24} sm={12} md={6}>
+                                        <Form.Item
+                                            label={
+                                                <Space size={4}>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Dept / Division</span>
+                                                    <Tooltip title="Auto-fetched from logged-in account user center. Click reload to refresh.">
+                                                        <InfoCircleOutlined className="text-slate-400 text-xs" />
+                                                    </Tooltip>
+                                                </Space>
+                                            }
+                                            name="dept"
+                                        >
+                                            <Input
+                                                prefix={<ApartmentOutlined className="text-slate-400" />}
+                                                placeholder="e.g. C-SMPM"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                                suffix={
+                                                    <Tooltip title="Re-sync with logged-in user center">
+                                                        <ReloadOutlined
+                                                            className="cursor-pointer text-blue-600 hover:text-blue-800 transition-colors"
+                                                            onClick={() => {
+                                                                const c = getUserCenter();
+                                                                if (c) {
+                                                                    form.setFieldsValue({ dept: c });
+                                                                    message.info(`Updated department code to ${c}`);
+                                                                } else {
+                                                                    message.warning('No user center found in current account');
+                                                                }
+                                                            }}
+                                                        />
+                                                    </Tooltip>
+                                                }
+                                            />
+                                        </Form.Item>
+                                    </Col>
 
-                                    {/* Customer Information */}
-                                    {formValues.customer_raw && (
-                                        <div>
-                                            <div className="font-bold text-slate-900 mb-0.5">Customer:</div>
-                                            <div className="whitespace-pre-line text-slate-700 pl-2 border-l-2 border-blue-400 font-sans">
-                                                {formValues.customer_raw}
+                                    <Col xs={24} sm={12} md={6}>
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Save Filename</span>}
+                                            name="filename"
+                                        >
+                                            <Input
+                                                placeholder="Proposal_Name.docx"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+                                    </Col>
+
+                                    <Col xs={24} sm={12} md={6}>
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">SAC Code</span>}
+                                            name="sac_code"
+                                        >
+                                            <Input
+                                                placeholder="e.g. 998313"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+                            </Card>
+
+                            {/* Card 2: Email & Distribution List */}
+                            <Card
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 shadow-2xs">
+                                                <MailOutlined className="text-lg" />
                                             </div>
-                                        </div>
-                                    )}
+                                            <span>2. Distribution & Email List</span>
+                                        </Space>
+                                        <Tag className="bg-indigo-50 text-indigo-700 border-indigo-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
+                                            SECTION 02
+                                        </Tag>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
+                            >
+                                <p className="text-slate-500 text-xs mb-5 block m-0">
+                                    Primary and copy email addresses to embed into the official Proposal header metadata block.
+                                </p>
 
-                                    {formValues.kind_attention && (
-                                        <div>
-                                            <span className="font-bold text-slate-900">Kind Attention: </span>
-                                            <span className="text-slate-700">{formValues.kind_attention}</span>
-                                        </div>
-                                    )}
+                                <Row gutter={[16, 16]}>
+                                    <Col xs={24} md={12}>
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Email - To (Comma separated)</span>}
+                                            name="email_to"
+                                        >
+                                            <Input
+                                                prefix={<MailOutlined className="text-slate-400" />}
+                                                placeholder="client@company.com, purchase@company.com"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+                                    </Col>
 
-                                    {formValues.reference && (
-                                        <div>
-                                            <span className="font-bold text-slate-900">Reference: </span>
-                                            <span className="text-slate-700">{formValues.reference}</span>
-                                        </div>
-                                    )}
+                                    <Col xs={24} md={12}>
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Email - Cc (Comma separated)</span>}
+                                            name="email_cc"
+                                        >
+                                            <Input
+                                                prefix={<MailOutlined className="text-slate-400" />}
+                                                placeholder="head@cmti.res.in, accounts@cmti.res.in"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+                            </Card>
 
-                                    {formValues.subject && (
-                                        <div>
-                                            <span className="font-bold text-slate-900">Subject: </span>
-                                            <span className="text-slate-900 font-semibold">{formValues.subject}</span>
-                                        </div>
-                                    )}
+                            {/* Card 3: Customer Information & Subject */}
+                            <Card
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
+                                                <BankOutlined className="text-lg" />
+                                            </div>
+                                            <span>3. Customer & Proposal Context</span>
+                                        </Space>
+                                        <Tag className="bg-emerald-50 text-emerald-700 border-emerald-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
+                                            SECTION 03
+                                        </Tag>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
+                            >
+                                <Row gutter={[16, 16]}>
+                                    <Col xs={24} md={12}>
+                                        <div className="mb-3 space-y-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/90">
+                                            <div>
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center gap-1">
+                                                    <BankOutlined className="text-emerald-600" /> Customer Name (Search Database)
+                                                </span>
+                                                <AutoComplete
+                                                    options={customerOptions}
+                                                    onSearch={handleCustomerSearch}
+                                                    onSelect={handleCustomerSelect}
+                                                    placeholder="Search existing customers..."
+                                                    style={{ width: '100%' }}
+                                                >
+                                                    <Input
+                                                        placeholder="Search customer name..."
+                                                        size="large"
+                                                        className="rounded-xl border-slate-200 hover:border-emerald-500 focus:border-emerald-500 h-10 text-xs font-medium"
+                                                        allowClear
+                                                    />
+                                                </AutoComplete>
+                                            </div>
 
-                                    {formValues.sac_code && (
-                                        <div>
-                                            <span className="font-bold text-slate-900">SAC Code: </span>
-                                            <span className="text-slate-700">{formValues.sac_code}</span>
-                                        </div>
-                                    )}
-
-                                    {/* Scope of Work */}
-                                    {(formValues.scope_intro || scopeItems.length > 0) && (
-                                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                                            <div className="font-bold text-slate-900 text-xs">Scope of Work:</div>
-                                            {formValues.scope_intro && (
-                                                <p className="text-slate-700 leading-relaxed italic m-0">{formValues.scope_intro}</p>
-                                            )}
-                                            {scopeItems.length > 0 && (
-                                                <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
-                                                    {scopeItems.map((item, i) => (
-                                                        <li key={i}>{item}</li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Terms & Conditions */}
-                                    {termsItems.length > 0 && (
-                                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                                            <div className="font-bold text-slate-900 text-xs">Terms & Conditions:</div>
-                                            <ol className="list-decimal list-inside space-y-1 text-slate-700 pl-1">
-                                                {termsItems.map((item, i) => (
-                                                    <li key={i}>{item}</li>
-                                                ))}
-                                            </ol>
-                                        </div>
-                                    )}
-
-                                    {/* Cost Tables Preview */}
-                                    {tables.length > 0 && (
-                                        <div className="space-y-3 pt-2 border-t border-slate-100">
-                                            {tables.map((t, idx) => (
-                                                <div key={idx} className="space-y-1">
-                                                    {t.title && <div className="font-bold text-slate-800">{t.title}</div>}
-                                                    <table className="w-full border-collapse border border-slate-300 text-[10px]">
-                                                        <thead>
-                                                            <tr className="bg-blue-50/80">
-                                                                {t.headers.map((h, hIdx) => (
-                                                                    <th key={hIdx} className="border border-slate-300 p-1 font-bold text-slate-800 text-left">
-                                                                        {h}
-                                                                    </th>
-                                                                ))}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {t.rows.map((r, rIdx) => (
-                                                                <tr key={rIdx}>
-                                                                    {r.map((cell, cIdx) => (
-                                                                        <td key={cIdx} className="border border-slate-300 p-1">
-                                                                            {cell}
-                                                                        </td>
-                                                                    ))}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
+                                            {addressOptions.length > 0 && (
+                                                <div>
+                                                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center gap-1">
+                                                        <BankOutlined className="text-blue-600" /> Address Options
+                                                    </span>
+                                                    <AutoComplete
+                                                        options={addressOptions}
+                                                        onSelect={handleAddressSelect}
+                                                        placeholder="Type or select address..."
+                                                        style={{ width: '100%' }}
+                                                    >
+                                                        <Input
+                                                            placeholder="Select address..."
+                                                            size="large"
+                                                            className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-10 text-xs font-medium"
+                                                            allowClear
+                                                        />
+                                                    </AutoComplete>
                                                 </div>
-                                            ))}
+                                            )}
                                         </div>
-                                    )}
 
-                                    {/* Signatories Footer */}
-                                    {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
-                                        <div className="pt-6 border-t border-slate-200">
-                                            <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-right">
-                                                {signatories.map((sig, i) => (
-                                                    <div key={i} className="space-y-0.5">
-                                                        {sig.name && <div className="font-bold text-slate-900">{sig.name},</div>}
-                                                        {sig.lines_raw && (
-                                                            <div className="whitespace-pre-line text-slate-600 text-[11px]">
-                                                                {sig.lines_raw}
-                                                            </div>
-                                                        )}
+                                        <Form.Item
+                                            label={
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                                                    Customer Name & Address <span className="text-red-500">*</span>
+                                                </span>
+                                            }
+                                            name="customer_raw"
+                                            rules={[{ required: true, message: 'Customer details are required' }]}
+                                            tooltip="Line 1: Company / Client Name. Following lines: Street address & Pincode."
+                                        >
+                                            <TextArea
+                                                rows={4}
+                                                placeholder="M/s. ABC Industries Ltd.&#10;Plot No. 45, Industrial Area&#10;Bengaluru - 560058"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 text-sm font-medium p-3"
+                                            />
+                                        </Form.Item>
+                                    </Col>
+
+                                    <Col xs={24} md={12}>
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Kind Attention</span>}
+                                            name="kind_attention"
+                                        >
+                                            <Input
+                                                placeholder="e.g. Mr. Rajesh Sharma (General Manager)"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Reference</span>}
+                                            name="reference"
+                                        >
+                                            <Input
+                                                placeholder="e.g. Email enquiry dated 12/07/2026"
+                                                size="large"
+                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                            />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                <Form.Item
+                                    label={
+                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                                            Proposal Subject <span className="text-red-500">*</span>
+                                        </span>
+                                    }
+                                    name="subject"
+                                    rules={[{ required: true, message: 'Subject line is required' }]}
+                                    tooltip="Wrap text with **double asterisks** to emphasize figures or key text in bold."
+                                >
+                                    <Input
+                                        prefix={<FileTextOutlined className="text-slate-400" />}
+                                        placeholder="Proposal for Design, Fabrication & Testing of..."
+                                        size="large"
+                                        className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-semibold text-slate-900"
+                                    />
+                                </Form.Item>
+                            </Card>
+
+                            {/* Card 4: Scope of Work */}
+                            <Card
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center border border-cyan-100 shadow-2xs">
+                                                <FileTextOutlined className="text-lg" />
+                                            </div>
+                                            <span>4. Scope of Work</span>
+                                        </Space>
+                                        <Tag className="bg-cyan-50 text-cyan-700 border-cyan-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
+                                            {scopeItems.length} POINTS
+                                        </Tag>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
+                            >
+                                <Form.Item
+                                    label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Introductory Paragraph (Optional)</span>}
+                                    name="scope_intro"
+                                >
+                                    <TextArea
+                                        rows={2}
+                                        placeholder="With reference to your enquiry, we are pleased to submit our formal technical & financial Proposal..."
+                                        className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 text-sm font-medium p-3"
+                                    />
+                                </Form.Item>
+
+                                <Divider orientation="left" style={{ margin: '20px 0 14px 0', fontSize: '12px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Scope Bullet Points List
+                                </Divider>
+
+                                {scopeItems.length === 0 ? (
+                                    <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-4">
+                                        No scope points added yet. Type a point below and click <strong>Add Point</strong>.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2.5 mb-4">
+                                        {scopeItems.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="flex items-start justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/90 hover:bg-slate-100/70 transition-colors"
+                                            >
+                                                <Text className="text-slate-800 text-sm leading-relaxed flex-1 mr-3 font-medium">
+                                                    <span className="font-bold text-blue-600 mr-2.5">•</span>
+                                                    {item}
+                                                </Text>
+                                                <Button
+                                                    type="text"
+                                                    danger
+                                                    size="small"
+                                                    icon={<DeleteOutlined />}
+                                                    onClick={() => handleRemoveScopeItem(idx)}
+                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <Row gutter={8}>
+                                    <Col flex="auto">
+                                        <Input
+                                            placeholder="Enter scope item point (use **text** for bold)"
+                                            value={newScopeInput}
+                                            onChange={(e) => setNewScopeInput(e.target.value)}
+                                            onPressEnter={(e) => {
+                                                e.preventDefault();
+                                                handleAddScopeItem();
+                                            }}
+                                            size="large"
+                                            className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                        />
+                                    </Col>
+                                    <Col flex="none">
+                                        <Button
+                                            type="primary"
+                                            ghost
+                                            icon={<PlusOutlined />}
+                                            onClick={handleAddScopeItem}
+                                            size="large"
+                                            className="rounded-xl font-semibold border-blue-500 text-blue-600 h-11 px-5"
+                                        >
+                                            Add Point
+                                        </Button>
+                                    </Col>
+                                </Row>
+
+                                {/* Scope Attachments Section */}
+                                <Divider orientation="left" style={{ margin: '24px 0 14px 0', fontSize: '12px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Scope Attachments & Documents
+                                </Divider>
+
+                                <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-4.5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <Space className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                            <PaperClipOutlined className="text-blue-500 text-sm" />
+                                            <span>Attach Proposal Documents / Annexures</span>
+                                        </Space>
+
+                                        <Upload
+                                            beforeUpload={(file) => {
+                                                setScopeAttachments((prev) => [...prev, file]);
+                                                return false;
+                                            }}
+                                            showUploadList={false}
+                                            multiple
+                                        >
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                ghost
+                                                icon={<UploadOutlined />}
+                                                className="rounded-lg text-xs border-blue-500 text-blue-600 font-semibold"
+                                            >
+                                                Attach Files
+                                            </Button>
+                                        </Upload>
+                                    </div>
+
+                                    <Text className="text-slate-500 text-[11px] block">
+                                        Upload technical specs, drawings, or annexures to consider as Proposal document attachments.
+                                    </Text>
+
+                                    {scopeAttachments.length > 0 && (
+                                        <div className="pt-2 border-t border-slate-200/80">
+                                            <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold text-slate-600">
+                                                <PaperClipOutlined className="text-slate-500 text-sm" />
+                                                <span>Attached Documents ({scopeAttachments.length})</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {scopeAttachments.map((file, idx) => (
+                                                    <div
+                                                        key={`${file.name}-${idx}`}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold shadow-2xs text-blue-600"
+                                                    >
+                                                        <PaperClipOutlined className="text-slate-400 text-xs" />
+                                                        <span className="max-w-[200px] truncate" title={file.name}>
+                                                            {file.name}
+                                                        </span>
+                                                        <span
+                                                            onClick={() => setScopeAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                                                            className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
+                                                        >
+                                                            ✕
+                                                        </span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -1427,72 +1092,605 @@ export default function DocumentGenerate({ onAddToProposals }) {
                                 </div>
                             </Card>
 
-                            {/* Action Floating CTA Panel */}
+                            {/* Card 5: Terms & Conditions */}
                             <Card
-                                className="shadow-xl rounded-2xl border border-slate-200/90 bg-white"
-                                styles={{ body: { padding: '20px' } }}
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shadow-2xs">
+                                                <CheckCircleOutlined className="text-lg" />
+                                            </div>
+                                            <span>5.Payment Terms and Conditions</span>
+                                        </Space>
+                                        <Tag className="bg-amber-50 text-amber-700 border-amber-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
+                                            {termsItems.length} CLAUSES
+                                        </Tag>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
                             >
-                                <div className="space-y-3">
-                                    <Row gutter={[12, 12]}>
-                                        <Col xs={24} sm={12}>
-                                            <Button
-                                                type="primary"
-                                                size="large"
-                                                block
-                                                icon={<DownloadOutlined />}
-                                                loading={loading && !addToProposalsLoading}
-                                                onClick={() => {
-                                                    setActionType('download');
-                                                    form.submit();
-                                                }}
-                                                style={{
-                                                    backgroundColor: '#2563eb',
-                                                    borderRadius: '12px',
-                                                    height: '48px',
-                                                    fontSize: '15px',
-                                                    fontWeight: 700,
-                                                    boxShadow: '0 8px 16px -4px rgba(37, 99, 235, 0.4)',
-                                                }}
-                                                className="hover:scale-[1.01] transition-transform duration-200"
+                                {termsItems.length === 0 ? (
+                                    <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-4">
+                                        No terms & conditions added yet. Type a term below and click <strong>Add Clause</strong>.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2.5 mb-4">
+                                        {termsItems.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="flex items-start justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/90 hover:bg-slate-100/70 transition-colors"
                                             >
-                                                Generate DOCX
-                                            </Button>
-                                        </Col>
-                                        <Col xs={24} sm={12}>
-                                            <Button
-                                                type="primary"
-                                                size="large"
-                                                block
-                                                icon={<PlusOutlined />}
-                                                loading={addToProposalsLoading}
-                                                onClick={() => {
-                                                    setActionType('addToProposals');
-                                                    form.submit();
-                                                }}
-                                                style={{
-                                                    backgroundColor: '#16a34a',
-                                                    borderRadius: '12px',
-                                                    height: '48px',
-                                                    fontSize: '15px',
-                                                    fontWeight: 700,
-                                                    boxShadow: '0 8px 16px -4px rgba(22, 163, 74, 0.4)',
-                                                }}
-                                                className="hover:scale-[1.01] transition-transform duration-200 border-none"
-                                            >
-                                                Add to Proposals
-                                            </Button>
-                                        </Col>
-                                    </Row>
+                                                <Text className="text-slate-800 text-sm leading-relaxed flex-1 mr-3 font-medium">
+                                                    <span className="font-bold text-amber-600 mr-2.5">{idx + 1}.</span>
+                                                    {item}
+                                                </Text>
+                                                <Button
+                                                    type="text"
+                                                    danger
+                                                    size="small"
+                                                    icon={<DeleteOutlined />}
+                                                    onClick={() => handleRemoveTermItem(idx)}
+                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
 
-                                    <Text className="text-center block text-slate-400 text-xs">
-                                        Streams official <code className="text-slate-600 font-semibold">.docx</code> directly or auto-fills into Proposal entry.
-                                    </Text>
+                                <Row gutter={8}>
+                                    <Col flex="auto">
+                                        <Input
+                                            placeholder="Enter commercial or delivery clause"
+                                            value={newTermInput}
+                                            onChange={(e) => setNewTermInput(e.target.value)}
+                                            onPressEnter={(e) => {
+                                                e.preventDefault();
+                                                handleAddTermItem();
+                                            }}
+                                            size="large"
+                                            className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
+                                        />
+                                    </Col>
+                                    <Col flex="none">
+                                        <Button
+                                            type="primary"
+                                            ghost
+                                            icon={<PlusOutlined />}
+                                            onClick={handleAddTermItem}
+                                            size="large"
+                                            className="rounded-xl font-semibold border-amber-500 text-amber-600 h-11 px-5"
+                                        >
+                                            Add Clause
+                                        </Button>
+                                    </Col>
+                                </Row>
+                            </Card>
+
+                            {/* Card 6: Dynamic Tables Studio */}
+                            <Card
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shadow-2xs">
+                                                <PrinterOutlined className="text-lg" />
+                                            </div>
+                                            <span>6. Pricing & Cost Break-Up Tables</span>
+                                        </Space>
+                                        <Button
+                                            type="primary"
+                                            size="small"
+                                            icon={<PlusOutlined />}
+                                            onClick={handleAddTable}
+                                            className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 h-8 px-3 text-xs shadow-xs"
+                                        >
+                                            Add Table
+                                        </Button>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
+                            >
+                                {tables.length === 0 ? (
+                                    <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                                        No breakdown tables attached. Click <strong>Add Table</strong> to insert a cost summary table.
+                                    </div>
+                                ) : (
+                                    tables.map((tbl, tIdx) => (
+                                        <div
+                                            key={tIdx}
+                                            className="p-5 mb-6 bg-slate-50/70 rounded-2xl border border-slate-200/90 space-y-4 shadow-2xs"
+                                        >
+                                            <div className="flex items-center justify-between gap-4">
+                                                <Input
+                                                    prefix={<Text className="font-bold text-slate-500 text-xs uppercase mr-1">Table Title:</Text>}
+                                                    value={tbl.title}
+                                                    onChange={(e) => handleTableTitleChange(tIdx, e.target.value)}
+                                                    placeholder="e.g. Cost Break-Up Summary"
+                                                    className="font-bold text-slate-800 rounded-xl border-slate-200 h-11 text-sm"
+                                                    size="large"
+                                                />
+                                                <Popconfirm
+                                                    title="Delete Table"
+                                                    description="Are you sure you want to remove this pricing table?"
+                                                    onConfirm={() => handleRemoveTable(tIdx)}
+                                                    okText="Yes"
+                                                    cancelText="No"
+                                                >
+                                                    <Button danger type="text" icon={<DeleteOutlined />} className="rounded-lg">
+                                                        Remove
+                                                    </Button>
+                                                </Popconfirm>
+                                            </div>
+
+                                            {/* Column Headers setup */}
+                                            <div className="space-y-2">
+                                                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                                                    Column Headers ({tbl.headers.length})
+                                                </Text>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {tbl.headers.map((h, hIdx) => (
+                                                        <div
+                                                            key={hIdx}
+                                                            className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-2xs"
+                                                        >
+                                                            <Input
+                                                                variant="borderless"
+                                                                size="small"
+                                                                value={h}
+                                                                onChange={(e) => handleHeaderChange(tIdx, hIdx, e.target.value)}
+                                                                className="w-28 text-xs font-bold text-slate-800"
+                                                            />
+                                                            <Button
+                                                                type="text"
+                                                                size="small"
+                                                                danger
+                                                                icon={<DeleteOutlined style={{ fontSize: '10px' }} />}
+                                                                onClick={() => handleRemoveHeaderColumn(tIdx, hIdx)}
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                    <Button
+                                                        type="dashed"
+                                                        size="small"
+                                                        icon={<PlusOutlined />}
+                                                        onClick={() => handleAddHeaderColumn(tIdx)}
+                                                        className="rounded-xl text-xs font-semibold"
+                                                    >
+                                                        Add Column
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            {/* Rows Data Matrix */}
+                                            <div className="space-y-2 overflow-x-auto">
+                                                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                                                    Row Data Items ({tbl.rows.length})
+                                                </Text>
+                                                <table className="w-full border-collapse bg-white rounded-xl overflow-hidden border border-slate-200 text-sm shadow-2xs">
+                                                    <thead>
+                                                        <tr className="bg-slate-100/90 border-b border-slate-200">
+                                                            {tbl.headers.map((h, hIdx) => (
+                                                                <th key={hIdx} className="p-3 text-left text-xs font-bold text-slate-700">
+                                                                    {h || `Col ${hIdx + 1}`}
+                                                                </th>
+                                                            ))}
+                                                            <th className="p-3 text-center w-12 text-xs font-bold text-slate-700">
+                                                                Action
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {tbl.rows.map((row, rIdx) => (
+                                                            <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                                                                {row.map((cell, cIdx) => (
+                                                                    <td key={cIdx} className="p-2">
+                                                                        <Input
+                                                                            size="small"
+                                                                            value={cell}
+                                                                            onChange={(e) =>
+                                                                                handleCellChange(tIdx, rIdx, cIdx, e.target.value)
+                                                                            }
+                                                                            className="rounded-lg text-xs font-medium border-slate-200"
+                                                                        />
+                                                                    </td>
+                                                                ))}
+                                                                <td className="p-1 text-center">
+                                                                    <Button
+                                                                        type="text"
+                                                                        danger
+                                                                        size="small"
+                                                                        icon={<DeleteOutlined />}
+                                                                        onClick={() => handleRemoveTableRow(tIdx, rIdx)}
+                                                                    />
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                                <Button
+                                                    type="dashed"
+                                                    block
+                                                    icon={<PlusOutlined />}
+                                                    onClick={() => handleAddTableRow(tIdx)}
+                                                    className="mt-2 rounded-xl text-xs font-semibold h-9"
+                                                >
+                                                    Add Row to {tbl.title || 'Table'}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </Card>
+
+                            {/* Card 7: Signatories & Approval Blocks */}
+                            <Card
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
+                                                <UserOutlined className="text-lg" />
+                                            </div>
+                                            <span>7. Signatory & Approval Blocks</span>
+                                        </Space>
+                                        <Button
+                                            type="primary"
+                                            ghost
+                                            icon={<PlusOutlined />}
+                                            onClick={handleAddSignatory}
+                                            size="small"
+                                            className="rounded-xl font-semibold border-blue-500 text-blue-600"
+                                        >
+                                            + Add Signatory
+                                        </Button>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
+                            >
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {signatories.map((sig, sIdx) => (
+                                        <div
+                                            key={sIdx}
+                                            className="p-4.5 bg-slate-50/70 rounded-2xl border border-slate-200/90 space-y-3 relative shadow-2xs"
+                                        >
+                                            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                                                <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
+                                                    Signatory #{sIdx + 1}
+                                                </span>
+                                                <Space>
+                                                    <Button
+                                                        type="link"
+                                                        size="small"
+                                                        icon={<ReloadOutlined />}
+                                                        onClick={() => {
+                                                            try {
+                                                                const rawUser = window.localStorage.getItem('ppm_user');
+                                                                if (rawUser) {
+                                                                    const parsedUser = JSON.parse(rawUser);
+                                                                    const desig = getUserDesignation();
+                                                                    const center = getUserCenter();
+                                                                    const lines = [desig, center, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
+                                                                    const updated = [...signatories];
+                                                                    updated[sIdx] = {
+                                                                        name: parsedUser.name || updated[sIdx].name,
+                                                                        lines_raw: lines,
+                                                                    };
+                                                                    setSignatories(updated);
+                                                                    message.info('Populated signatory details from logged-in account');
+                                                                }
+                                                            } catch (e) {
+                                                                message.warning('Could not read user account details');
+                                                            }
+                                                        }}
+                                                        className="p-0 text-xs font-bold text-blue-600 hover:text-blue-800"
+                                                    >
+                                                        Fill My Profile
+                                                    </Button>
+                                                    {signatories.length > 1 && (
+                                                        <Button
+                                                            type="text"
+                                                            danger
+                                                            size="small"
+                                                            icon={<DeleteOutlined />}
+                                                            onClick={() => handleRemoveSignatory(sIdx)}
+                                                        />
+                                                    )}
+                                                </Space>
+                                            </div>
+
+                                            <div>
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 block">
+                                                    Signatory Name
+                                                </span>
+                                                <Input
+                                                    placeholder="e.g. Dr. Rajesh Kumar"
+                                                    value={sig.name}
+                                                    onChange={(e) =>
+                                                        handleSignatoryChange(sIdx, 'name', e.target.value)
+                                                    }
+                                                    size="large"
+                                                    className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-semibold"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 block">
+                                                    Designation Line(s) (One per line)
+                                                </span>
+                                                <TextArea
+                                                    rows={3}
+                                                    placeholder="Scientist-D&#10;C-SMPM&#10;CMTI, Bengaluru"
+                                                    value={sig.lines_raw}
+                                                    onChange={(e) =>
+                                                        handleSignatoryChange(sIdx, 'lines_raw', e.target.value)
+                                                    }
+                                                    className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 text-sm font-medium p-3"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="mt-4 flex justify-start">
+                                    <Button
+                                        type="dashed"
+                                        icon={<PlusOutlined />}
+                                        onClick={handleAddSignatory}
+                                        size="large"
+                                        className="rounded-xl border-blue-500 text-blue-600 font-semibold h-11 px-5"
+                                    >
+                                        Add Another Signatory
+                                    </Button>
                                 </div>
                             </Card>
-                        </div>
-                    </Col>
-                </Row>
-            </Form>
+                        </Col>
+
+                        {/* Right Column: Live A4 Document Preview & Quick Export Sidebar (9 Cols on desktop) */}
+                        <Col xs={24} lg={9} xl={9} className="space-y-6">
+                            <div className="sticky top-6 space-y-6">
+
+                                {/* Document Preview Toolbar & Container */}
+                                <Card
+                                    title={
+                                        <div className="flex items-center justify-between py-1">
+                                            <Space className="text-slate-900 font-bold text-base">
+                                                <EyeOutlined className="text-blue-600" /> Live Document Preview
+                                            </Space>
+                                            <Space size="xs">
+                                                <Tooltip title="Zoom Out">
+                                                    <Button
+                                                        type="text"
+                                                        size="small"
+                                                        icon={<CompressOutlined />}
+                                                        onClick={() => setPreviewZoom(Math.max(70, previewZoom - 10))}
+                                                        className="hover:bg-slate-200/60 rounded-lg"
+                                                    />
+                                                </Tooltip>
+                                                <Text className="text-xs font-mono font-bold text-slate-600 px-1">{previewZoom}%</Text>
+                                                <Tooltip title="Zoom In">
+                                                    <Button
+                                                        type="text"
+                                                        size="small"
+                                                        icon={<ExpandOutlined />}
+                                                        onClick={() => setPreviewZoom(Math.min(130, previewZoom + 10))}
+                                                        className="hover:bg-slate-200/60 rounded-lg"
+                                                    />
+                                                </Tooltip>
+                                            </Space>
+                                        </div>
+                                    }
+                                    className="shadow-xl rounded-2xl border border-slate-200/90 bg-slate-900/5 backdrop-blur-xs overflow-hidden"
+                                    styles={{ body: { padding: '16px' } }}
+                                >
+                                    {/* Simulated A4 Paper Card */}
+                                    <div
+                                        className="bg-white rounded-xl p-8 shadow-2xl border border-slate-200/90 transition-transform duration-200 overflow-y-auto max-h-[calc(100vh-220px)] min-h-[580px] space-y-5 font-sans text-xs text-slate-800 select-none"
+                                        style={{
+                                            transform: `scale(${previewZoom / 100})`,
+                                            transformOrigin: 'top center',
+                                        }}
+                                    >
+                                        {/* Document Right Header */}
+                                        <div className="text-right text-slate-600 space-y-1 border-b border-slate-100 pb-3.5">
+                                            <div className="font-bold text-xs text-slate-900">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
+                                            {formValues.dept && <div className="font-bold text-blue-700 text-xs">Dept: {formValues.dept}</div>}
+                                        </div>
+
+                                        {/* Emails */}
+                                        {(formValues.email_to || formValues.email_cc) && (
+                                            <div className="space-y-1 bg-slate-50/90 p-3 rounded-xl border border-slate-200/80 font-mono text-[11px]">
+                                                {formValues.email_to && (
+                                                    <div>
+                                                        <strong className="text-slate-700">Email: </strong>
+                                                        <span className="text-blue-600 font-semibold">{formValues.email_to}</span>
+                                                    </div>
+                                                )}
+                                                {formValues.email_cc && (
+                                                    <div>
+                                                        <strong className="text-slate-700">Cc: </strong>
+                                                        <span className="text-blue-600 font-semibold">{formValues.email_cc}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Heading */}
+                                        <div className="text-center font-black text-sm text-slate-900 tracking-wider uppercase py-1.5 border-b-2 border-slate-900">
+                                            PROPOSAL INFORMATION
+                                        </div>
+
+                                        {/* Customer Information */}
+                                        {formValues.customer_raw && (
+                                            <div>
+                                                <div className="font-bold text-slate-900 text-xs mb-1">Customer:</div>
+                                                <div className="whitespace-pre-line text-slate-700 pl-3 border-l-2 border-blue-500 font-sans leading-relaxed">
+                                                    {formValues.customer_raw}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formValues.kind_attention && (
+                                            <div>
+                                                <span className="font-bold text-slate-900">Kind Attention: </span>
+                                                <span className="text-slate-700 font-medium">{formValues.kind_attention}</span>
+                                            </div>
+                                        )}
+
+                                        {formValues.reference && (
+                                            <div>
+                                                <span className="font-bold text-slate-900">Reference: </span>
+                                                <span className="text-slate-700 font-medium">{formValues.reference}</span>
+                                            </div>
+                                        )}
+
+                                        {formValues.subject && (
+                                            <div>
+                                                <span className="font-bold text-slate-900">Subject: </span>
+                                                <span className="text-slate-900 font-bold">{formValues.subject}</span>
+                                            </div>
+                                        )}
+
+                                        {formValues.sac_code && (
+                                            <div>
+                                                <span className="font-bold text-slate-900">SAC Code: </span>
+                                                <span className="text-slate-700 font-medium">{formValues.sac_code}</span>
+                                            </div>
+                                        )}
+
+                                        {/* Scope of Work */}
+                                        {(formValues.scope_intro || scopeItems.length > 0) && (
+                                            <div className="space-y-2 pt-3 border-t border-slate-200">
+                                                <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Scope of Work:</div>
+                                                {formValues.scope_intro && (
+                                                    <p className="text-slate-700 leading-relaxed italic m-0">{formValues.scope_intro}</p>
+                                                )}
+                                                {scopeItems.length > 0 && (
+                                                    <ul className="list-disc list-inside space-y-1.5 text-slate-700 pl-1">
+                                                        {scopeItems.map((item, i) => (
+                                                            <li key={i} className="leading-relaxed">{item}</li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Terms & Conditions */}
+                                        {termsItems.length > 0 && (
+                                            <div className="space-y-2 pt-3 border-t border-slate-200">
+                                                <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Payment Terms & Conditions:</div>
+                                                <ol className="list-decimal list-inside space-y-1.5 text-slate-700 pl-1">
+                                                    {termsItems.map((item, i) => (
+                                                        <li key={i} className="leading-relaxed">{item}</li>
+                                                    ))}
+                                                </ol>
+                                            </div>
+                                        )}
+
+                                        {/* Cost Tables Preview */}
+                                        {tables.length > 0 && (
+                                            <div className="space-y-3 pt-3 border-t border-slate-200">
+                                                {tables.map((t, idx) => (
+                                                    <div key={idx} className="space-y-1.5">
+                                                        {t.title && <div className="font-bold text-slate-800 text-xs">{t.title}</div>}
+                                                        <table className="w-full border-collapse border border-slate-300 text-[10px]">
+                                                            <thead>
+                                                                <tr className="bg-slate-100">
+                                                                    {t.headers.map((h, hIdx) => (
+                                                                        <th key={hIdx} className="border border-slate-300 p-1.5 font-bold text-slate-900 text-left">
+                                                                            {h}
+                                                                        </th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {t.rows.map((r, rIdx) => (
+                                                                    <tr key={rIdx}>
+                                                                        {r.map((cell, cIdx) => (
+                                                                            <td key={cIdx} className="border border-slate-300 p-1.5 text-slate-700 font-medium">
+                                                                                {cell}
+                                                                            </td>
+                                                                        ))}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Signatories Footer */}
+                                        {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
+                                            <div className="pt-8 border-t border-slate-300">
+                                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-right">
+                                                    {signatories.map((sig, i) => (
+                                                        <div key={i} className="space-y-0.5">
+                                                            {sig.name && <div className="font-extrabold text-slate-900 text-xs">{sig.name},</div>}
+                                                            {sig.lines_raw && (
+                                                                <div className="whitespace-pre-line text-slate-600 text-[11px] leading-snug">
+                                                                    {sig.lines_raw}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </Card>
+
+                                {/* Action Floating CTA Panel */}
+                                <Card
+                                    className="shadow-xl rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                    styles={{ body: { padding: '20px' } }}
+                                >
+                                    <div className="space-y-3">
+                                        <Row gutter={[12, 12]}>
+                                            <Col xs={24} sm={12}>
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    block
+                                                    icon={<DownloadOutlined />}
+                                                    loading={loading && !addToProposalsLoading}
+                                                    onClick={() => {
+                                                        setActionType('download');
+                                                        form.submit();
+                                                    }}
+                                                    className="bg-[#2563EB] hover:bg-[#1E40AF] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
+                                                >
+                                                    Generate DOCX
+                                                </Button>
+                                            </Col>
+                                            <Col xs={24} sm={12}>
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    block
+                                                    icon={<PlusOutlined />}
+                                                    loading={addToProposalsLoading}
+                                                    onClick={() => {
+                                                        setActionType('addToProposals');
+                                                        form.submit();
+                                                    }}
+                                                    className="bg-[#16A34A] hover:bg-[#15803D] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
+                                                >
+                                                    Add to Proposals
+                                                </Button>
+                                            </Col>
+                                        </Row>
+
+                                        <Text className="text-center block text-slate-400 text-xs">
+                                            Streams official <code className="text-slate-600 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">.docx</code> directly or auto-fills into Proposal entry.
+                                        </Text>
+                                    </div>
+                                </Card>
+                            </div>
+                        </Col>
+                    </Row>
+                </Form>
+            </div>
         </div>
     );
 }

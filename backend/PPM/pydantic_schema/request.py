@@ -1,4 +1,5 @@
-from typing import List, Dict, Any, Optional
+from datetime import date
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 # PROPOSAL BASE
 # ---------------------------------------------
 class ProposalBase(BaseModel):
-    enquiry_date: Optional[str] = None
+    enquiry_date: Optional[Union[date, str]] = None
     customer_type: Optional[str] = None
     customer_name: Optional[str] = None
     address: Optional[str] = None
@@ -17,14 +18,14 @@ class ProposalBase(BaseModel):
     email_reference: Optional[str] = None
     quote_reference: Optional[str] = None
     quote_description: Optional[str] = None
-    quote_date: Optional[str] = None
+    quote_date: Optional[Union[date, str]] = None
     quote_amount: Optional[str] = None
     proposal_status: Optional[str] = None
 
     revised_negotiated: Optional[str] = Field(
         default=None, alias="revised/negotiated"
     )
-    revised_negotiated_quote_date: Optional[str] = Field(
+    revised_negotiated_quote_date: Optional[Union[date, str]] = Field(
         default=None, alias="revised/negotiated_quote_date"
     )
     revised_negotiated_quote_amount: Optional[str] = Field(
@@ -38,20 +39,20 @@ class ProposalBase(BaseModel):
     activity: Optional[str] = None
     key_deliverables: Optional[str] = None
     order_number: Optional[str] = None
-    order_date: Optional[str] = None
-    delivery_date: Optional[str] = None
-    extended_delivery_date: Optional[str] = None
-    date_of_actual_commencement: Optional[str] = None
+    order_date: Optional[Union[date, str]] = None
+    delivery_date: Optional[Union[date, str]] = None
+    extended_delivery_date: Optional[Union[date, str]] = None
+    date_of_actual_commencement: Optional[Union[date, str]] = None
     order_value: Optional[str] = None
     details_of_external_internal_review_meeting: Optional[str] = None
     center: Optional[str] = None
     co_ordinator_remarks: Optional[str] = None
     closer_report: Optional[str] = None
-    technical_completed_year: Optional[str] = None
-    financial_completed_year: Optional[str] = None
-    dispatch_date: Optional[str] = None
-    project_allotment_date: Optional[str] = None
-    review_meeting_date: Optional[str] = None
+    technical_completed_year: Optional[Union[date, str]] = None
+    financial_completed_year: Optional[Union[date, str]] = None
+    dispatch_date: Optional[Union[date, str]] = None
+    project_allotment_date: Optional[Union[date, str]] = None
+    review_meeting_date: Optional[Union[date, str]] = None
     small_value_project: Optional[str] = None
     ppm_remarks: Optional[str] = None
     project_co_ordinator: Optional[str] = None
@@ -79,10 +80,10 @@ class ProposalUpdate(ProposalBase):
 # ---------------------------------------------
 class CoordinatorUpdate(BaseModel):
     project_id: int
-    co_ordinator_remarks: str
-    extended_delivery_date: str
+    co_ordinator_remarks: Optional[str] = None
+    extended_delivery_date: Optional[Union[date, str]] = None
     proposal_status: Optional[str] = None
-    technical_completed_year: Optional[str] = None
+    technical_completed_year: Optional[Union[date, str]] = None
     updated_by: Optional[str] = None
     proposals_converted: Optional[str] = None
     if_not_reason: Optional[str] = None

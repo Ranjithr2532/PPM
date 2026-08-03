@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { message } from 'antd';
 
 // Central API configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.18.100.55:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.18.7.42:8000';
 
 const ACCESS_TOKEN_KEY = 'token';
 const CURRENT_USER_KEY = 'ppm_user';
@@ -78,13 +79,37 @@ export async function authFetch(path, options = {}) {
     return response;
 }
 
+let lastSecurityToastTime = 0;
+
+export function getSecurityErrorMessage(status, defaultMessage = 'An error occurred') {
+    if (status === 401) {
+        return 'Session expired for security purposes. Please re-authorize / log in again to continue.';
+    }
+    return defaultMessage;
+}
+
+export function notifySecurity401(customMsg) {
+    const now = Date.now();
+    if (now - lastSecurityToastTime > 4000) {
+        lastSecurityToastTime = now;
+        const text = customMsg || 'Session expired for security purposes. Please re-authorize / log in again to continue.';
+        if (typeof message !== 'undefined' && message.error) {
+            message.error({
+                content: text,
+                key: 'security_401_error',
+                duration: 5,
+            });
+        }
+    }
+}
+
 // Initial setup of axios default headers on load
 const initialToken = getAccessToken();
 if (initialToken) {
     axios.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
 }
 
-// Global Axios Interceptor: Automatically attach JWT Access Token to all outgoing requests
+// Global Axios Interceptor: Automatically attach JWT Access Token & handle 401 security errors
 axios.interceptors.request.use(
     (config) => {
         const token = getAccessToken();
@@ -97,7 +122,19 @@ axios.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// Global Fetch Interceptor: Automatically attach JWT Access Token to all window.fetch API requests
+axios.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            const secMsg = getSecurityErrorMessage(401);
+            error.message = secMsg;
+            notifySecurity401(secMsg);
+        }
+        return Promise.reject(error);
+    }
+);
+
+// Global Fetch Interceptor: Automatically attach JWT Access Token & handle 401 security errors
 if (typeof window !== 'undefined' && window.fetch) {
     const originalFetch = window.fetch;
     window.fetch = async function (resource, config = {}) {
@@ -109,6 +146,11 @@ if (typeof window !== 'undefined' && window.fetch) {
             }
             config = { ...config, headers };
         }
-        return originalFetch(resource, config);
+        const response = await originalFetch(resource, config);
+        if (response.status === 401) {
+            const secMsg = getSecurityErrorMessage(401);
+            notifySecurity401(secMsg);
+        }
+        return response;
     };
 }

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ARRAY, ForeignKey, Integer, String, func , Boolean , TIMESTAMP, JSON, Numeric
+from sqlalchemy import Column, DateTime, ARRAY, ForeignKey, Integer, String, Date, func , Boolean , TIMESTAMP, JSON, Numeric
 from sqlalchemy.orm import relationship
 from db import Base
 from datetime import datetime
@@ -12,7 +12,7 @@ class Proposal(Base):
     __tablename__ = "proposals"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    enquiry_date = Column(String, nullable=True)
+    enquiry_date = Column(Date, nullable=True)
     customer_type = Column(String, nullable=True)
     customer_name = Column(String , nullable= True)
     address = Column(String, nullable=True)
@@ -23,12 +23,12 @@ class Proposal(Base):
     email_reference = Column(String, nullable=True)
     quote_reference = Column(String, nullable=True)
     quote_description = Column(String, nullable=True)
-    quote_date = Column(String, nullable=True)
+    quote_date = Column(Date, nullable=True)
     quote_amount = Column(String, nullable=True)
     proposal_status = Column(String, nullable=True)
 
     revised_negotiated = Column("revised/negotiated", String, nullable=True)
-    revised_negotiated_quote_date = Column("revised/negotiated_quote_date", String, nullable=True)
+    revised_negotiated_quote_date = Column("revised/negotiated_quote_date", Date, nullable=True)
     revised_negotiated_quote_amount = Column("revised/negotiated_quote_amount", String, nullable=True)
 
     quotation_given_by_name = Column(String, nullable=True)
@@ -38,21 +38,21 @@ class Proposal(Base):
     activity = Column(String, nullable=True)
     key_deliverables = Column(String, nullable=True)
     order_number = Column(String, nullable=True)
-    order_date = Column(String, nullable=True)
-    delivery_date = Column(String, nullable=True)
-    extended_delivery_date = Column(String, nullable=True)
-    date_of_actual_commencement = Column(String, nullable=True)
+    order_date = Column(Date, nullable=True)
+    delivery_date = Column(Date, nullable=True)
+    extended_delivery_date = Column(Date, nullable=True)
+    date_of_actual_commencement = Column(Date, nullable=True)
     order_value = Column(String, nullable=True)
     details_of_external_internal_review_meeting = Column(String, nullable=True)
     project_co_ordinator = Column(String, nullable=True)
     center = Column(String, nullable=True)
     co_ordinator_remarks = Column(String, nullable=True)
     closer_report = Column(String, nullable=True)
-    technical_completed_year = Column(String, nullable=True)
-    financial_completed_year = Column(String, nullable=True)
-    dispatch_date = Column(String, nullable=True)
-    project_allotment_date = Column(String, nullable=True)
-    review_meeting_date = Column(String, nullable=True)
+    technical_completed_year = Column(Date, nullable=True)
+    financial_completed_year = Column(Date, nullable=True)
+    dispatch_date = Column(Date, nullable=True)
+    project_allotment_date = Column(Date, nullable=True)
+    review_meeting_date = Column(Date, nullable=True)
     small_value_project = Column(String, nullable=True)
     ppm_remarks = Column(String, nullable=True)
     updated_by = Column(String, nullable=True)
@@ -169,12 +169,12 @@ class Payment(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     invoice_no = Column(String, nullable=True)
-    invoice_date = Column(String, nullable=True)
+    invoice_date = Column(Date, nullable=True)
     gross_amount = Column(String, nullable=True)
     get_amount = Column(String, nullable=True)
     amount_claimed = Column(String, nullable=True)
     amount_recieved = Column(String, nullable=True)
-    recieved_date = Column(String, nullable=True)
+    recieved_date = Column(Date, nullable=True)
     tds = Column(String, nullable=True)
     get_tds = Column(String, nullable=True)
     ld = Column(String, nullable=True)
@@ -271,7 +271,7 @@ class MasterProposal(Base):
     __tablename__ = "master_proposals"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    quote_date = Column(String, nullable=True)
+    quote_date = Column(Date, nullable=True)
     customer_name = Column(String, nullable=True)
     description = Column(String, nullable=True)
     quote_amt = Column(String, nullable=True)
@@ -281,7 +281,7 @@ class MasterProposal(Base):
     department = Column(String, nullable=True)
     contact_details = Column(String, nullable=True)
     order_number = Column(String, nullable=True)
-    date = Column(String, nullable=True)
+    date = Column(Date, nullable=True)
     amount = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)

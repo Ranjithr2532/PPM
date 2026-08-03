@@ -104,6 +104,8 @@ def parse_docx_quotation(file_bytes: bytes, filename: str = "") -> Dict[str, Any
                     primary_email = match.group(0)
                     break
     extracted["email"] = primary_email
+    if primary_email and not extracted.get("email_reference"):
+        extracted["email_reference"] = primary_email
 
     # 2. Parse Date
     for line in all_lines:
@@ -192,9 +194,18 @@ def parse_docx_quotation(file_bytes: bytes, filename: str = "") -> Dict[str, Any
     extracted["customer_name"] = customer_name
     extracted["address"] = ", ".join(address_lines) if address_lines else ""
 
-    # 5. Parse Kind Attention / Contact Person
+    # 5. Parse Kind Attention & Alternate Contact Details
     for line in all_lines:
-        if any(kw in line.lower() for kw in ["kind attention:", "kind attn:", "kind attention", "kind attn", "attention:", "contact person:", "contact:"]):
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in ["kind attention:", "kind attn:", "kind attention", "kind attn", "attention:"]):
+            parts = line.split(":", 1)
+            if len(parts) > 1 and parts[1].strip():
+                extracted["kind_attention"] = parts[1].strip()
+                break
+
+    for line in all_lines:
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in ["alternate contact:", "alt contact:", "alternative contact:", "alternate phone:", "alt phone:", "alternative contact number:"]):
             parts = line.split(":", 1)
             if len(parts) > 1 and parts[1].strip():
                 extracted["alternate_contact_details"] = parts[1].strip()
@@ -284,37 +295,21 @@ def parse_docx_quotation(file_bytes: bytes, filename: str = "") -> Dict[str, Any
             if is_stop_kw or is_name_line:
                 in_terms_section = False
             elif line_clean:
-                clean_item = re.sub(r"^[\s•\-\*\d\.]+\s*", "", line_clean).strip()
+                clean_item = re.sub(r"^[\s•\-\*]+|^(?:\d+|[a-zA-Z])[\.\)]\s*", "", line_clean).strip()
                 if clean_item and not clean_item.lower().startswith("with reference to"):
                     terms_items.append(clean_item)
                     if not payment_terms_val:
                         payment_terms_val = clean_item
 
-    extracted_terms = "; ".join(terms_items) if terms_items else payment_terms_val
+    extracted_terms = "\n".join(terms_items) if terms_items else payment_terms_val
     extracted["payment_terms_and_condition"] = extracted_terms
     extracted["payment_terms_and_conditions"] = extracted_terms
     extracted["payment_terms"] = extracted_terms or payment_terms_val
     extracted["terms_and_conditions"] = terms_items
 
-    # 11. Parse Signatory Name (e.g. NARENDRA REDDY T,)
-    for idx, line in enumerate(all_lines):
-        line_clean = line.strip()
-        line_lower = line_clean.lower()
-
-        if any(close_kw in line_lower for close_kw in ["thanking you", "yours sincerely", "for central manufacturing"]):
-            for next_line in all_lines[idx + 1:idx + 6]:
-                nl_clean = next_line.strip().rstrip(",")
-                nl_lower = nl_clean.lower()
-                if nl_clean and not any(skip in nl_lower for skip in ["thanking you", "yours sincerely", "for central manufacturing", "dept:", "center:", "date:"]):
-                    if re.match(r"^[A-Za-z\s\.]+$", nl_clean) and len(nl_clean) >= 3:
-                        extracted["quotation_given_by_name"] = nl_clean
-                        extracted["signatory_name"] = nl_clean
-                        break
-        elif re.match(r"^[A-Z\s\.]{3,},?$", line_clean) and not any(kw in line_lower for kw in ["quotation", "proposal", "terms", "conditions", "payment", "delivery", "scope", "dept", "center", "iso"]):
-            clean_name = line_clean.rstrip(",")
-            if len(clean_name) >= 3 and not extracted.get("quotation_given_by_name"):
-                extracted["quotation_given_by_name"] = clean_name
-                extracted["signatory_name"] = clean_name
+    # 11. Signatory Name is left empty (no need to parse)
+    extracted["quotation_given_by_name"] = ""
+    extracted["signatory_name"] = ""
 
     # 11. Document Validity Check
     full_doc_text = " ".join(all_lines).lower()
@@ -381,8 +376,8 @@ def parse_cmti_quotation_docx(file_bytes: bytes, filename: str = "") -> Dict[str
         "quote_amount": "",
         "scope_of_work": [],
         "validity": "",
-        "payment_terms": "100% after completion of work & submission of report.",
-        "delivery": "1 Month from the date of acceptance of PO.",
+        "payment_terms": "",
+        "delivery": "",
         "contact_details": "",
         "commercial_contact": "Mrs.Kusuma A, OS(Gr-I) (PP&BD), (Contact No.: 080-22188233 / 242).",
         "signatory_name": "",
@@ -477,7 +472,7 @@ def parse_cmti_quotation_docx(file_bytes: bytes, filename: str = "") -> Dict[str
         if in_scope:
             if line_clean and not line_lower.startswith("with reference to"):
                 # Clean leading bullet symbols or numbers (e.g. •, -, *, 1.)
-                clean_item = re.sub(r"^[\s•\-\*\d\.]+\s*", "", line_clean).strip()
+                clean_item = re.sub(r"^[\s•\-\*]+|^(?:\d+|[a-zA-Z])[\.\)]\s*", "", line_clean).strip()
                 if clean_item:
                     scope_items.append(clean_item)
 
@@ -492,7 +487,7 @@ def parse_cmti_quotation_docx(file_bytes: bytes, filename: str = "") -> Dict[str
             if is_stop_kw or is_name_line:
                 in_terms = False
             elif line_clean:
-                clean_term = re.sub(r"^[\s•\-\*\d\.]+\s*", "", line_clean).strip()
+                clean_term = re.sub(r"^[\s•\-\*]+|^(?:\d+|[a-zA-Z])[\.\)]\s*", "", line_clean).strip()
                 if clean_term:
                     terms_items.append(clean_term)
 
@@ -511,33 +506,22 @@ def parse_cmti_quotation_docx(file_bytes: bytes, filename: str = "") -> Dict[str
     extracted["scope_of_work"] = scope_items
 
     if terms_items:
-        extracted["payment_terms"] = "; ".join(terms_items)
-        extracted["payment_terms_and_condition"] = "; ".join(terms_items)
-        extracted["payment_terms_and_conditions"] = "; ".join(terms_items)
+        extracted["payment_terms"] = "\n".join(terms_items)
+        extracted["payment_terms_and_condition"] = "\n".join(terms_items)
+        extracted["payment_terms_and_conditions"] = "\n".join(terms_items)
     else:
         extracted["payment_terms_and_condition"] = extracted.get("payment_terms", "")
         extracted["payment_terms_and_conditions"] = extracted.get("payment_terms", "")
 
     extracted["terms_and_conditions"] = terms_items
 
-    # 5. Contact Details & Signatory
+    # 5. Contact Details
     for idx, line in enumerate(all_lines):
         line_clean = line.strip()
         line_lower = line_clean.lower()
         if "please feel free to contact" in line_lower:
             extracted["contact_details"] = line_clean
 
-        if any(close_kw in line_lower for close_kw in ["thanking you", "yours sincerely", "for central manufacturing"]):
-            for next_line in all_lines[idx + 1:idx + 6]:
-                nl_clean = next_line.strip().rstrip(",")
-                nl_lower = nl_clean.lower()
-                if nl_clean and not any(skip in nl_lower for skip in ["thanking you", "yours sincerely", "for central manufacturing", "dept:", "center:", "date:"]):
-                    if re.match(r"^[A-Za-z\s\.]+$", nl_clean) and len(nl_clean) >= 3:
-                        extracted["signatory_name"] = nl_clean
-                        break
-        elif re.match(r"^[A-Z\s\.]{3,},?$", line_clean) and not any(kw in line_lower for kw in ["quotation", "proposal", "terms", "conditions", "payment", "delivery", "scope", "dept", "center", "iso"]):
-            clean_name = line_clean.rstrip(",")
-            if len(clean_name) >= 3 and not extracted.get("signatory_name"):
-                extracted["signatory_name"] = clean_name
+    extracted["signatory_name"] = ""
 
     return extracted

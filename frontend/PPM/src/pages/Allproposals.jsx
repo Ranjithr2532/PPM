@@ -15,6 +15,7 @@ import {
   FileWordOutlined,
   FormOutlined,
   CheckCircleOutlined,
+  CheckCircleFilled,
   FileTextOutlined,
   PaperClipOutlined,
 } from '@ant-design/icons'
@@ -1369,14 +1370,13 @@ export default function Allproposals() {
     setUploadedDocxFile(null)
     setDocxUploading(false)
 
-    if (currentUserName) {
-      coordinatorForm.setFieldsValue({
-        quotation_given_by_name: currentUserName,
-        quotation_given_by_department: currentUserCenter ? currentUserCenter.toUpperCase() : '',
-        center: currentUserCenter || '',
-        group: currentUserGroup || '',
-      })
-    }
+    coordinatorForm.setFieldsValue({
+      proposal_status: ['Submitted'],
+      quotation_given_by_name: currentUserName || '',
+      quotation_given_by_department: currentUserCenter ? currentUserCenter.toUpperCase() : '',
+      center: currentUserCenter || '',
+      group: currentUserGroup || '',
+    })
 
     setCoordinatorModalOpen(true)
   }
@@ -1438,17 +1438,33 @@ export default function Allproposals() {
           }
         }
         if (extracted.customer_name) updatedValues.customer_name = extracted.customer_name
+        if (extracted.customer_type) {
+          updatedValues.customer_type = extracted.customer_type
+        } else if (extracted.customer_name) {
+          const matchCust = allCustomerSuggestions.find(
+            (c) => c.name && c.name.trim().toLowerCase() === extracted.customer_name.trim().toLowerCase()
+          )
+          if (matchCust && matchCust.customer_type) {
+            updatedValues.customer_type = matchCust.customer_type
+          }
+        }
         if (extracted.address) updatedValues.address = extracted.address
         if (extracted.email) updatedValues.email = extracted.email
         if (extracted.phone_no) updatedValues.phone_no = extracted.phone_no
-        if (extracted.alternate_contact_details) updatedValues.alternate_contact_details = extracted.alternate_contact_details
-        if (extracted.email_reference) updatedValues.email_reference = extracted.email_reference
+        if (extracted.alternate_contact_details && extracted.alternate_contact_details !== extracted.kind_attention) {
+          updatedValues.alternate_contact_details = extracted.alternate_contact_details
+        }
+        const emailRefVal = extracted.email_reference || extracted.email || ''
+        if (emailRefVal) updatedValues.email_reference = emailRefVal
         if (extracted.quote_reference) updatedValues.quote_reference = extracted.quote_reference
         if (extracted.quote_description) updatedValues.quote_description = extracted.quote_description
         if (extracted.quote_amount) updatedValues.quote_amount = extracted.quote_amount
         if (extracted.center) {
           updatedValues.center = extracted.center
           updatedValues.quotation_given_by_department = extracted.center
+        }
+        if (!updatedValues.proposal_status) {
+          updatedValues.proposal_status = ['Submitted']
         }
 
         // Populate fields into form
@@ -1637,6 +1653,13 @@ export default function Allproposals() {
       const apiName = getApiName(fieldName)
       payload[apiName] = values[fieldName] ?? ''
     })
+
+    if (Array.isArray(payload.proposal_status)) {
+      payload.proposal_status = payload.proposal_status.join(', ')
+    }
+    if (!payload.proposal_status) {
+      payload.proposal_status = 'Submitted'
+    }
 
     // Add user information and set project_coordinator
     payload.project_coordinator = values.quotation_given_by_name || currentUserName || ''
@@ -2255,49 +2278,120 @@ export default function Allproposals() {
 
               {(() => {
                 const handleStatusCardClick = (val) => {
-                  setStatusFilter(val)
+                  setStatusFilter((prev) => (prev === val ? null : val))
                 }
+
+                const cards = [
+                  {
+                    key: null,
+                    title: 'Total Proposals Submitted',
+                    value: statistics.allCount,
+                    bgClass: 'bg-gradient-to-br from-slate-500 to-slate-700',
+                  },
+                  {
+                    key: 'proposals',
+                    title: 'Pending',
+                    value: statistics.totalProposals,
+                    bgClass: 'bg-gradient-to-br from-blue-500 to-blue-600',
+                  },
+                  {
+                    key: 'totalProjects',
+                    title: 'Converted to Projects',
+                    value: statistics.totalProjects,
+                    bgClass: 'bg-gradient-to-br from-purple-500 to-purple-600',
+                    extra: Object.keys(statistics.projectCodeBreakdown).length > 0 && (
+                      <div className="mt-2 text-xs text-white/80 font-medium">
+                        {Object.entries(statistics.projectCodeBreakdown)
+                          .filter(([, count]) => count > 0)
+                          .map(([code, count], idx, arr) => (
+                            <span key={code}>
+                              {code}: {count}
+                              {idx < arr.length - 1 ? ' | ' : ''}
+                            </span>
+                          ))}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'technicallyCompleted',
+                    title: 'Technically Completed',
+                    value: statistics.technicallyCompleted,
+                    bgClass: 'bg-gradient-to-br from-orange-500 to-orange-600',
+                  },
+                  {
+                    key: 'financiallyNotCompleted',
+                    title: 'Financially Not Completed',
+                    value: statistics.financiallyNotCompleted,
+                    bgClass: 'bg-gradient-to-br from-emerald-500 to-emerald-700',
+                  },
+                  {
+                    key: 'financiallyCompleted',
+                    title: 'Financially Completed',
+                    value: statistics.financiallyCompleted,
+                    bgClass: 'bg-gradient-to-br from-green-500 to-green-600',
+                  },
+                  {
+                    key: 'pendingProjects',
+                    title: 'Ongoing Projects',
+                    value: statistics.pendingProjects,
+                    bgClass: 'bg-gradient-to-br from-red-500 to-red-600',
+                    extra: statistics.onHoldProjects > 0 && (
+                      <div style={{ fontSize: '12px', color: '#fff', opacity: 0.8, marginTop: '4px' }}>
+                        On hold: {statistics.onHoldProjects}
+                      </div>
+                    ),
+                  },
+                ]
+
                 return (
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1">
-                      <Card className="bg-gradient-to-br from-slate-500 to-slate-700 text-white cursor-pointer" onClick={() => handleStatusCardClick(null)}>
-                        <Statistic title={<span className="text-white/90">Total Proposals Submitted</span>} value={statistics.allCount} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                      </Card>
-                      <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white cursor-pointer" onClick={() => handleStatusCardClick('proposals')}>
-                        <Statistic title={<span className="text-white/90">Pending</span>} value={statistics.totalProposals} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                      </Card>
-                      <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white cursor-pointer" onClick={() => handleStatusCardClick('totalProjects')}>
-                        <Statistic title={<span className="text-white/90"> Converted to Projects</span>} value={statistics.totalProjects} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                        {Object.keys(statistics.projectCodeBreakdown).length > 0 && (
-                          <div className="mt-2 text-xs text-white/80">
-                            {Object.entries(statistics.projectCodeBreakdown)
-                              .filter(([, count]) => count > 0)
-                              .map(([code, count], idx, arr) => (
-                                <span key={code}>
-                                  {code}: {count}
-                                  {idx < arr.length - 1 ? ' | ' : ''}
-                                </span>
-                              ))}
+                      {cards.map((card) => {
+                        const isSelected = statusFilter === card.key
+                        const isAnySelected = statusFilter !== null
+
+                        return (
+                          <div
+                            key={card.key ?? 'all'}
+                            onClick={() => handleStatusCardClick(card.key)}
+                            style={{
+                              borderRadius: '16px',
+                              border: isSelected ? '4px solid #ffffff' : '4px solid transparent',
+                              boxShadow: isSelected
+                                ? '0 20px 25px -5px rgba(0,0,0,0.3), 0 0 15px rgba(255,255,255,0.6)'
+                                : undefined,
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            }}
+                            className={`
+                              relative cursor-pointer text-white p-5 select-none overflow-hidden ${card.bgClass}
+                              transform box-border
+                              ${
+                                isSelected
+                                  ? '-translate-y-2 opacity-100 z-10'
+                                  : isAnySelected
+                                  ? 'opacity-70 hover:opacity-100 hover:-translate-y-1 shadow-md'
+                                  : 'opacity-100 hover:-translate-y-1 shadow-md hover:shadow-lg'
+                              }
+                            `}
+                          >
+                            <div className="text-white/90 text-xs font-semibold uppercase tracking-wider mb-1">
+                              {card.title}
+                            </div>
+                            <div className="text-3xl font-extrabold text-white tracking-tight">
+                              {card.value}
+                            </div>
+                            {card.extra}
+
+                            {/* Animated Thick Bottom Indicator Bar (width: 0% -> 100%) */}
+                            <div className="absolute bottom-0 left-0 right-0 h-[6px] bg-black/10">
+                              <div
+                                className="h-full bg-white transition-all duration-500 ease-out rounded-full shadow-[0_0_8px_rgba(255,255,255,0.9)]"
+                                style={{ width: isSelected ? '100%' : '0%' }}
+                              />
+                            </div>
                           </div>
-                        )}
-                      </Card>
-                      <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white cursor-pointer" onClick={() => handleStatusCardClick('technicallyCompleted')}>
-                        <Statistic title={<span className="text-white/90">Technically Completed</span>} value={statistics.technicallyCompleted} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                      </Card>
-                      <Card className="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white cursor-pointer" onClick={() => handleStatusCardClick('financiallyNotCompleted')}>
-                        <Statistic title={<span className="text-white/90">Financially Not Completed</span>} value={statistics.financiallyNotCompleted} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                      </Card>
-                      <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white cursor-pointer" onClick={() => handleStatusCardClick('financiallyCompleted')}>
-                        <Statistic title={<span className="text-white/90">Financially Completed</span>} value={statistics.financiallyCompleted} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                      </Card>
-                      <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white cursor-pointer" onClick={() => handleStatusCardClick('pendingProjects')}>
-                        <Statistic title={<span className="text-white/90">Ongoing Projects</span>} value={statistics.pendingProjects} valueStyle={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }} />
-                        {statistics.onHoldProjects > 0 && (
-                          <div style={{ fontSize: '12px', color: '#fff', opacity: 0.8, marginTop: '4px' }}>
-                            On hold: {statistics.onHoldProjects}
-                          </div>
-                        )}
-                      </Card>
+                        )
+                      })}
                     </div>
                   </div>
                 )
@@ -2629,7 +2723,21 @@ export default function Allproposals() {
               </>
             )}
 
-            <Card title="Enquiry Documents" size="small" className="bg-gray-50">
+            <Card
+              title="Enquiry & Proposal Documents"
+              size="small"
+              className="bg-gray-50"
+              extra={
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<UploadOutlined />}
+                  onClick={() => openUploadModalForProject(selectedRecord?.id)}
+                >
+                  Add Document
+                </Button>
+              }
+            >
               <Table
                 size="small"
                 rowKey={(row, idx) => row?.id ?? row?.key ?? idx}
@@ -2686,7 +2794,7 @@ export default function Allproposals() {
                               const parts = url.split('/')
                               const rawName = parts[parts.length - 1].split('?')[0]
                               if (rawName) fileName = decodeURIComponent(rawName)
-                            } catch (e) {}
+                            } catch (e) { }
                             return (
                               <a
                                 key={idx}
@@ -2729,11 +2837,33 @@ export default function Allproposals() {
         open={docsModalVisible}
         onCancel={() => setDocsModalVisible(false)}
         footer={[
+          <Button
+            key="upload"
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={() => openUploadModalForProject(docsProjectId || selectedRecord?.id)}
+          >
+            Add Document
+          </Button>,
           <Button key="close" onClick={() => setDocsModalVisible(false)}>Close</Button>,
         ]}
         width={900}
       >
-        <Card title="Enquiry Documents" size="small" className="bg-gray-50">
+        <Card
+          title="Enquiry & Proposal Documents"
+          size="small"
+          className="bg-gray-50"
+          extra={
+            <Button
+              type="primary"
+              size="small"
+              icon={<UploadOutlined />}
+              onClick={() => openUploadModalForProject(docsProjectId || selectedRecord?.id)}
+            >
+              Add Document
+            </Button>
+          }
+        >
           <Table
             size="small"
             rowKey={(row, idx) => row?.id ?? row?.key ?? idx}
@@ -2790,7 +2920,7 @@ export default function Allproposals() {
                           const parts = url.split('/')
                           const rawName = parts[parts.length - 1].split('?')[0]
                           if (rawName) fileName = decodeURIComponent(rawName)
-                        } catch (e) {}
+                        } catch (e) { }
                         return (
                           <a
                             key={idx}
@@ -2945,10 +3075,10 @@ export default function Allproposals() {
               {proposalCreationMode === 'selection'
                 ? 'Add Proposal'
                 : proposalCreationMode === 'create_document'
-                ? 'Create Document'
-                : proposalCreationMode === 'upload_review'
-                ? 'Add Proposal - Review Extracted Document'
-                : 'Add Proposal (Manual Entry)'}
+                  ? 'Create Document'
+                  : proposalCreationMode === 'upload_review'
+                    ? 'Add Proposal - Review Extracted Document'
+                    : 'Add Proposal (Manual Entry)'}
             </span>
             {proposalCreationMode !== 'selection' && (
               <Button
@@ -2969,12 +3099,12 @@ export default function Allproposals() {
         footer={
           proposalCreationMode === 'selection'
             ? [
-                <Button key="cancel" onClick={closeCoordinatorModal}>
-                  Cancel
-                </Button>,
-              ]
+              <Button key="cancel" onClick={closeCoordinatorModal}>
+                Cancel
+              </Button>,
+            ]
             : proposalCreationMode === 'create_document'
-            ? [
+              ? [
                 <Button
                   key="back"
                   onClick={() => setProposalCreationMode('selection')}
@@ -2985,7 +3115,7 @@ export default function Allproposals() {
                   Close
                 </Button>,
               ]
-            : [
+              : [
                 <Button
                   key="back"
                   onClick={() => setProposalCreationMode('selection')}
@@ -3151,11 +3281,24 @@ export default function Allproposals() {
                   }
                 }
                 if (extracted.customer_name) updatedValues.customer_name = extracted.customer_name
+                if (extracted.customer_type) {
+                  updatedValues.customer_type = extracted.customer_type
+                } else if (extracted.customer_name) {
+                  const matchCust = allCustomerSuggestions.find(
+                    (c) => c.name && c.name.trim().toLowerCase() === extracted.customer_name.trim().toLowerCase()
+                  )
+                  if (matchCust && matchCust.customer_type) {
+                    updatedValues.customer_type = matchCust.customer_type
+                  }
+                }
                 if (extracted.address) updatedValues.address = extracted.address
                 if (extracted.email) updatedValues.email = extracted.email
                 if (extracted.phone_no) updatedValues.phone_no = extracted.phone_no
-                if (extracted.alternate_contact_details) updatedValues.alternate_contact_details = extracted.alternate_contact_details
-                if (extracted.email_reference) updatedValues.email_reference = extracted.email_reference
+                if (extracted.alternate_contact_details && extracted.alternate_contact_details !== extracted.kind_attention) {
+          updatedValues.alternate_contact_details = extracted.alternate_contact_details
+        }
+                const emailRefVal2 = extracted.email_reference || extracted.email || ''
+                if (emailRefVal2) updatedValues.email_reference = emailRefVal2
                 if (extracted.quote_reference) updatedValues.quote_reference = extracted.quote_reference
                 if (extracted.quote_description) updatedValues.quote_description = extracted.quote_description
                 if (extracted.quote_amount) updatedValues.quote_amount = extracted.quote_amount
@@ -3169,6 +3312,10 @@ export default function Allproposals() {
                   if (!updatedValues.center) updatedValues.center = currentUserCenter || ''
                   if (!updatedValues.quotation_given_by_department) updatedValues.quotation_given_by_department = currentUserCenter ? currentUserCenter.toUpperCase() : ''
                   updatedValues.group = currentUserGroup || ''
+                }
+
+                if (!updatedValues.proposal_status) {
+                  updatedValues.proposal_status = ['Submitted']
                 }
 
                 coordinatorForm.setFieldsValue(updatedValues)
@@ -3265,17 +3412,23 @@ export default function Allproposals() {
                   const isEmailField = fieldName === 'email'
                   const isPhoneField = fieldName === 'phone_no'
 
+                  const isOptional = ['alternate_contact_details', 'email_reference'].includes(fieldName)
+
                   return (
                     <Col span={12} key={fieldName}>
                       <Form.Item
                         name={fieldName}
                         label={field.label}
-                        rules={[
-                          {
-                            required: true,
-                            message: `Please enter ${field.label}`,
-                          },
-                        ]}
+                        rules={
+                          isOptional
+                            ? []
+                            : [
+                                {
+                                  required: true,
+                                  message: `Please enter ${field.label}`,
+                                },
+                              ]
+                        }
                       >
                         {isDate ? (
                           <DatePicker
