@@ -1,4 +1,4 @@
-from routes.manpower import manpower_router
+from routes.manpower import router as manpower_router
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
@@ -31,7 +31,7 @@ from routes.acknowledgment import router as acknowledgment_router
 from routes.dynamic_table import router as dynamic_table_router
 from routes.groupchatroutes import router as groupchat_router
 from routes.count import router as count_router
-from routes.quotation import router as quotation_router
+from routes.quotation import router as quotation_router, proposal_alias_router, proposal_lc_alias_router
 
 # Create all tables
 Base.metadata.create_all(bind=engine)

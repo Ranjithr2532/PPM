@@ -1880,18 +1880,51 @@ function Proposals() {
       { key: 'follow_up_status', label: 'Status' },
     ]
 
+    const formatDateToDDMMYYYY = (val) => {
+      if (!val || val === 'N/A' || val === '-') return ''
+      const str = String(val).trim()
+      if (!str) return ''
+      if (/^\d{2}-\d{2}-\d{4}$/.test(str)) return str
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+        const [d, m, y] = str.split('/')
+        return `${d}-${m}-${y}`
+      }
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+        const parsed = dayjs(str)
+        if (parsed.isValid()) {
+          return parsed.format('DD-MM-YYYY')
+        }
+      }
+      const parsed = dayjs(str)
+      if (parsed.isValid() && str.length > 5 && !/^\d+$/.test(str)) {
+        return parsed.format('DD-MM-YYYY')
+      }
+      return str
+    }
+
     const worksheet = XLSX.utils.json_to_sheet(
       filteredData.map((item) => {
         const row = {}
         // Add standard proposal fields
         TABLE_FIELDS.forEach((field) => {
-          row[field.label] = item[field.name] || ''
+          const val = item[field.name] || ''
+          const isDateField =
+            field.type === 'date' ||
+            field.name?.includes('date') ||
+            field.label?.toLowerCase().includes('date') ||
+            /^\d{4}-\d{2}-\d{2}/.test(String(val).trim())
+          row[field.label] = isDateField ? formatDateToDDMMYYYY(val) : val
         })
         // Add payment fields for each invoice
         if (item.payments && item.payments.length > 0) {
           item.payments.forEach((payment, idx) => {
             paymentFields.forEach((field) => {
-              row[`Inv ${idx + 1} ${field.label}`] = payment[field.key] || ''
+              const val = payment[field.key] || ''
+              const isDateField =
+                field.key?.includes('date') ||
+                field.label?.toLowerCase().includes('date') ||
+                /^\d{4}-\d{2}-\d{2}/.test(String(val).trim())
+              row[`Inv ${idx + 1} ${field.label}`] = isDateField ? formatDateToDDMMYYYY(val) : val
             })
           })
         }
@@ -3501,7 +3534,7 @@ function Proposals() {
                                           const parts = url.split('/')
                                           const rawName = parts[parts.length - 1].split('?')[0]
                                           if (rawName) fileName = decodeURIComponent(rawName)
-                                        } catch (e) {}
+                                        } catch (e) { }
                                         return (
                                           <a
                                             key={idx}
@@ -4099,7 +4132,7 @@ function Proposals() {
                         const parts = url.split('/')
                         const rawName = parts[parts.length - 1].split('?')[0]
                         if (rawName) fileName = decodeURIComponent(rawName)
-                      } catch (e) {}
+                      } catch (e) { }
                       return (
                         <a
                           key={idx}

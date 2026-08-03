@@ -259,7 +259,9 @@ def list_proposals(
 
 @router.get("/false", response_model=List[ProposalResponse])
 def list_proposals(db: Session = Depends(get_db)) -> List[ProposalResponse]:
-    return db.query(Proposal).filter(Proposal.is_acknowledged == None).order_by(desc(Proposal.id)).all()
+    return db.query(Proposal).filter(
+        or_(Proposal.is_acknowledged.is_(None), Proposal.is_acknowledged.is_(False))
+    ).order_by(desc(Proposal.id)).all()
 
 
 @router.get("/unacknowledged")

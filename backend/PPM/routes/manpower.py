@@ -11,6 +11,7 @@ from pydantic_schema.manpower_schema import (
 )
 
 router = APIRouter(prefix="/manpower-rates", tags=["Manpower Rates"])
+manpower_router = router
 
 
 # ---------- Endpoints ----------
