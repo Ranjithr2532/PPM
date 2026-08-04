@@ -56,6 +56,7 @@ class Proposal(Base):
     small_value_project = Column(String, nullable=True)
     ppm_remarks = Column(String, nullable=True)
     updated_by = Column(String, nullable=True)
+    mutually_agreed = Column("Mutually_Agreed", Boolean, nullable=True, default=False)
 
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -64,6 +65,8 @@ class Proposal(Base):
     is_acknowledged = Column(Boolean , nullable= True)
     status = Column(String, nullable=True)
     proposals_converted = Column(String, nullable=True)
+    make_in_india = Column(String, nullable=True)
+    tender_images = Column(String, nullable=True)
     if_not_reason = Column(String, nullable=True)
 
 
@@ -385,3 +388,19 @@ class MessageSeen(Base):
     message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     seen_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
+
+class Customers(Base):
+    __tablename__ = "customer1"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    email = Column(Text)
+    phone = Column(Text)
+    address = Column(Text)
+    alternate_contact_details = Column(Text)
+    gst = Column(Text)
+    pan = Column(Text)
+    tan = Column(Text)
+    
+    created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)

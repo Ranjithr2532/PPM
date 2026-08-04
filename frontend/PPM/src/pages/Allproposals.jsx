@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   PlusOutlined,
@@ -133,6 +133,36 @@ const ALL_FIELDS = [
   { name: 'phone_no', label: 'Phone No.', width: 150 },
   { name: 'alternate_contact_details', label: 'Alternate Contact', width: 220 },
   { name: 'request_type', label: 'Request Type', width: 160, render: (value) => (value ? <Tag color="blue">{value}</Tag> : null) },
+  { name: 'make_in_india', label: 'Make In India', width: 200, input: 'textarea', inForm: false },
+  {
+    name: 'tender_images',
+    label: 'Tender Images',
+    width: 220,
+    inForm: false,
+    render: (value) => {
+      if (!value) return '-'
+      let urls = []
+      try {
+        urls = Array.isArray(value) ? value : JSON.parse(value)
+      } catch (e) {
+        urls = String(value).split(',').map((s) => s.trim()).filter(Boolean)
+      }
+      if (!Array.isArray(urls) || !urls.length) return '-'
+      return (
+        <Space wrap>
+          {urls.map((url, idx) => (
+            <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+              <img
+                src={url}
+                alt={`Tender ${idx + 1}`}
+                style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid #d9d9d9' }}
+              />
+            </a>
+          ))}
+        </Space>
+      )
+    },
+  },
   { name: 'email_reference', label: 'Email Reference', width: 200 },
   { name: 'quote_reference', label: 'Quote Reference', width: 190 },
   { name: 'quote_description', label: 'Quote Description', width: 240, input: 'textarea' },
@@ -182,6 +212,7 @@ const COORDINATOR_ADD_FIELDS = [
   'phone_no',
   'alternate_contact_details',
   'request_type',
+  'make_in_india',
   'email_reference',
   'quotation_given_by_name',
   'quotation_given_by_department',
@@ -278,6 +309,8 @@ export default function Allproposals() {
   const [unreadChatCount, setUnreadChatCount] = useState(0)
   const [form] = Form.useForm()
   const [coordinatorForm] = Form.useForm()
+  const watchedCoordRequestType = Form.useWatch('request_type', coordinatorForm)
+  const isCoordTenderSelected = (Array.isArray(watchedCoordRequestType) ? watchedCoordRequestType.join(' ') : String(watchedCoordRequestType || '')).toLowerCase().includes('tender')
 
   const handleNavigateToChats = () => {
     const currentPath = window.location.pathname.toLowerCase()
@@ -371,6 +404,7 @@ export default function Allproposals() {
   const [costEstimationModalOpen, setCostEstimationModalOpen] = useState(false)
   const [selectedProposalForCostEstimation, setSelectedProposalForCostEstimation] = useState(null)
 
+  const [tenderFileList, setTenderFileList] = useState([])
   const [coordinatorSubmitLoading, setCoordinatorSubmitLoading] = useState(false)
   const [customerOptions, setCustomerOptions] = useState([])
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false)
@@ -1365,6 +1399,7 @@ export default function Allproposals() {
   // Open/Close Coordinator Add Modal
   const openCoordinatorAddModal = () => {
     coordinatorForm.resetFields()
+    setTenderFileList([])
     setProposalCreationMode('selection')
     setUploadedDocName('')
     setUploadedDocxFile(null)
@@ -1383,6 +1418,7 @@ export default function Allproposals() {
 
   const closeCoordinatorModal = () => {
     setCoordinatorModalOpen(false)
+    setTenderFileList([])
     setProposalCreationMode('selection')
     setUploadedDocName('')
     setUploadedDocxFile(null)
@@ -1740,7 +1776,49 @@ export default function Allproposals() {
         } catch (uploadErr) {
           console.error('Error uploading proposal documents:', uploadErr)
         }
-      } else if (newProjectId) {
+      }
+
+      if (newProjectId && tenderFileList && tenderFileList.length > 0) {
+        try {
+          const finalImageUrls = []
+          for (const item of tenderFileList) {
+            if (item.url && !item.originFileObj) {
+              finalImageUrls.push(item.url)
+            } else if (item.originFileObj || item instanceof File) {
+              const fileToUpload = item.originFileObj || item
+              const formData = new FormData()
+              formData.append('project_id', newProjectId)
+              formData.append('uploaded_by', currentUserName || values.quotation_given_by_name || '')
+              formData.append('name', `Tender Image: ${fileToUpload.name}`)
+              formData.append('description', 'Tender Image')
+              formData.append('file', fileToUpload)
+
+              const docUploadRes = await fetch(`${API_BASE_URL}/documents/`, {
+                method: 'POST',
+                body: formData,
+              })
+              if (docUploadRes.ok) {
+                const docResData = await docUploadRes.json()
+                if (docResData?.url) {
+                  finalImageUrls.push(docResData.url)
+                }
+              }
+            }
+          }
+
+          if (finalImageUrls.length > 0) {
+            await fetch(`${API_BASE_URL}/proposals/${newProjectId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tender_images: JSON.stringify(finalImageUrls) }),
+            })
+          }
+        } catch (imgErr) {
+          console.error('Error uploading tender images:', imgErr)
+        }
+      }
+
+      if (newProjectId && !uploadedDocxFile && (!proposalAttachments || !proposalAttachments.length)) {
         message.success('Proposal created successfully')
       }
 
@@ -2670,6 +2748,35 @@ export default function Allproposals() {
                     <Descriptions.Item label="Co-ordinator Remarks" span={2}>{selectedRecord?.co_ordinator_remarks || '-'}</Descriptions.Item>
                     <Descriptions.Item label="PPM Remarks" span={2}>{selectedRecord?.ppm_remarks || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Closure Report" span={2}>{selectedRecord?.closer_report || '-'}</Descriptions.Item>
+                    {selectedRecord?.make_in_india && (
+                      <Descriptions.Item label="Make In India" span={2}>{selectedRecord.make_in_india}</Descriptions.Item>
+                    )}
+                    {selectedRecord?.tender_images && (
+                      <Descriptions.Item label="Tender Images" span={2}>
+                        {(() => {
+                          let urls = []
+                          try {
+                            urls = Array.isArray(selectedRecord.tender_images) ? selectedRecord.tender_images : JSON.parse(selectedRecord.tender_images)
+                          } catch (e) {
+                            urls = String(selectedRecord.tender_images || '').split(',').map((s) => s.trim()).filter(Boolean)
+                          }
+                          if (!Array.isArray(urls) || !urls.length) return '-'
+                          return (
+                            <Space wrap>
+                              {urls.map((url, idx) => (
+                                <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={url}
+                                    alt={`Tender Image ${idx + 1}`}
+                                    style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid #d9d9d9' }}
+                                  />
+                                </a>
+                              ))}
+                            </Space>
+                          )
+                        })()}
+                      </Descriptions.Item>
+                    )}
                   </Descriptions>
                 </Card>
 
@@ -3412,7 +3519,71 @@ export default function Allproposals() {
                   const isEmailField = fieldName === 'email'
                   const isPhoneField = fieldName === 'phone_no'
 
-                  const isOptional = ['alternate_contact_details', 'email_reference'].includes(fieldName)
+                  if (isRequestType) {
+                    return (
+                      <Fragment key={fieldName}>
+                        <Col span={12}>
+                          <Form.Item
+                            name={fieldName}
+                            label={field.label}
+                            rules={[{ required: true, message: `Please enter ${field.label}` }]}
+                          >
+                            <Select placeholder="Select Request Type">
+                              {REQUEST_TYPE_OPTIONS.map((opt) => (
+                                <Select.Option key={opt} value={opt}>
+                                  {opt}
+                                </Select.Option>
+                              ))}
+                            </Select>
+                          </Form.Item>
+                        </Col>
+
+                        {isCoordTenderSelected && (
+                          <Col span={24}>
+                            <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 space-y-4 my-2">
+                              <div className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+                                <Tag color="blue">Tender Details</Tag>
+                                <span>Make In India & Tender Image Uploads</span>
+                              </div>
+
+                              <Form.Item
+                                name="make_in_india"
+                                label="Make In India"
+                                className="mb-3"
+                              >
+                                <TextArea rows={2} placeholder="Enter Make In India details..." />
+                              </Form.Item>
+
+                              <Form.Item
+                                label="Tender Images (Upload Multiple Images)"
+                                className="mb-0"
+                              >
+                                <Upload
+                                  listType="picture-card"
+                                  multiple
+                                  accept="image/*"
+                                  fileList={tenderFileList}
+                                  beforeUpload={() => false}
+                                  onChange={({ fileList }) => setTenderFileList(fileList)}
+                                  onPreview={(file) => {
+                                    const src = file.url || file.thumbUrl || (file.originFileObj ? URL.createObjectURL(file.originFileObj) : '')
+                                    if (src) window.open(src, '_blank')
+                                  }}
+                                >
+                                  <div>
+                                    <PlusOutlined />
+                                    <div style={{ marginTop: 8 }}>Upload Images</div>
+                                  </div>
+                                </Upload>
+                              </Form.Item>
+                            </div>
+                          </Col>
+                        )}
+                      </Fragment>
+                    )
+                  }
+
+                  const isOptional = ['alternate_contact_details', 'email_reference', 'make_in_india'].includes(fieldName)
 
                   return (
                     <Col span={12} key={fieldName}>
@@ -3438,14 +3609,6 @@ export default function Allproposals() {
                         ) : isCustomerType ? (
                           <Select placeholder="Select Customer Type">
                             {CUSTOMER_TYPE_OPTIONS.map((opt) => (
-                              <Select.Option key={opt} value={opt}>
-                                {opt}
-                              </Select.Option>
-                            ))}
-                          </Select>
-                        ) : isRequestType ? (
-                          <Select placeholder="Select Request Type">
-                            {REQUEST_TYPE_OPTIONS.map((opt) => (
                               <Select.Option key={opt} value={opt}>
                                 {opt}
                               </Select.Option>

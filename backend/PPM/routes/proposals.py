@@ -44,7 +44,7 @@ def sanitize_date_value(val: Any) -> Optional[Any]:
     if val is None:
         return None
     s = str(val).strip()
-    if not s or s.lower() in ('', 'none', 'null', 'nan', 'nat', '-'):
+    if not s or s.lower() in ('', 'none', 'null', 'nan', 'nat', '-', 'mutually agreed', 'mutually_agreed'):
         return None
     return s
 
@@ -168,6 +168,11 @@ def create_proposal(payload: ProposalCreate, db: Session = Depends(get_db)) -> P
         if date_key in data:
             data[date_key] = sanitize_date_value(data[date_key])
 
+    # Handle Mutually Agreed delivery date flag
+    if getattr(payload, "mutually_agreed", None) is True or str(data.get("delivery_date")).strip().lower() in ("mutually agreed", "mutually_agreed"):
+        data["delivery_date"] = None
+        data["mutually_agreed"] = True
+
     proposal = Proposal(**data)
     db.add(proposal)
     db.commit()
@@ -287,9 +292,7 @@ def list_proposals(
 
 @router.get("/false", response_model=List[ProposalResponse])
 def list_proposals(db: Session = Depends(get_db)) -> List[ProposalResponse]:
-    return db.query(Proposal).filter(
-        or_(Proposal.is_acknowledged.is_(None), Proposal.is_acknowledged.is_(False))
-    ).order_by(desc(Proposal.id)).all()
+    return db.query(Proposal).filter(Proposal.is_acknowledged == None).order_by(desc(Proposal.id)).all()
 
 
 @router.get("/unacknowledged")
@@ -520,27 +523,18 @@ def get_proposals_by_name(
     
     if effective_role == 'scientist':
         # Scientist users should see proposals assigned to them or created by them
-        words = name_clean.split()
-        conditions = []
-        if words:
-            # Match each word in the scientist name to handle whitespace/formatting variations
-            word_conditions = [
-                and_(
-                    *[
-                        or_(
-                            func.lower(Proposal.project_co_ordinator).contains(w.lower()),
-                            func.lower(Proposal.quotation_given_by_name).contains(w.lower()),
-                        )
-                        for w in words
-                    ]
-                )
-            ]
-            conditions.extend(word_conditions)
+        import re
+        clean_search = re.sub(r'\s+', ' ', name_clean.strip()).lower()
+        norm_quotation = func.regexp_replace(func.lower(Proposal.quotation_given_by_name), r'\s+', ' ', 'g')
+        norm_coordinator = func.regexp_replace(func.lower(Proposal.project_co_ordinator), r'\s+', ' ', 'g')
 
         proposals_query = (
             db.query(Proposal)
             .filter(
-                or_(*conditions) if conditions else True,
+                or_(
+                    norm_quotation.contains(clean_search),
+                    norm_coordinator.contains(clean_search),
+                ),
                 Proposal.is_acknowledged == True
             )
             .distinct(Proposal.id)
@@ -1128,6 +1122,10 @@ def update_proposal(
         update_data["revised_negotiated_quote_date"] = payload.revised_negotiated_quote_date
     if getattr(payload, "revised_negotiated_quote_amount", None) is not None:
         update_data["revised_negotiated_quote_amount"] = payload.revised_negotiated_quote_amount
+
+    if update_data.get("mutually_agreed") is True or update_data.get("Mutually_Agreed") is True or str(update_data.get("delivery_date")).strip().lower() in ("mutually agreed", "mutually_agreed"):
+        update_data["delivery_date"] = None
+        update_data["mutually_agreed"] = True
 
     for key, value in update_data.items():
         if key in DATE_COLUMNS:

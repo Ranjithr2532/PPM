@@ -34,8 +34,19 @@ from routes.count import router as count_router
 from routes.quotation import router as quotation_router, proposal_alias_router, proposal_lc_alias_router
 from ai_routes.ai import router as ai_router
 
+from sqlalchemy import text
+
 # Create all tables
 Base.metadata.create_all(bind=engine)
+
+# Ensure new columns exist on proposals table
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS make_in_india VARCHAR;"))
+        conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS tender_images VARCHAR;"))
+        conn.commit()
+except Exception as e:
+    print(f"Migration error: {e}")
 
 
 app = FastAPI(title="Order Management Backend")

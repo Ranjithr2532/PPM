@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -115,11 +115,103 @@ const isEnquiryDateError = (enquiryDate) => {
   return parsed.isBefore(dayjs('1900-01-01'), 'day')
 }
 
+const isQuoteDateError = (quoteDate) => {
+  if (
+    quoteDate === null ||
+    quoteDate === undefined ||
+    String(quoteDate).trim() === '' ||
+    String(quoteDate).trim() === 'null' ||
+    String(quoteDate).trim() === 'undefined'
+  ) {
+    return true
+  }
+  const dateStr = String(quoteDate).trim()
+  let parsed = dayjs(dateStr)
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD-MM-YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD/MM/YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    return true
+  }
+  return parsed.isBefore(dayjs('1900-01-01'), 'day')
+}
+
+const isOrderDateError = (item) => {
+  const projNum = String(item?.project_number || '').trim()
+  if (!projNum || projNum.toUpperCase() === 'NULL' || projNum.toLowerCase() === 'undefined') {
+    return false
+  }
+  const orderDate = item?.order_date
+  if (
+    orderDate === null ||
+    orderDate === undefined ||
+    String(orderDate).trim() === '' ||
+    String(orderDate).trim() === 'null' ||
+    String(orderDate).trim() === 'undefined'
+  ) {
+    return true
+  }
+  const dateStr = String(orderDate).trim()
+  let parsed = dayjs(dateStr)
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD-MM-YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD/MM/YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    return true
+  }
+  return parsed.isBefore(dayjs('1900-01-01'), 'day')
+}
+
+const isDeliveryDateError = (item) => {
+  const projNum = String(item?.project_number || '').trim()
+  if (!projNum || projNum.toUpperCase() === 'NULL' || projNum.toLowerCase() === 'undefined') {
+    return false
+  }
+  const mutuallyAgreed = Boolean(item?.Mutually_Agreed || item?.mutually_agreed || item?.delivery_date_mutually_agreed)
+  if (mutuallyAgreed) {
+    return false
+  }
+  const delDate = item?.delivery_date
+  if (
+    delDate === null ||
+    delDate === undefined ||
+    String(delDate).trim() === '' ||
+    String(delDate).trim() === 'null' ||
+    String(delDate).trim() === 'undefined'
+  ) {
+    return true
+  }
+  const dateStr = String(delDate).trim()
+  if (dateStr.toLowerCase() === 'mutually agreed') {
+    return false
+  }
+  let parsed = dayjs(dateStr)
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD-MM-YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    parsed = dayjs(dateStr, 'DD/MM/YYYY', true)
+  }
+  if (!parsed.isValid()) {
+    return true
+  }
+  return parsed.isBefore(dayjs('1900-01-01'), 'day')
+}
+
 const DATE_FIELD_OPTIONS = [
   { value: 'proposals_converted', label: 'Proposals Converted' },
   { value: 'proposals_not_converted', label: 'Proposals not Converted' },
   { value: 'ongoing_projects', label: 'Ongoing Projects' },
   { value: 'error_enquiry_date', label: 'Error Enquiry Dates' },
+  { value: 'error_quote_date', label: 'Error Quote Dates' },
+  { value: 'error_order_date', label: 'Error Order Dates' },
+  { value: 'error_delivery_date', label: 'Error Delivery Dates' },
   { value: 'enquiry_date', label: 'Enquiry Date' },
   { value: 'quote_date', label: 'Quote Date' },
   { value: 'revised_negotiated_quote_date', label: 'Revised Quote Date' },
@@ -162,6 +254,36 @@ const PROPOSAL_FIELDS = [
     label: 'Request Type',
     width: 160,
     render: (value) => (value ? <Tag color="blue">{value}</Tag> : null),
+  },
+  { name: 'make_in_india', label: 'Make In India', width: 200, input: 'textarea', inForm: false },
+  {
+    name: 'tender_images',
+    label: 'Tender Images',
+    width: 220,
+    inForm: false,
+    render: (value) => {
+      if (!value) return '-'
+      let urls = []
+      try {
+        urls = Array.isArray(value) ? value : JSON.parse(value)
+      } catch (e) {
+        urls = String(value).split(',').map((s) => s.trim()).filter(Boolean)
+      }
+      if (!Array.isArray(urls) || !urls.length) return '-'
+      return (
+        <Space wrap>
+          {urls.map((url, idx) => (
+            <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+              <img
+                src={url}
+                alt={`Tender ${idx + 1}`}
+                style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid #d9d9d9' }}
+              />
+            </a>
+          ))}
+        </Space>
+      )
+    },
   },
   { name: 'email_reference', label: 'Email Reference', width: 200 },
   { name: 'quote_reference', label: 'Quote Reference', width: 190 },
@@ -231,6 +353,13 @@ const mapApiToUi = (record) => {
   mapped.key = record?.id ?? uniqueKey()
   // Preserve payments data for dynamic column rendering
   mapped.payments = record?.payments || []
+
+  const isMutuallyAgreed = Boolean(record?.Mutually_Agreed || record?.mutually_agreed)
+  mapped.delivery_date_mutually_agreed = isMutuallyAgreed
+  if (isMutuallyAgreed) {
+    mapped.delivery_date = 'Mutually Agreed'
+  }
+
   return mapped
 }
 
@@ -247,6 +376,19 @@ const mapUiToApi = (values) => {
 
     payload[apiName] = value
   })
+
+  payload.make_in_india = values.make_in_india ?? ''
+
+  if (values.delivery_date_mutually_agreed) {
+    payload["Mutually_Agreed"] = true
+    payload["delivery_date"] = null
+  } else {
+    payload["Mutually_Agreed"] = false
+    if (payload["delivery_date"] === 'Mutually Agreed') {
+      payload["delivery_date"] = null
+    }
+  }
+
   return payload
 }
 
@@ -387,6 +529,8 @@ function Proposals() {
   const [floatingChatOpen, setFloatingChatOpen] = useState(false)
   const [unreadChatCount, setUnreadChatCount] = useState(0)
   const [form] = Form.useForm()
+  const watchedRequestType = Form.useWatch('request_type', form)
+  const isTenderSelected = (Array.isArray(watchedRequestType) ? watchedRequestType.join(' ') : String(watchedRequestType || '')).toLowerCase().includes('tender')
   const [tableData, setTableData] = useState([])
   const [filteredData, setFilteredData] = useState([])
   const [tableLoading, setTableLoading] = useState(false)
@@ -1532,31 +1676,68 @@ function Proposals() {
     fetchStageConfig()
   }, [fetchProposals, fetchProposalCount, fetchCentres, fetchGroups, fetchUsers, fetchStageConfig])
 
+  const [tenderFileList, setTenderFileList] = useState([])
+
   const openAddModal = useCallback(() => {
     setEditingRecord(null)
+    setTenderFileList([])
     form.resetFields()
     setSelectedCentreId(null)
     setAvailableCoordinators([])
     setDeliveryDateMutuallyAgreed(false)
     setProposalsConverted(null)
-    if (currentUserName) {
-      form.setFieldsValue({ updated_by: currentUserName, delivery_date_mutually_agreed: false })
-    } else {
-      form.setFieldsValue({ delivery_date_mutually_agreed: false })
-    }
+    const loggedUser = currentUserName || (() => {
+      try {
+        const rawUser = window.localStorage.getItem('ppm_user')
+        if (rawUser) {
+          const parsedUser = JSON.parse(rawUser)
+          return parsedUser?.name || parsedUser?.username || ''
+        }
+      } catch (e) {}
+      return window.localStorage.getItem('loggedInUser') || ''
+    })()
+    form.setFieldsValue({ updated_by: loggedUser, delivery_date_mutually_agreed: false })
     setModalOpen(true)
   }, [form, currentUserName])
 
   const openEditModal = useCallback(
     (record) => {
       setEditingRecord(record)
-      const mutuallyAgreed = String(record.delivery_date).trim().toLowerCase() === 'mutually agreed'
+      let existingUrls = []
+      try {
+        existingUrls = Array.isArray(record?.tender_images) ? record.tender_images : JSON.parse(record?.tender_images || '[]')
+      } catch (e) {
+        existingUrls = String(record?.tender_images || '').split(',').map((s) => s.trim()).filter(Boolean)
+      }
+      if (Array.isArray(existingUrls) && existingUrls.length > 0) {
+        setTenderFileList(existingUrls.map((url, idx) => ({
+          uid: `-tender-${idx}`,
+          name: `Tender Image ${idx + 1}`,
+          status: 'done',
+          url: url,
+        })))
+      } else {
+        setTenderFileList([])
+      }
+
+      const mutuallyAgreed = Boolean(record?.Mutually_Agreed || record?.mutually_agreed || record?.delivery_date_mutually_agreed || String(record?.delivery_date).trim().toLowerCase() === 'mutually agreed')
       setDeliveryDateMutuallyAgreed(mutuallyAgreed)
       setProposalsConverted(record.proposals_converted || null)
+      const loggedUser = currentUserName || (() => {
+        try {
+          const rawUser = window.localStorage.getItem('ppm_user')
+          if (rawUser) {
+            const parsedUser = JSON.parse(rawUser)
+            return parsedUser?.name || parsedUser?.username || ''
+          }
+        } catch (e) {}
+        return window.localStorage.getItem('loggedInUser') || ''
+      })()
       form.setFieldsValue({
         ...record,
-        updated_by: currentUserName || record.updated_by,
+        updated_by: loggedUser || record.updated_by,
         delivery_date_mutually_agreed: mutuallyAgreed,
+        delivery_date: mutuallyAgreed ? null : record.delivery_date,
       })
 
       const centerCodeFromRecord = (record.center || '').trim()
@@ -1607,6 +1788,7 @@ function Proposals() {
   const closeModal = useCallback(() => {
     setModalOpen(false)
     setEditingRecord(null)
+    setTenderFileList([])
     setSelectedCentreId(null)
     setAvailableCoordinators([])
     setProposalsConverted(null)
@@ -1661,6 +1843,51 @@ function Proposals() {
         }
         throw new Error(detail || 'Request failed')
       }
+      const savedProposal = await response.json()
+      const targetProjectId = savedProposal?.id || editingRecord?.id
+
+      // Upload tender images to /documents/ if request_type is Tender
+      const reqTypeStr = (Array.isArray(values.request_type) ? values.request_type.join(' ') : String(values.request_type || '')).toLowerCase()
+      if (reqTypeStr.includes('tender') && targetProjectId && tenderFileList && tenderFileList.length > 0) {
+        try {
+          const finalImageUrls = []
+          for (const item of tenderFileList) {
+            if (item.url && !item.originFileObj) {
+              finalImageUrls.push(item.url)
+            } else if (item.originFileObj || item instanceof File) {
+              const fileToUpload = item.originFileObj || item
+              const formData = new FormData()
+              formData.append('project_id', targetProjectId)
+              formData.append('uploaded_by', currentUserName || '')
+              formData.append('name', `Tender Image: ${fileToUpload.name}`)
+              formData.append('description', 'Tender Image')
+              formData.append('file', fileToUpload)
+
+              const docUploadRes = await fetch(`${API_BASE_URL}/documents/`, {
+                method: 'POST',
+                body: formData,
+              })
+              if (docUploadRes.ok) {
+                const docResData = await docUploadRes.json()
+                if (docResData?.url) {
+                  finalImageUrls.push(docResData.url)
+                }
+              }
+            }
+          }
+
+          if (finalImageUrls.length > 0) {
+            await fetch(`${API_BASE_URL}/proposals/${targetProjectId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tender_images: JSON.stringify(finalImageUrls) }),
+            })
+          }
+        } catch (imgErr) {
+          console.error('Error uploading tender images:', imgErr)
+        }
+      }
+
       await fetchProposals()
       message.success(isEditing ? 'Proposal updated' : 'Proposal created')
       closeModal()
@@ -1785,6 +2012,12 @@ function Proposals() {
     // Apply date range filtering, error date filtering, or converted status filtering
     if (errorDateFilter === 'enquiry_date' || selectedDateField === 'error_enquiry_date') {
       filtered = filtered.filter((item) => isEnquiryDateError(item.enquiry_date))
+    } else if (errorDateFilter === 'quote_date' || selectedDateField === 'error_quote_date') {
+      filtered = filtered.filter((item) => isQuoteDateError(item.quote_date))
+    } else if (errorDateFilter === 'order_date' || selectedDateField === 'error_order_date') {
+      filtered = filtered.filter((item) => isOrderDateError(item))
+    } else if (errorDateFilter === 'delivery_date' || selectedDateField === 'error_delivery_date') {
+      filtered = filtered.filter((item) => isDeliveryDateError(item))
     } else if (selectedDateField === 'proposals_converted') {
       filtered = filtered.filter((item) => {
         const value = String(item.proposals_converted || '').toLowerCase().trim()
@@ -3221,6 +3454,37 @@ function Proposals() {
                                     selectedRecord.details_of_external_internal_review_meeting,
                                   )}
                                 </Descriptions.Item>
+                                {selectedRecord.make_in_india && (
+                                  <Descriptions.Item label="Make In India">
+                                    {selectedRecord.make_in_india}
+                                  </Descriptions.Item>
+                                )}
+                                {selectedRecord.tender_images && (
+                                  <Descriptions.Item label="Tender Images">
+                                    {(() => {
+                                      let urls = []
+                                      try {
+                                        urls = Array.isArray(selectedRecord.tender_images) ? selectedRecord.tender_images : JSON.parse(selectedRecord.tender_images)
+                                      } catch (e) {
+                                        urls = String(selectedRecord.tender_images || '').split(',').map((s) => s.trim()).filter(Boolean)
+                                      }
+                                      if (!Array.isArray(urls) || !urls.length) return '-'
+                                      return (
+                                        <Space wrap>
+                                          {urls.map((url, idx) => (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                                              <img
+                                                src={url}
+                                                alt={`Tender Image ${idx + 1}`}
+                                                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid #d9d9d9' }}
+                                              />
+                                            </a>
+                                          ))}
+                                        </Space>
+                                      )
+                                    })()}
+                                  </Descriptions.Item>
+                                )}
                               </Descriptions>
                             </Card>
 
@@ -3799,7 +4063,7 @@ function Proposals() {
                           )}
                           {errorDateFilter !== null && (
                             <Tag closable onClose={() => setErrorDateFilter(null)}>
-                              Error Dates: Enquiry Dates
+                              Error Dates: {errorDateFilter === 'quote_date' ? 'Quote Dates' : errorDateFilter === 'order_date' ? 'Order Dates' : errorDateFilter === 'delivery_date' ? 'Delivery Dates' : 'Enquiry Dates'}
                             </Tag>
                           )}
                           {selectedDateField && startDate && endDate && (
@@ -3885,6 +4149,9 @@ function Proposals() {
                               style={{ width: '100%' }}
                             >
                               <Select.Option value="enquiry_date">Enquiry Dates</Select.Option>
+                              <Select.Option value="quote_date">Quote Dates</Select.Option>
+                              <Select.Option value="order_date">Order Dates</Select.Option>
+                              <Select.Option value="delivery_date">Delivery Dates</Select.Option>
                             </Select>
                           </Col>
 
@@ -4616,43 +4883,84 @@ function Proposals() {
 
               if (field.name === 'request_type') {
                 return (
-                  <Form.Item
-                    key={field.name}
-                    name={field.name}
-                    label={field.label}
-                    rules={
-                      field.required
-                        ? [
-                          {
-                            required: true,
-                            message: `Please enter ${field.label}`,
-                          },
-                        ]
-                        : []
-                    }
-                    getValueProps={(value) => ({
-                      value: value ? [value] : [],
-                    })}
-                    normalize={(value) => {
-                      if (Array.isArray(value)) {
-                        return value[value.length - 1] || ''
+                  <Fragment key={field.name}>
+                    <Form.Item
+                      name={field.name}
+                      label={field.label}
+                      rules={
+                        field.required
+                          ? [
+                            {
+                              required: true,
+                              message: `Please enter ${field.label}`,
+                            },
+                          ]
+                          : []
                       }
-                      return value || ''
-                    }}
-                  >
-                    <Select
-                      mode="tags"
-                      showSearch
-                      allowClear
-                      placeholder={field.label}
+                      getValueProps={(value) => ({
+                        value: value ? (Array.isArray(value) ? value : [value]) : [],
+                      })}
+                      normalize={(value) => {
+                        if (Array.isArray(value)) {
+                          return value[value.length - 1] || ''
+                        }
+                        return value || ''
+                      }}
                     >
-                      {REQUEST_TYPE_OPTIONS.map((option) => (
-                        <Select.Option key={option} value={option}>
-                          {option}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
+                      <Select
+                        mode="tags"
+                        showSearch
+                        allowClear
+                        placeholder={field.label}
+                      >
+                        {REQUEST_TYPE_OPTIONS.map((option) => (
+                          <Select.Option key={option} value={option}>
+                            {option}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+
+                    {isTenderSelected && (
+                      <div className="col-span-1 md:col-span-2 p-4 rounded-xl border border-blue-200 bg-blue-50/50 space-y-4 my-2">
+                        <div className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+                          <Tag color="blue">Tender Details</Tag>
+                          <span>Make In India & Tender Image Uploads</span>
+                        </div>
+
+                        <Form.Item
+                          name="make_in_india"
+                          label="Make In India"
+                          className="mb-3"
+                        >
+                          <TextArea rows={2} placeholder="Enter Make In India details..." />
+                        </Form.Item>
+
+                        <Form.Item
+                          label="Tender Images (Upload Multiple Images)"
+                          className="mb-0"
+                        >
+                          <Upload
+                            listType="picture-card"
+                            multiple
+                            accept="image/*"
+                            fileList={tenderFileList}
+                            beforeUpload={() => false}
+                            onChange={({ fileList }) => setTenderFileList(fileList)}
+                            onPreview={(file) => {
+                              const src = file.url || file.thumbUrl || (file.originFileObj ? URL.createObjectURL(file.originFileObj) : '')
+                              if (src) window.open(src, '_blank')
+                            }}
+                          >
+                            <div>
+                              <PlusOutlined />
+                              <div style={{ marginTop: 8 }}>Upload Images</div>
+                            </div>
+                          </Upload>
+                        </Form.Item>
+                      </div>
+                    )}
+                  </Fragment>
                 )
               }
 
@@ -5054,6 +5362,65 @@ function Proposals() {
                 )
               }
 
+              if (isUpdatedByField) {
+                const loggedUser = currentUserName || (() => {
+                  try {
+                    const rawUser = window.localStorage.getItem('ppm_user')
+                    if (rawUser) {
+                      const parsedUser = JSON.parse(rawUser)
+                      return parsedUser?.name || parsedUser?.username || ''
+                    }
+                  } catch (e) {}
+                  return window.localStorage.getItem('loggedInUser') || ''
+                })()
+
+                const lastUpdatedBy = editingRecord?.updated_by
+
+                return (
+                  <Form.Item
+                    key={field.name}
+                    name={field.name}
+                    label={field.label}
+                    rules={
+                      field.required
+                        ? [
+                            {
+                              required: true,
+                              message: `Please enter ${field.label}`,
+                            },
+                          ]
+                        : []
+                    }
+                    extra={
+                      <div style={{ marginTop: 4, fontSize: '12px', color: '#64748b' }}>
+                        {editingRecord ? (
+                          <span>
+                            Last Updated By: <strong style={{ color: '#1e293b' }}>{lastUpdatedBy || 'N/A'}</strong>
+                            {loggedUser ? ` (Updating as: ${loggedUser})` : ''}
+                          </span>
+                        ) : (
+                          <span>
+                            Updating as: <strong style={{ color: '#1e293b' }}>{loggedUser || 'N/A'}</strong>
+                          </span>
+                        )}
+                      </div>
+                    }
+                  >
+                    <Input
+                      disabled
+                      placeholder="Logged in user"
+                      suffix={
+                        editingRecord && lastUpdatedBy ? (
+                          <Tag color="blue" style={{ margin: 0 }}>
+                            Last: {lastUpdatedBy}
+                          </Tag>
+                        ) : null
+                      }
+                    />
+                  </Form.Item>
+                )
+              }
+
               return (
                 <Form.Item
                   key={field.name}
@@ -5072,7 +5439,6 @@ function Proposals() {
                 >
                   <InputComponent
                     rows={field.input === 'textarea' ? 2 : undefined}
-                    disabled={isUpdatedByField}
                   />
                 </Form.Item>
               )

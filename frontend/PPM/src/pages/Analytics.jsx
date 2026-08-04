@@ -13,6 +13,7 @@ import {
   DollarCircleOutlined,
   PlayCircleOutlined,
   StopOutlined,
+  MessageOutlined,
 } from '@ant-design/icons'
 import {
   AutoComplete,
@@ -3085,7 +3086,21 @@ function Analytics() {
                     )}
                   </div>
                   <Modal
-                    title="Proposal Details"
+                    title={
+                      <div className="flex items-center gap-3 py-1">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center text-lg shadow-sm">
+                          <EyeOutlined />
+                        </div>
+                        <div>
+                          <div className="text-base font-bold text-slate-800 leading-tight">
+                            Proposal Details
+                          </div>
+                          <div className="text-xs text-slate-500 font-normal mt-0.5">
+                            {selectedRecord?.project_number ? `Project #${selectedRecord.project_number}` : selectedRecord?.customer_name || 'Detailed Proposal Information'}
+                          </div>
+                        </div>
+                      </div>
+                    }
                     open={detailModalOpen}
                     onCancel={closeDetailModal}
                     footer={null}
@@ -3093,7 +3108,7 @@ function Analytics() {
                     maskClosable
                     centered
                     destroyOnHidden
-                    styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+                    styles={{ body: { maxHeight: '72vh', overflowY: 'auto', padding: '16px 24px' } }}
                   >
                     {!selectedRecord ? (
                       <div className="text-slate-500">No proposal selected.</div>
@@ -3472,21 +3487,48 @@ function Analytics() {
                   </Modal>
 
                   <Modal
-                    title={selectedProjectName ? `Proposals for ${selectedProjectName}` : 'Not Converted to Projects'}
+                    title={
+                      <div className="flex items-center justify-between pr-8 py-1">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center text-lg shadow-sm">
+                            <FileTextOutlined />
+                          </div>
+                          <div>
+                            <div className="text-base font-bold text-slate-800 leading-tight">
+                              {selectedProjectName ? `Proposals for ${selectedProjectName}` : 'Not Converted to Projects'}
+                            </div>
+                            <div className="text-xs text-slate-500 font-normal mt-0.5">
+                              Detailed breakdown of proposals not converted into active projects
+                            </div>
+                          </div>
+                        </div>
+                        <Tag color="blue" className="px-3 py-1 text-xs font-semibold rounded-full border-blue-200">
+                          {getModalData().length} Total Records
+                        </Tag>
+                      </div>
+                    }
                     open={notConvertedModalVisible}
                     onCancel={() => setNotConvertedModalVisible(false)}
-                    width={1200}
+                    width={1300}
                     zIndex={9999}
                     footer={[
-                      <Button key="close" onClick={() => setNotConvertedModalVisible(false)}>
+                      <Button
+                        key="close"
+                        type="primary"
+                        onClick={() => setNotConvertedModalVisible(false)}
+                        className="rounded-lg font-semibold px-6 bg-blue-600 hover:bg-blue-700"
+                      >
                         Close
                       </Button>,
                     ]}
+                    styles={{ body: { padding: '16px 24px' } }}
                   >
                     <Table
                       dataSource={getModalData()}
                       loading={tableLoading}
-                      rowKey="id"
+                      rowKey={(r, idx) => r.id ?? idx}
+                      scroll={{ x: 1350, y: '58vh' }}
+                      size="middle"
                       pagination={{
                         pageSize: 10,
                         showSizeChanger: true,
@@ -3498,33 +3540,53 @@ function Analytics() {
                           title: 'SL NO',
                           dataIndex: 'id',
                           key: 'id',
-                          width: 60,
-                          render: (_, __, index) => index + 1,
+                          width: 75,
+                          align: 'center',
+                          render: (_, __, index) => <span className="font-semibold text-slate-500">{index + 1}</span>,
                         },
                         {
                           title: 'Enquiry Date',
                           dataIndex: 'enquiry_date',
                           key: 'enquiry_date',
-                          width: 100,
-                          render: (value) => formatDate(value),
+                          width: 120,
+                          render: (value) => formatDate(value) ? (
+                            <span className="font-medium text-slate-700">
+                              {formatDate(value)}
+                            </span>
+                          ) : '-',
                         },
                         {
                           title: 'Customer Type',
                           dataIndex: 'customer_type',
                           key: 'customer_type',
-                          width: 120,
+                          width: 140,
+                          render: (value) => {
+                            if (!value) return '-'
+                            const valStr = String(value).toUpperCase()
+                            let color = 'blue'
+                            if (valStr.includes('GOVT') || valStr.includes('GOVERNMENT')) color = 'purple'
+                            else if (valStr.includes('PSU')) color = 'geekblue'
+                            else if (valStr.includes('PVT') || valStr.includes('PRIVATE')) color = 'cyan'
+                            else if (valStr.includes('INDUSTRY')) color = 'green'
+                            return <Tag color={color} className="rounded-full font-medium px-2.5">{value}</Tag>
+                          },
                         },
                         {
                           title: 'Customer Name',
                           dataIndex: 'customer_name',
                           key: 'customer_name',
-                          width: 150,
+                          width: 170,
                           ellipsis: true,
+                          render: (value) => (
+                            <Tooltip title={value} placement="topLeft">
+                              <span className="font-semibold text-slate-800">{value || '-'}</span>
+                            </Tooltip>
+                          ),
                         },
                         {
-                          title: 'Project Name',
+                          title: 'Project Name / Description',
                           key: 'project_name',
-                          width: 180,
+                          width: 220,
                           render: (_, record) => {
                             const projectName = record.activity && record.activity.trim() !== ''
                               ? record.activity
@@ -3533,7 +3595,7 @@ function Analytics() {
                                 : '-')
                             return (
                               <Tooltip title={projectName} placement="topLeft">
-                                <span>{projectName.length > 20 ? `${projectName.substring(0, 20)}...` : projectName}</span>
+                                <span className="text-slate-700">{projectName}</span>
                               </Tooltip>
                             )
                           },
@@ -3542,13 +3604,19 @@ function Analytics() {
                           title: 'Proposal Given By',
                           dataIndex: 'quotation_given_by_name',
                           key: 'quotation_given_by_name',
-                          width: 150,
+                          width: 160,
                           ellipsis: true,
+                          render: (value) => (
+                            <Tooltip title={value} placement="topLeft">
+                              <span className="text-slate-600">{value || '-'}</span>
+                            </Tooltip>
+                          ),
                         },
                         {
                           title: 'Project Co-ordinator',
                           key: 'project_coordinator',
-                          width: 150,
+                          width: 160,
+                          ellipsis: true,
                           render: (_, record) => {
                             const coordinator = record.project_co_ordinator && record.project_co_ordinator.trim() !== ''
                               ? record.project_co_ordinator
@@ -3557,7 +3625,7 @@ function Analytics() {
                                 : '-')
                             return (
                               <Tooltip title={coordinator} placement="topLeft">
-                                <span>{coordinator.length > 15 ? `${coordinator.substring(0, 15)}...` : coordinator}</span>
+                                <span className="text-slate-600">{coordinator}</span>
                               </Tooltip>
                             )
                           },
@@ -3566,35 +3634,51 @@ function Analytics() {
                           title: 'Quote Amount',
                           dataIndex: 'quote_amount',
                           key: 'quote_amount',
-                          width: 120,
-                          render: (value) => value ? formatIndianNumber(value) : '-',
+                          width: 140,
+                          align: 'right',
+                          render: (value) => value ? (
+                            <span className="font-bold text-slate-800">
+                              ₹ {formatIndianNumber(value)}
+                            </span>
+                          ) : '-',
                         },
                         {
                           title: 'Proposal Status',
                           dataIndex: 'proposal_status',
                           key: 'proposal_status',
-                          width: 130,
-                          render: (value) => value ? <Tag color="blue">{value}</Tag> : '-',
+                          width: 140,
+                          align: 'center',
+                          render: (value) => {
+                            if (!value) return '-'
+                            const valLower = String(value).toLowerCase()
+                            let color = 'blue'
+                            if (valLower.includes('accepted') || valLower.includes('converted')) color = 'green'
+                            else if (valLower.includes('rejected') || valLower.includes('dropped')) color = 'red'
+                            else if (valLower.includes('awaiting') || valLower.includes('pending')) color = 'orange'
+                            return <Tag color={color} className="rounded-full font-semibold px-2.5">{value}</Tag>
+                          },
                         },
                         {
                           title: 'Actions',
                           key: 'actions',
-                          width: 90,
+                          width: 100,
+                          align: 'center',
                           fixed: 'right',
                           render: (_, record) => (
-                            <Space size="small">
-                              <Button
-                                size="small"
-                                type="link"
-                                onClick={() => {
-                                  setSelectedRecord(record)
-                                  setDetailModalOpen(true)
-                                  setNotConvertedModalVisible(false)
-                                }}
-                              >
-                                View
-                              </Button>
-                            </Space>
+                            <Button
+                              size="small"
+                              type="primary"
+                              ghost
+                              icon={<EyeOutlined />}
+                              onClick={() => {
+                                setSelectedRecord(record)
+                                setDetailModalOpen(true)
+                                setNotConvertedModalVisible(false)
+                              }}
+                              className="rounded-lg font-medium"
+                            >
+                              View
+                            </Button>
                           ),
                         },
                       ]}
@@ -4552,13 +4636,28 @@ function Analytics() {
 
       {/* Queries Modal for admin users */}
       <Modal
-        title={`Queries for Project: ${selectedProjectForQueries?.project_number || selectedProjectForQueries?.activity || 'N/A'}`}
+        title={
+          <div className="flex items-center gap-3 py-1">
+            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center text-lg shadow-sm">
+              <MessageOutlined />
+            </div>
+            <div>
+              <div className="text-base font-bold text-slate-800 leading-tight">
+                Queries & Remarks
+              </div>
+              <div className="text-xs text-slate-500 font-normal mt-0.5">
+                Project: {selectedProjectForQueries?.project_number || selectedProjectForQueries?.activity || 'N/A'}
+              </div>
+            </div>
+          </div>
+        }
         open={queriesModalOpen}
         onCancel={closeQueriesModal}
-        width={800}
+        width={850}
         footer={[
-          <Button key="close" onClick={closeQueriesModal}>Close</Button>,
+          <Button key="close" type="primary" onClick={closeQueriesModal} className="rounded-lg font-semibold px-6 bg-blue-600 hover:bg-blue-700">Close</Button>,
         ]}
+        styles={{ body: { padding: '16px 24px' } }}
       >
         <Table
           dataSource={queriesData}

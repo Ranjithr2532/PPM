@@ -60,7 +60,10 @@ class ProposalBase(BaseModel):
     group: Optional[str] = None
     status: Optional[str] = None
     proposals_converted: Optional[str] = None
+    make_in_india: Optional[str] = None
+    tender_images: Optional[str] = None
     if_not_reason: Optional[str] = None
+    mutually_agreed: Optional[bool] = Field(default=None, alias="Mutually_Agreed")
 
     class Config:
         populate_by_name = True
