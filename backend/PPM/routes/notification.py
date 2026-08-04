@@ -89,6 +89,12 @@ def get_notifications(
             if document:
                 document_name = document.name
 
+        triggered_val = n.trigerred_by
+        if not triggered_val and proposal and proposal.group:
+            triggered_val = f"GH ({proposal.group})"
+        elif not triggered_val:
+            triggered_val = "System"
+
         response_data.append(
             NotificationResponse(
                 id=n.id,
@@ -98,8 +104,8 @@ def get_notifications(
                 project_number=project_number,
                 proposal_name=proposal_name,
                 document_name=document_name,
-                trigerred_by= n.trigerred_by,
-                created_at = n.created_at
+                trigerred_by=triggered_val,
+                created_at=n.created_at
             )
         )
 

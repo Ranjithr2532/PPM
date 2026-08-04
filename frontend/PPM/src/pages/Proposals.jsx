@@ -1753,10 +1753,11 @@ function Proposals() {
           item.financial_completed_year.trim() !== '',
       )
     } else if (statusFilter === 'pendingProjects') {
-      filtered = filtered.filter(
-        (item) =>
-          item.status === 'Ongoing' || item.status === 'On Hold',
-      )
+      filtered = filtered.filter((item) => {
+        const hasProjNum = item.project_number && item.project_number.trim() !== ''
+        const st = String(item.status || '').toLowerCase().trim()
+        return hasProjNum && (st === 'ongoing' || st === 'on hold' || st === 'on_hold')
+      })
     } else if (statusFilter === 'proposals') {
       filtered = filtered.filter(
         (item) =>
@@ -1796,8 +1797,9 @@ function Proposals() {
       })
     } else if (selectedDateField === 'ongoing_projects') {
       filtered = filtered.filter((item) => {
+        const hasProjNum = item.project_number && item.project_number.trim() !== ''
         const status = String(item.status || '').toLowerCase().trim()
-        return status === 'ongoing' || status === 'on hold'
+        return hasProjNum && (status === 'ongoing' || status === 'on hold' || status === 'on_hold')
       })
     } else if (selectedDateField && startDate && endDate) {
       const startOfDay = startDate.startOf('day')
@@ -2665,7 +2667,8 @@ function Proposals() {
   // Ongoing Projects breakdown
   const ongoingProjectsBreakdown = {}
   tableData.forEach((item) => {
-    if (item.status === 'Ongoing' || item.status === 'On Hold') {
+    const st = String(item.status || '').toLowerCase().trim()
+    if (st === 'ongoing' || st === 'on hold' || st === 'on_hold') {
       if (item.project_number) {
         const prefix = PROJECT_PREFIXES.find((p) =>
           item.project_number.toUpperCase().startsWith(p),
@@ -2703,13 +2706,17 @@ function Proposals() {
         item.financial_completed_year.trim() !== '',
     ).length
 
-    const pendingProjects = tableData.filter(
-      (item) => item.status === 'Ongoing' || item.status === 'On Hold',
-    ).length
+    const pendingProjects = tableData.filter((item) => {
+      const hasProjNum = item.project_number && item.project_number.trim() !== ''
+      const st = String(item.status || '').toLowerCase().trim()
+      return hasProjNum && (st === 'ongoing' || st === 'on hold' || st === 'on_hold')
+    }).length
 
-    const onHoldProjects = tableData.filter(
-      (item) => item.status === 'On Hold',
-    ).length
+    const onHoldProjects = tableData.filter((item) => {
+      const hasProjNum = item.project_number && item.project_number.trim() !== ''
+      const st = String(item.status || '').toLowerCase().trim()
+      return hasProjNum && (st === 'on hold' || st === 'on_hold')
+    }).length
 
     // Calculate pending breakdown (proposals without project_number)
     const pendingBreakdown = {
@@ -2789,9 +2796,9 @@ function Proposals() {
                         value: statistics.totalProposals,
                         bgClass: 'bg-gradient-to-br from-red-500 to-red-600',
                         icon: <ClockCircleOutlined className="text-2xl" />,
-                        extra: statistics.pendingBreakdown && (
+                        extra: statistics.pendingBreakdown && statistics.pendingBreakdown.rejected > 0 && (
                           <div className="mt-2 text-[11px] text-white/80 font-medium">
-                            Ongoing: {statistics.pendingBreakdown.ongoing} | Rejected: {statistics.pendingBreakdown.rejected}
+                            Rejected: {statistics.pendingBreakdown.rejected}
                           </div>
                         ),
                       },
@@ -2858,16 +2865,23 @@ function Proposals() {
                         value: statistics.pendingProjects,
                         bgClass: 'bg-gradient-to-br from-blue-500 to-blue-600',
                         icon: <PlayCircleOutlined className="text-2xl" />,
-                        extra: Object.keys(statistics.ongoingProjectsBreakdown).length > 0 && (
-                          <div className="mt-2 text-[11px] text-white/80 font-medium flex flex-wrap gap-x-1">
-                            {Object.entries(statistics.ongoingProjectsBreakdown)
-                              .filter(([, count]) => count > 0)
-                              .map(([code, count], idx, arr) => (
-                                <span key={code}>
-                                  {code}: {count}
-                                  {idx < arr.length - 1 ? ' |' : ''}
-                                </span>
-                              ))}
+                        extra: (
+                          <div className="mt-1.5 text-[11px] font-medium flex flex-col gap-1">
+                            {Object.keys(statistics.ongoingProjectsBreakdown).length > 0 && (
+                              <div className="text-white/80 flex flex-wrap gap-x-1">
+                                {Object.entries(statistics.ongoingProjectsBreakdown)
+                                  .filter(([, count]) => count > 0)
+                                  .map(([code, count], idx, arr) => (
+                                    <span key={code}>
+                                      {code}: {count}
+                                      {idx < arr.length - 1 ? ' |' : ''}
+                                    </span>
+                                  ))}
+                              </div>
+                            )}
+                            <div className="text-amber-200 font-bold bg-black/20 px-2 py-0.5 rounded-md w-fit border border-amber-300/30">
+                              Active: {statistics.pendingProjects - (statistics.onHoldProjects || 0)} | On Hold: {statistics.onHoldProjects || 0}
+                            </div>
                           </div>
                         ),
                       },
