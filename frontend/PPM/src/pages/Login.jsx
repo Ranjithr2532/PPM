@@ -74,7 +74,10 @@ function LoginVisualPanel() {
       try {
         const res = await axios.get(`${API_BASE_URL}/count/yearly`)
         if (res.data && Array.isArray(res.data.yearly_counts)) {
-          setYearlyData(res.data.yearly_counts)
+          const cleanYearly = res.data.yearly_counts.filter(
+            (item) => item.year && item.year !== 'Unknown' && item.year !== 'None'
+          )
+          setYearlyData(cleanYearly)
         }
       } catch (err) {
         console.warn('Could not fetch yearly counts for login visual:', err)
@@ -648,9 +651,14 @@ function Login() {
 
   const handleSubmit = async (values) => {
     setLoading(true)
+    let emailInput = (values.email || '').trim()
+    if (emailInput && !emailInput.includes('@')) {
+      emailInput = `${emailInput}@cmti.res.in`
+    }
+
     try {
       const response = await axios.post(`${API_BASE_URL}/users/login`, {
-        email: values.email,
+        email: emailInput,
         password: values.password,
       })
 
@@ -724,8 +732,14 @@ function Login() {
   }
 
   const handleRequestOtp = async () => {
-    if (!forgotPasswordEmail || !forgotPasswordEmail.includes('@')) {
-      message.error('Please enter a valid email address')
+    let emailInput = (forgotPasswordEmail || '').trim()
+    if (emailInput && !emailInput.includes('@')) {
+      emailInput = `${emailInput}@cmti.res.in`
+      setForgotPasswordEmail(emailInput)
+    }
+
+    if (!emailInput) {
+      message.error('Please enter a valid username or email address')
       return
     }
 
@@ -881,16 +895,21 @@ function Login() {
           <Form form={form} layout="vertical" onFinish={handleSubmit} autoComplete="off">
             <Form.Item
               name="email"
-              label={<span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Email Address</span>}
+              label={<span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Username / Email Address</span>}
               rules={[
-                { required: true, message: 'Please enter your email' },
-                { type: 'email', message: 'Please enter a valid email' },
+                { required: true, message: 'Please enter your username or email' },
               ]}
             >
               <Input
                 prefix={<MailOutlined className="text-[#0096FF] mr-2" />}
-                placeholder="name@cmti.res.in"
+                placeholder="username (or name@cmti.res.in)"
                 size="large"
+                onBlur={(e) => {
+                  const val = e.target.value.trim()
+                  if (val && !val.includes('@')) {
+                    form.setFieldsValue({ email: `${val}@cmti.res.in` })
+                  }
+                }}
                 className="bg-slate-50/90 border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl hover:border-[#0096FF] focus:border-[#0096FF] h-12 text-sm"
               />
             </Form.Item>

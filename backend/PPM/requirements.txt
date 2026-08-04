@@ -11,9 +11,10 @@ apscheduler
 alembic
 uvicorn
 sqlalchemy
-psycopg2
 minio
 python-multipart
 email-validator
 pandas
 python-docx
+python-jose[cryptography]
+bcrypt
