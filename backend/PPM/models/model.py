@@ -380,3 +380,19 @@ class MessageSeen(Base):
     message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     seen_at = Column(DateTime(timezone=False), default=datetime.utcnow, server_default=func.now())
+
+class Customers(Base):
+    __tablename__ = "customer1"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    email = Column(Text)
+    phone = Column(Text)
+    address = Column(Text)
+    alternate_contact_details = Column(Text)
+    gst = Column(Text)
+    pan = Column(Text)
+    tan = Column(Text)
+    
+    created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
