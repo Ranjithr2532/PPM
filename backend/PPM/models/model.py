@@ -56,6 +56,7 @@ class Proposal(Base):
     small_value_project = Column(String, nullable=True)
     ppm_remarks = Column(String, nullable=True)
     updated_by = Column(String, nullable=True)
+    mutually_agreed = Column("Mutually_Agreed", Boolean, nullable=True, default=False)
 
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -64,6 +65,8 @@ class Proposal(Base):
     is_acknowledged = Column(Boolean , nullable= True)
     status = Column(String, nullable=True)
     proposals_converted = Column(String, nullable=True)
+    make_in_india = Column(String, nullable=True)
+    tender_images = Column(String, nullable=True)
     if_not_reason = Column(String, nullable=True)
 
 

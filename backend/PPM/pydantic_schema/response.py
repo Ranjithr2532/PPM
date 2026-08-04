@@ -62,6 +62,7 @@ class ProposalResponse(BaseModel):
     small_value_project: Optional[str] = None
     ppm_remarks: Optional[str] = None
     updated_by: Optional[str] = None
+    mutually_agreed: Optional[bool] = Field(default=None, alias="Mutually_Agreed")
 
     created_at: datetime
     updated_at: datetime
@@ -69,6 +70,8 @@ class ProposalResponse(BaseModel):
     is_acknowledged: Optional[bool] = None
     status: Optional[str] = None
     proposals_converted: Optional[str] = None
+    make_in_india: Optional[str] = None
+    tender_images: Optional[str] = None
     if_not_reason: Optional[str] = None
     payments: Optional[List[dict]] = None
 
