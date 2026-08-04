@@ -32,7 +32,7 @@ from routes.dynamic_table import router as dynamic_table_router
 from routes.groupchatroutes import router as groupchat_router
 from routes.count import router as count_router
 from routes.quotation import router as quotation_router, proposal_alias_router, proposal_lc_alias_router
-from ai_routes.ai import router as ai_router
+# from ai_routes.ai import router as ai_router
 
 from sqlalchemy import text
 
@@ -68,7 +68,7 @@ app.include_router(count_router)
 app.include_router(quotation_router)
 app.include_router(proposal_alias_router)
 app.include_router(proposal_lc_alias_router)
-app.include_router(ai_router)
+# app.include_router(ai_router)
 
 # --------------------------------------------------------------------------
 # Protected Routers (Require Valid JWT Access Token)

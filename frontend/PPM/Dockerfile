@@ -17,3 +17,5 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
+
+#  docker run -d -p 2026:80 --restart always harshith75/swamy-ppm-frontend

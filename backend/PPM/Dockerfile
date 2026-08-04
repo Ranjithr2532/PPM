@@ -8,6 +8,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 2001
+EXPOSE 5001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "2001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5001"]
+
+
+# docker run -d -p 5001:5001 --restart always swami32/ppm-backend

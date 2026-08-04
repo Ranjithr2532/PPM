@@ -118,7 +118,7 @@ def get_yearly_proposal_counts(
     year_expr = case(
         (Proposal.enquiry_date.isnot(None), func.to_char(Proposal.enquiry_date, 'YYYY')),
         (Proposal.quote_date.isnot(None), func.to_char(Proposal.quote_date, 'YYYY')),
-        else_=func.to_char(Proposal.created_at, 'YYYY')
+        else_=None
     )
 
     results = (
@@ -131,9 +131,10 @@ def get_yearly_proposal_counts(
     yearly_counts = []
     total_records = 0
     for r in results:
-        yr = r.year or "Unknown"
+        if not r.year or str(r.year).strip() in ("", "Unknown", "None"):
+            continue
         c = r.count or 0
-        yearly_counts.append({"year": str(yr), "count": c})
+        yearly_counts.append({"year": str(r.year), "count": c})
         total_records += c
 
     sorted_result = sorted(yearly_counts, key=lambda y: (y["year"] if y["year"] != "Unknown" else "9999"))
@@ -175,7 +176,7 @@ def get_unknown_year_proposals(
     year_expr = case(
         (Proposal.enquiry_date.isnot(None), func.to_char(Proposal.enquiry_date, 'YYYY')),
         (Proposal.quote_date.isnot(None), func.to_char(Proposal.quote_date, 'YYYY')),
-        else_=func.to_char(Proposal.created_at, 'YYYY')
+        else_=None
     )
 
     results = (
