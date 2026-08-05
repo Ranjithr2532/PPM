@@ -770,9 +770,9 @@ export default function Allproposals() {
 
   const fetchAllQueryCounts = useCallback(async () => {
     try {
-      const uName = currentUser?.name || currentUser?.username || ''
-      const uRole = currentUser?.role || ''
-      const uGrp = currentUser?.group || currentUser?.group_name || ''
+      const uName = currentUserName || ''
+      const uRole = userRole || ''
+      const uGrp = currentUserGroup || ''
       const response = await fetch(`${API_BASE_URL}/Remarkss/?unread_only=true&user_name=${encodeURIComponent(uName)}&user_role=${encodeURIComponent(uRole)}&user_group=${encodeURIComponent(uGrp)}`, {
         headers: { accept: 'application/json' },
       })
@@ -814,7 +814,7 @@ export default function Allproposals() {
     } catch (error) {
       console.error('Error fetching query counts:', error)
     }
-  }, [])
+  }, [currentUserName, userRole, currentUserGroup])
 
   const fetchProjectDocuments = useCallback(async (projectId) => {
     setDocsLoading(true)
@@ -1818,12 +1818,14 @@ export default function Allproposals() {
         }
       }
 
-      if (newProjectId && !uploadedDocxFile && (!proposalAttachments || !proposalAttachments.length)) {
-        message.success('Proposal created successfully')
-      }
+      message.success('Proposal created successfully')
 
       closeCoordinatorModal()
       await fetchProposals()
+
+      if (newProjectId) {
+        openUploadModalForProject(newProjectId)
+      }
     } catch (error) {
       console.error(error)
       message.error(error.message || 'Unable to create proposal')
@@ -2136,8 +2138,21 @@ export default function Allproposals() {
       },
     }
 
+    const ackColumn = {
+      key: 'is_acknowledged',
+      dataIndex: 'is_acknowledged',
+      title: 'Acknowledgement',
+      width: 160,
+      render: (value) => {
+        if (value === false || String(value).toLowerCase() === 'false') {
+          return <Tag color="red" className="font-bold">Rejected</Tag>
+        }
+        return '-'
+      },
+    }
+
     if (statusFilter === 'proposals') {
-      return [
+      const baseCols = [
         {
           key: 'id',
           dataIndex: 'id',
@@ -2190,52 +2205,59 @@ export default function Allproposals() {
           width: 180,
           ellipsis: true,
         },
-        {
-          key: 'actions',
-          title: 'Actions',
-          width: 120,
-          render: (_, record) => (
-            <Space size="small">
-              <Button
-                size="small"
-                type="link"
-                icon={<InfoCircleOutlined />}
-                onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
-                title="More Details"
-              />
-              {userRole === 'scientist' && (
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: 'costEstimation',
-                        label: 'Cost Estimation Generator',
-                        onClick: (e) => {
-                          e.domEvent.stopPropagation()
-                          setSelectedProposalForCostEstimation(record)
-                          setCostEstimationModalOpen(true)
-                        },
-                      },
-                    ],
-                  }}
-                  trigger={['click']}
-                >
-                  <Button
-                    size="small"
-                    type="link"
-                    icon={<FileOutlined />}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Generate/Estimate Cost"
-                  />
-                </Dropdown>
-              )}
-            </Space>
-          ),
-        },
       ]
+
+      if (showUnacknowledgedOnly) {
+        baseCols.push(ackColumn)
+      }
+
+      baseCols.push({
+        key: 'actions',
+        title: 'Actions',
+        width: 120,
+        render: (_, record) => (
+          <Space size="small">
+            <Button
+              size="small"
+              type="link"
+              icon={<InfoCircleOutlined />}
+              onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
+              title="More Details"
+            />
+            {userRole === 'scientist' && (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'costEstimation',
+                      label: 'Cost Estimation Generator',
+                      onClick: (e) => {
+                        e.domEvent.stopPropagation()
+                        setSelectedProposalForCostEstimation(record)
+                        setCostEstimationModalOpen(true)
+                      },
+                    },
+                  ],
+                }}
+                trigger={['click']}
+              >
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<FileOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Generate/Estimate Cost"
+                />
+              </Dropdown>
+            )}
+          </Space>
+        ),
+      })
+
+      return baseCols
     }
 
-    return [
+    const defaultCols = [
       {
         key: 'id',
         dataIndex: 'id',
@@ -2281,50 +2303,57 @@ export default function Allproposals() {
         width: 180,
         render: (value, record) => (value && value.trim() !== '' ? value : record.quotation_given_by_name || '-'),
       },
-      {
-        key: 'actions',
-        title: 'Actions',
-        width: 120,
-        render: (_, record) => (
-          <Space size="small">
-            <Button
-              size="small"
-              type="link"
-              icon={<InfoCircleOutlined />}
-              onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
-              title="More Details"
-            />
-            {userRole === 'scientist' && (
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: 'costEstimation',
-                      label: 'Cost Estimation Generator',
-                      onClick: (e) => {
-                        e.domEvent.stopPropagation()
-                        setSelectedProposalForCostEstimation(record)
-                        setCostEstimationModalOpen(true)
-                      },
-                    },
-                  ],
-                }}
-                trigger={['click']}
-              >
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<FileOutlined />}
-                  onClick={(e) => e.stopPropagation()}
-                  title="Generate/Estimate Cost"
-                />
-              </Dropdown>
-            )}
-          </Space>
-        ),
-      },
     ]
-  }, [openDetailModal, openChatModal, statusFilter, currentUserName, currentUserGroup, isGhRole, userRole])
+
+    if (showUnacknowledgedOnly) {
+      defaultCols.push(ackColumn)
+    }
+
+    defaultCols.push({
+      key: 'actions',
+      title: 'Actions',
+      width: 120,
+      render: (_, record) => (
+        <Space size="small">
+          <Button
+            size="small"
+            type="link"
+            icon={<InfoCircleOutlined />}
+            onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
+            title="More Details"
+          />
+          {userRole === 'scientist' && (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'costEstimation',
+                    label: 'Cost Estimation Generator',
+                    onClick: (e) => {
+                      e.domEvent.stopPropagation()
+                      setSelectedProposalForCostEstimation(record)
+                      setCostEstimationModalOpen(true)
+                    },
+                  },
+                ],
+              }}
+              trigger={['click']}
+            >
+              <Button
+                size="small"
+                type="link"
+                icon={<FileOutlined />}
+                onClick={(e) => e.stopPropagation()}
+                title="Generate/Estimate Cost"
+              />
+            </Dropdown>
+          )}
+        </Space>
+      ),
+    })
+
+    return defaultCols
+  }, [openDetailModal, openChatModal, statusFilter, currentUserName, currentUserGroup, isGhRole, userRole, showUnacknowledgedOnly])
 
   return (
     <>
@@ -2635,13 +2664,30 @@ export default function Allproposals() {
                     tableLayout="fixed"
                     sticky
                     bordered
-                    onRow={(record) => ({
-                      onClick: () => openDetailModal(record),
-                      style: {
-                        cursor: 'pointer',
-                        backgroundColor: record.status === 'On Hold' ? '#fff2e8' : 'transparent',
-                      },
-                    })}
+                    rowClassName={(record) => {
+                      const isRejected = record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false'
+                      if (isRejected) {
+                        return '!bg-red-100/90 font-semibold'
+                      }
+                      if (record.status === 'On Hold') {
+                        return '!bg-orange-50'
+                      }
+                      return ''
+                    }}
+                    onRow={(record) => {
+                      const isRejected = record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false'
+                      return {
+                        onClick: () => openDetailModal(record),
+                        style: {
+                          cursor: 'pointer',
+                          backgroundColor: isRejected
+                            ? '#fee2e2'
+                            : record.status === 'On Hold'
+                              ? '#fff2e8'
+                              : 'transparent',
+                        },
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -2780,9 +2826,17 @@ export default function Allproposals() {
                   </Descriptions>
                 </Card>
 
-                <Card title="Acknowledgement" size="small" className="bg-blue-50">
+                <Card title="Acknowledgement" size="small" className={selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? 'bg-red-50 border-red-200' : 'bg-blue-50'}>
                   <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
-                    <Descriptions.Item label="Is Acknowledged">{selectedRecord?.is_acknowledged === true ? 'Yes' : selectedRecord?.is_acknowledged === false ? 'No' : '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Is Acknowledged">
+                      {selectedRecord?.is_acknowledged === true || String(selectedRecord?.is_acknowledged).toLowerCase() === 'true' ? (
+                        <Tag color="green">Acknowledged</Tag>
+                      ) : selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? (
+                        <Tag color="red" className="font-bold">Rejected</Tag>
+                      ) : (
+                        <Tag color="orange">Pending (Unacknowledged)</Tag>
+                      )}
+                    </Descriptions.Item>
                   </Descriptions>
                 </Card>
               </>
@@ -2825,6 +2879,20 @@ export default function Allproposals() {
                   <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
                     <Descriptions.Item label="Proposals Converted">{selectedRecord?.proposals_converted || '-'}</Descriptions.Item>
                     <Descriptions.Item label="If Not Reason" span={2}>{selectedRecord?.if_not_reason || '-'}</Descriptions.Item>
+                  </Descriptions>
+                </Card>
+
+                <Card title="Acknowledgement" size="small" className={selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? 'bg-red-50 border-red-200' : 'bg-blue-50'}>
+                  <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+                    <Descriptions.Item label="Is Acknowledged">
+                      {selectedRecord?.is_acknowledged === true || String(selectedRecord?.is_acknowledged).toLowerCase() === 'true' ? (
+                        <Tag color="green">Acknowledged</Tag>
+                      ) : selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? (
+                        <Tag color="red" className="font-bold">Rejected</Tag>
+                      ) : (
+                        <Tag color="orange">Pending (Unacknowledged)</Tag>
+                      )}
+                    </Descriptions.Item>
                   </Descriptions>
                 </Card>
               </>

@@ -2105,11 +2105,25 @@ function Analytics() {
 
       const dimension = chartData.dimension
 
-      // universal guard: Pending bucket always opens the modal, no matter which
-      // dimension/drill-level we're currently on
+      // guard: Pending bucket opens modal ONLY when at project coordinator level, scientist role, or when coordinator selected
       if (label === 'Pending') {
-        setSelectedProjectName(selectedProjectName || '')
-        setNotConvertedModalVisible(true)
+        if (userRole === 'scientist' || drillLevel === 'coordinator' || dimension === 'project_co_ordinator' || selectedProjectName) {
+          setSelectedProjectName(selectedProjectName || '')
+          setNotConvertedModalVisible(true)
+          return
+        }
+        setSelectedCategory('proposals')
+        if (drillLevel === 'group') {
+          setDrillLevel('coordinator')
+        } else if (drillLevel === 'center') {
+          setDrillLevel('group')
+        } else if (userRole === 'gh') {
+          setDrillLevel('coordinator')
+        } else if (userRole === 'ch') {
+          setDrillLevel('group')
+        } else {
+          setDrillLevel('center')
+        }
         return
       }
 
@@ -2121,7 +2135,22 @@ function Analytics() {
         const categoryKey = categoryKeyFromLabel(label)
 
         if (categoryKey === 'proposals') {
-          setNotConvertedModalVisible(true)
+          if (userRole === 'scientist' || drillLevel === 'coordinator' || selectedProjectName) {
+            setNotConvertedModalVisible(true)
+            return
+          }
+          setSelectedCategory('proposals')
+          if (userRole === 'gh') {
+            setDrillLevel('coordinator')
+          } else if (userRole === 'ch') {
+            setDrillLevel('group')
+          } else {
+            setDrillLevel('center')
+          }
+          setSelectedCenter('')
+          setSelectedGroup('')
+          setSelectedProjectName('')
+          setSelectedProjectCode('')
           return
         }
 
