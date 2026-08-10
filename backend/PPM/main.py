@@ -40,11 +40,16 @@ from sqlalchemy import text
 # Create all tables
 Base.metadata.create_all(bind=engine)
 
-# Ensure new columns exist on proposals table
+# Ensure new columns exist on proposals and customer1 tables
 try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS make_in_india VARCHAR;"))
         conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS tender_images VARCHAR;"))
+        conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS customer_type VARCHAR;"))
+        conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS gst TEXT;"))
+        conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS pan TEXT;"))
+        conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS tan TEXT;"))
+        conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS alternate_contact_details JSON;"))
         conn.commit()
 except Exception as e:
     print(f"Migration error: {e}")
