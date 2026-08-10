@@ -127,6 +127,7 @@ class PaymentBase(BaseModel):
     ld: Optional[str] = None
     bal: Optional[str] = None
     follow_up_status: Optional[str] = None
+    full_stage_payment: Optional[str] = None
     project_id: Optional[int] = None
     stage_id: Optional[int] = None
     updated_by: Optional[str] = None

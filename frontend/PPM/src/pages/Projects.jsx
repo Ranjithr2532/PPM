@@ -779,18 +779,23 @@ function Projects() {
           </thead>
           <tbody>
             ${paymentsRows.length > 0
-          ? paymentsRows.map((row) => `
+          ? paymentsRows.map((row) => {
+              const invNoAndAmt = [row.invoice_no, row.amount_claimed ? `Rs. ${row.amount_claimed}` : null].filter(Boolean).join('<br />')
+              const balAndRemarks = [row.bal, row.follow_up_status].filter(Boolean).join(' - ')
+              return `
                 <tr>
                   <td>${row.description || ''}</td>
-                  <td>${row.invoice_no || ''}</td>
-                  <td>${row.invoice_date || ''}</td>
-                  <td>${row.amount_recieved || ''}</td>
-                  <td>${row.recieved_date || ''}</td>
-                  <td>${row.bal || ''}</td>
-                </tr>`).join('')
+                  <td>${row.full_stage_payment || ''}</td>
+                  <td>${invNoAndAmt}</td>
+                  <td style="white-space: nowrap;">${formatDDMMYYYY(row.invoice_date) || row.invoice_date || ''}</td>
+                  <td style="white-space: nowrap;">${row.amount_recieved || ''}</td>
+                  <td style="white-space: nowrap;">${formatDDMMYYYY(row.recieved_date) || row.recieved_date || ''}</td>
+                  <td>${balAndRemarks}</td>
+                </tr>`
+            }).join('')
           : `
                 <tr>
-                  <td colspan="6" style="text-align:center;color:#666;">No payment records available</td>
+                  <td colspan="7" style="text-align:center;color:#666;">No payment records available</td>
                 </tr>
               `}
           </tbody>
@@ -1115,6 +1120,7 @@ function Projects() {
     if (payment) {
       paymentForm.setFieldsValue({
         description: payment.description || '',
+        full_stage_payment: payment.full_stage_payment || '',
         invoice_no: payment.invoice_no?.toString() || '',
         gross_amount: payment.gross_amount?.toString() || '',
         get_amount: payment.get_amount?.toString() || '',
@@ -1146,6 +1152,7 @@ function Projects() {
 
       const payload = {
         description: values.description || '',
+        full_stage_payment: values.full_stage_payment || '',
         invoice_no: values.invoice_no || '',
         gross_amount: values.gross_amount || '',
         get_amount: values.get_amount || '',
@@ -1315,13 +1322,14 @@ function Projects() {
 
   const getPaymentColumns = (stage) => [
     { title: 'Description', dataIndex: 'description', width: 200 },
+    { title: 'Full/Stage Payment', dataIndex: 'full_stage_payment', width: 160 },
     { title: 'Inv #', dataIndex: 'invoice_no', width: 120 },
-    { title: 'Inv Date', dataIndex: 'invoice_date', width: 110 },
+    { title: 'Inv Date', dataIndex: 'invoice_date', width: 110, render: (v) => formatDDMMYYYY(v) || '-' },
     { title: 'Gross', dataIndex: 'gross_amount', width: 110 },
     { title: 'GST Amount', dataIndex: 'get_amount', width: 110 },
     { title: 'Amount Claimed', dataIndex: 'amount_claimed', width: 130 },
     { title: 'Amount Received', dataIndex: 'amount_recieved', width: 130 },
-    { title: 'Received Date', dataIndex: 'recieved_date', width: 120 },
+    { title: 'Received Date', dataIndex: 'recieved_date', width: 120, render: (v) => formatDDMMYYYY(v) || '-' },
     { title: 'TDS', dataIndex: 'tds', width: 90 },
     { title: 'GST TDS', dataIndex: 'get_tds', width: 90 },
     { title: 'LD', dataIndex: 'ld', width: 90 },
@@ -1877,6 +1885,9 @@ function Projects() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Form.Item label="Description" name="description" rules={[{ required: true }]}>
                 <Input />
+              </Form.Item>
+              <Form.Item label="Full/Stage Payment" name="full_stage_payment">
+                <Input placeholder="Enter Full/Stage Payment" />
               </Form.Item>
               <Form.Item label="Invoice No" name="invoice_no" rules={[{ required: true }]}>
                 <Input />
@@ -2651,19 +2662,26 @@ function Projects() {
                     </thead>
                     <tbody>
                       {allotmentData?.payments && Array.isArray(allotmentData.payments) && allotmentData.payments.length > 0 ? (
-                        allotmentData.payments.map((row, idx) => (
-                          <tr key={row.id || idx}>
-                            <td className="border border-black px-2 py-1">{row.description || ''}</td>
-                            <td className="border border-black px-2 py-1">{row.invoice_no || ''}</td>
-                            <td className="border border-black px-2 py-1">{row.invoice_date || ''}</td>
-                            <td className="border border-black px-2 py-1">{row.amount_recieved || ''}</td>
-                            <td className="border border-black px-2 py-1">{row.recieved_date || ''}</td>
-                            <td className="border border-black px-2 py-1">{row.bal || ''}</td>
-                          </tr>
-                        ))
+                        allotmentData.payments.map((row, idx) => {
+                          const balAndRemarks = [row.bal, row.follow_up_status].filter(Boolean).join(' - ')
+                          return (
+                            <tr key={row.id || idx}>
+                              <td className="border border-black px-2 py-1">{row.description || ''}</td>
+                              <td className="border border-black px-2 py-1">{row.full_stage_payment || ''}</td>
+                              <td className="border border-black px-2 py-1">
+                                {row.invoice_no && <div>{row.invoice_no}</div>}
+                                {row.amount_claimed && <div>Rs. {row.amount_claimed}</div>}
+                              </td>
+                              <td className="border border-black px-2 py-1 whitespace-nowrap">{formatDDMMYYYY(row.invoice_date) || row.invoice_date || ''}</td>
+                              <td className="border border-black px-2 py-1 whitespace-nowrap">{row.amount_recieved || ''}</td>
+                              <td className="border border-black px-2 py-1 whitespace-nowrap">{formatDDMMYYYY(row.recieved_date) || row.recieved_date || ''}</td>
+                              <td className="border border-black px-2 py-1">{balAndRemarks}</td>
+                            </tr>
+                          )
+                        })
                       ) : (
                         <tr>
-                          <td colSpan="6" className="border border-black px-2 py-1 text-center text-gray-500">
+                          <td colSpan="7" className="border border-black px-2 py-1 text-center text-gray-500">
                             No payment records available
                           </td>
                         </tr>

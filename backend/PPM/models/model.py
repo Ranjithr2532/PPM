@@ -184,6 +184,7 @@ class Payment(Base):
     bal = Column(String, nullable=True)
     description = Column(String, nullable=True)
     follow_up_status = Column(String, nullable=True)
+    full_stage_payment = Column(String, nullable=True)
 
     project_id = Column(Integer, ForeignKey("proposals.id", ondelete="CASCADE"))
     stage_id = Column(Integer, ForeignKey("stages.id", ondelete="SET NULL"))
