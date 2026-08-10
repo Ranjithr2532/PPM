@@ -519,7 +519,7 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
           loading={loading}
           pagination={{ pageSize: 15 }}
           bordered
-          scroll={{ y: 500 }}
+          scroll={{ x: 'max-content', y: 500 }}
           sticky
           expandable={{
             expandedRowRender: renderExpandedRow,

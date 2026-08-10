@@ -2105,11 +2105,25 @@ function Analytics() {
 
       const dimension = chartData.dimension
 
-      // universal guard: Pending bucket always opens the modal, no matter which
-      // dimension/drill-level we're currently on
+      // guard: Pending bucket opens modal ONLY when at project coordinator level, scientist role, or when coordinator selected
       if (label === 'Pending') {
-        setSelectedProjectName(selectedProjectName || '')
-        setNotConvertedModalVisible(true)
+        if (userRole === 'scientist' || drillLevel === 'coordinator' || dimension === 'project_co_ordinator' || selectedProjectName) {
+          setSelectedProjectName(selectedProjectName || '')
+          setNotConvertedModalVisible(true)
+          return
+        }
+        setSelectedCategory('proposals')
+        if (drillLevel === 'group') {
+          setDrillLevel('coordinator')
+        } else if (drillLevel === 'center') {
+          setDrillLevel('group')
+        } else if (userRole === 'gh') {
+          setDrillLevel('coordinator')
+        } else if (userRole === 'ch') {
+          setDrillLevel('group')
+        } else {
+          setDrillLevel('center')
+        }
         return
       }
 
@@ -2121,7 +2135,22 @@ function Analytics() {
         const categoryKey = categoryKeyFromLabel(label)
 
         if (categoryKey === 'proposals') {
-          setNotConvertedModalVisible(true)
+          if (userRole === 'scientist' || drillLevel === 'coordinator' || selectedProjectName) {
+            setNotConvertedModalVisible(true)
+            return
+          }
+          setSelectedCategory('proposals')
+          if (userRole === 'gh') {
+            setDrillLevel('coordinator')
+          } else if (userRole === 'ch') {
+            setDrillLevel('group')
+          } else {
+            setDrillLevel('center')
+          }
+          setSelectedCenter('')
+          setSelectedGroup('')
+          setSelectedProjectName('')
+          setSelectedProjectCode('')
           return
         }
 
@@ -2599,7 +2628,7 @@ function Analytics() {
               children: (
                 <div className="space-y-6">
                   {/* Statistics Cards */}
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     {/* 1. Total Submitted Card */}
                     <Card
                       className="bg-gradient-to-br from-slate-600 to-slate-800 text-white shadow-md hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group"
@@ -4076,7 +4105,7 @@ function Analytics() {
             updated_by: localStorage.getItem('loggedInUser'),
           }}
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {FORM_FIELDS.map((field) => {
               const isEditingProject = Boolean(editingRecord?.project_number?.toString().trim())
               if (isEditingProject && field.name === 'proposal_status') {

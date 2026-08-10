@@ -788,9 +788,9 @@ export default function Allproposals() {
 
   const fetchAllQueryCounts = useCallback(async () => {
     try {
-      const uName = currentUser?.name || currentUser?.username || ''
-      const uRole = currentUser?.role || ''
-      const uGrp = currentUser?.group || currentUser?.group_name || ''
+      const uName = currentUserName || ''
+      const uRole = userRole || ''
+      const uGrp = currentUserGroup || ''
       const response = await fetch(`${API_BASE_URL}/Remarkss/?unread_only=true&user_name=${encodeURIComponent(uName)}&user_role=${encodeURIComponent(uRole)}&user_group=${encodeURIComponent(uGrp)}`, {
         headers: { accept: 'application/json' },
       })
@@ -832,7 +832,7 @@ export default function Allproposals() {
     } catch (error) {
       console.error('Error fetching query counts:', error)
     }
-  }, [])
+  }, [currentUserName, userRole, currentUserGroup])
 
   const fetchProjectDocuments = useCallback(async (projectId) => {
     setDocsLoading(true)
@@ -1826,12 +1826,14 @@ export default function Allproposals() {
         }
       }
 
-      if (newProjectId && !uploadedDocxFile && (!proposalAttachments || !proposalAttachments.length)) {
-        message.success('Proposal created successfully')
-      }
+      message.success('Proposal created successfully')
 
       closeCoordinatorModal()
       await fetchProposals()
+
+      if (newProjectId) {
+        openUploadModalForProject(newProjectId)
+      }
     } catch (error) {
       console.error(error)
       message.error(error.message || 'Unable to create proposal')
@@ -2144,8 +2146,21 @@ export default function Allproposals() {
       },
     }
 
+    const ackColumn = {
+      key: 'is_acknowledged',
+      dataIndex: 'is_acknowledged',
+      title: 'Acknowledgement',
+      width: 160,
+      render: (value) => {
+        if (value === false || String(value).toLowerCase() === 'false') {
+          return <Tag color="red" className="font-bold">Rejected</Tag>
+        }
+        return '-'
+      },
+    }
+
     if (statusFilter === 'proposals') {
-      return [
+      const baseCols = [
         {
           key: 'id',
           dataIndex: 'id',
@@ -2198,52 +2213,59 @@ export default function Allproposals() {
           width: 180,
           ellipsis: true,
         },
-        {
-          key: 'actions',
-          title: 'Actions',
-          width: 120,
-          render: (_, record) => (
-            <Space size="small">
-              <Button
-                size="small"
-                type="link"
-                icon={<InfoCircleOutlined />}
-                onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
-                title="More Details"
-              />
-              {userRole === 'scientist' && (
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: 'costEstimation',
-                        label: 'Cost Estimation Generator',
-                        onClick: (e) => {
-                          e.domEvent.stopPropagation()
-                          setSelectedProposalForCostEstimation(record)
-                          setCostEstimationModalOpen(true)
-                        },
-                      },
-                    ],
-                  }}
-                  trigger={['click']}
-                >
-                  <Button
-                    size="small"
-                    type="link"
-                    icon={<FileOutlined />}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Generate/Estimate Cost"
-                  />
-                </Dropdown>
-              )}
-            </Space>
-          ),
-        },
       ]
+
+      if (showUnacknowledgedOnly) {
+        baseCols.push(ackColumn)
+      }
+
+      baseCols.push({
+        key: 'actions',
+        title: 'Actions',
+        width: 120,
+        render: (_, record) => (
+          <Space size="small">
+            <Button
+              size="small"
+              type="link"
+              icon={<InfoCircleOutlined />}
+              onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
+              title="More Details"
+            />
+            {userRole === 'scientist' && (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'costEstimation',
+                      label: 'Cost Estimation Generator',
+                      onClick: (e) => {
+                        e.domEvent.stopPropagation()
+                        setSelectedProposalForCostEstimation(record)
+                        setCostEstimationModalOpen(true)
+                      },
+                    },
+                  ],
+                }}
+                trigger={['click']}
+              >
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<FileOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Generate/Estimate Cost"
+                />
+              </Dropdown>
+            )}
+          </Space>
+        ),
+      })
+
+      return baseCols
     }
 
-    return [
+    const defaultCols = [
       {
         key: 'id',
         dataIndex: 'id',
@@ -2289,50 +2311,57 @@ export default function Allproposals() {
         width: 180,
         render: (value, record) => (value && value.trim() !== '' ? value : record.quotation_given_by_name || '-'),
       },
-      {
-        key: 'actions',
-        title: 'Actions',
-        width: 120,
-        render: (_, record) => (
-          <Space size="small">
-            <Button
-              size="small"
-              type="link"
-              icon={<InfoCircleOutlined />}
-              onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
-              title="More Details"
-            />
-            {userRole === 'scientist' && (
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: 'costEstimation',
-                      label: 'Cost Estimation Generator',
-                      onClick: (e) => {
-                        e.domEvent.stopPropagation()
-                        setSelectedProposalForCostEstimation(record)
-                        setCostEstimationModalOpen(true)
-                      },
-                    },
-                  ],
-                }}
-                trigger={['click']}
-              >
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<FileOutlined />}
-                  onClick={(e) => e.stopPropagation()}
-                  title="Generate/Estimate Cost"
-                />
-              </Dropdown>
-            )}
-          </Space>
-        ),
-      },
     ]
-  }, [openDetailModal, openChatModal, statusFilter, currentUserName, currentUserGroup, isGhRole, userRole])
+
+    if (showUnacknowledgedOnly) {
+      defaultCols.push(ackColumn)
+    }
+
+    defaultCols.push({
+      key: 'actions',
+      title: 'Actions',
+      width: 120,
+      render: (_, record) => (
+        <Space size="small">
+          <Button
+            size="small"
+            type="link"
+            icon={<InfoCircleOutlined />}
+            onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
+            title="More Details"
+          />
+          {userRole === 'scientist' && (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'costEstimation',
+                    label: 'Cost Estimation Generator',
+                    onClick: (e) => {
+                      e.domEvent.stopPropagation()
+                      setSelectedProposalForCostEstimation(record)
+                      setCostEstimationModalOpen(true)
+                    },
+                  },
+                ],
+              }}
+              trigger={['click']}
+            >
+              <Button
+                size="small"
+                type="link"
+                icon={<FileOutlined />}
+                onClick={(e) => e.stopPropagation()}
+                title="Generate/Estimate Cost"
+              />
+            </Dropdown>
+          )}
+        </Space>
+      ),
+    })
+
+    return defaultCols
+  }, [openDetailModal, openChatModal, statusFilter, currentUserName, currentUserGroup, isGhRole, userRole, showUnacknowledgedOnly])
 
   return (
     <>
@@ -2431,7 +2460,7 @@ export default function Allproposals() {
 
                 return (
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 flex-1">
                       {cards.map((card) => {
                         const isSelected = statusFilter === card.key
                         const isAnySelected = statusFilter !== null
@@ -2489,7 +2518,7 @@ export default function Allproposals() {
                   <div className="mb-4">
                     <Title level={4} className="!mb-0">Search & Filters</Title>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <Input
                       placeholder="Search proposals..."
                       prefix={<SearchOutlined />}
@@ -2643,13 +2672,30 @@ export default function Allproposals() {
                     tableLayout="fixed"
                     sticky
                     bordered
-                    onRow={(record) => ({
-                      onClick: () => openDetailModal(record),
-                      style: {
-                        cursor: 'pointer',
-                        backgroundColor: record.status === 'On Hold' ? '#fff2e8' : 'transparent',
-                      },
-                    })}
+                    rowClassName={(record) => {
+                      const isRejected = record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false'
+                      if (isRejected) {
+                        return '!bg-red-100/90 font-semibold'
+                      }
+                      if (record.status === 'On Hold') {
+                        return '!bg-orange-50'
+                      }
+                      return ''
+                    }}
+                    onRow={(record) => {
+                      const isRejected = record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false'
+                      return {
+                        onClick: () => openDetailModal(record),
+                        style: {
+                          cursor: 'pointer',
+                          backgroundColor: isRejected
+                            ? '#fee2e2'
+                            : record.status === 'On Hold'
+                              ? '#fff2e8'
+                              : 'transparent',
+                        },
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -2788,9 +2834,17 @@ export default function Allproposals() {
                   </Descriptions>
                 </Card>
 
-                <Card title="Acknowledgement" size="small" className="bg-blue-50">
+                <Card title="Acknowledgement" size="small" className={selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? 'bg-red-50 border-red-200' : 'bg-blue-50'}>
                   <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
-                    <Descriptions.Item label="Is Acknowledged">{selectedRecord?.is_acknowledged === true ? 'Yes' : selectedRecord?.is_acknowledged === false ? 'No' : '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Is Acknowledged">
+                      {selectedRecord?.is_acknowledged === true || String(selectedRecord?.is_acknowledged).toLowerCase() === 'true' ? (
+                        <Tag color="green">Acknowledged</Tag>
+                      ) : selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? (
+                        <Tag color="red" className="font-bold">Rejected</Tag>
+                      ) : (
+                        <Tag color="orange">Pending (Unacknowledged)</Tag>
+                      )}
+                    </Descriptions.Item>
                   </Descriptions>
                 </Card>
               </>
@@ -2833,6 +2887,20 @@ export default function Allproposals() {
                   <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
                     <Descriptions.Item label="Proposals Converted">{selectedRecord?.proposals_converted || '-'}</Descriptions.Item>
                     <Descriptions.Item label="If Not Reason" span={2}>{selectedRecord?.if_not_reason || '-'}</Descriptions.Item>
+                  </Descriptions>
+                </Card>
+
+                <Card title="Acknowledgement" size="small" className={selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? 'bg-red-50 border-red-200' : 'bg-blue-50'}>
+                  <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+                    <Descriptions.Item label="Is Acknowledged">
+                      {selectedRecord?.is_acknowledged === true || String(selectedRecord?.is_acknowledged).toLowerCase() === 'true' ? (
+                        <Tag color="green">Acknowledged</Tag>
+                      ) : selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? (
+                        <Tag color="red" className="font-bold">Rejected</Tag>
+                      ) : (
+                        <Tag color="orange">Pending (Unacknowledged)</Tag>
+                      )}
+                    </Descriptions.Item>
                   </Descriptions>
                 </Card>
               </>
@@ -3265,7 +3333,7 @@ export default function Allproposals() {
 
             <Row gutter={[20, 20]} justify="center">
               {/* Option 1: Manual Entry */}
-              <Col xs={24} sm={12} md={8}>
+              <Col xs={24} sm={12} md={10}>
                 <Card
                   hoverable
                   onClick={() => setProposalCreationMode('manual')}
@@ -3296,50 +3364,8 @@ export default function Allproposals() {
                 </Card>
               </Col>
 
-              {/* Option 2: Upload Proposal Document */}
-              <Col xs={24} sm={12} md={8}>
-                <Card
-                  className="h-full border-2 border-slate-200 hover:border-green-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md"
-                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                    <FileWordOutlined className="text-2xl" />
-                  </div>
-                  <h4 className="text-base font-bold text-slate-800 mb-2">
-                    Upload Document (.docx)
-                  </h4>
-                  <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                    Upload an existing Word document (.docx) to automatically extract info.
-                  </p>
-
-                  <Upload.Dragger
-                    accept=".docx"
-                    beforeUpload={handleDocxUpload}
-                    showUploadList={false}
-                    disabled={docxUploading}
-                    className="rounded-xl border-dashed border-green-300 hover:border-green-500 bg-green-50/30 p-3"
-                  >
-                    {docxUploading ? (
-                      <div className="py-2">
-                        <Spin tip="Extracting proposal details..." />
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <UploadOutlined className="text-xl text-green-600" />
-                        <p className="font-semibold text-slate-700 text-xs">
-                          Click or Drag .docx
-                        </p>
-                        <p className="text-slate-400 text-[10px]">
-                          Parses quotation templates
-                        </p>
-                      </div>
-                    )}
-                  </Upload.Dragger>
-                </Card>
-              </Col>
-
-              {/* Option 3: Create Document */}
-              <Col xs={24} sm={12} md={8}>
+              {/* Option 2: Create Document */}
+              <Col xs={24} sm={12} md={10}>
                 <Card
                   hoverable
                   onClick={() => setProposalCreationMode('create_document')}

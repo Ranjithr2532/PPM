@@ -1851,7 +1851,7 @@ function Projects() {
                           columns={getPaymentColumns(stage)}
                           pagination={false}
                           size="small"
-                          scroll={{ x: 1400 }}
+                          scroll={{ x: 'max-content' }}
                           rowKey="id"
                         />
                       )}

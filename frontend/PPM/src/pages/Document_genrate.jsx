@@ -38,9 +38,14 @@ import {
     ExpandOutlined,
     ApartmentOutlined,
     SafetyCertificateOutlined,
+    PaperClipOutlined,
+    UploadOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
+
+const { TextArea } = Input;
+const { Text, Title, Paragraph } = Typography;
 
 const MANPOWER_HEADER = "Manpower";
 const MANPOWER_COLUMNS = ["Role", "Cost Breakup", "Total Amount"];
@@ -110,9 +115,11 @@ const transformTablesForPreviewAndPayload = (structuredTables) => {
     });
 };
 
-export default function DocumentGenerate() {
+export default function DocumentGenerate({ onAddToProposals }) {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
+    const [addToProposalsLoading, setAddToProposalsLoading] = useState(false);
+    const [actionType, setActionType] = useState('download'); // 'download' | 'addToProposals'
     const [previewZoom, setPreviewZoom] = useState(100);
 
     // Dynamic state for Scope Bullet Points & Attachments

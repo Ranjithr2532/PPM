@@ -36,7 +36,8 @@ import {
   UserAddOutlined,
   UserDeleteOutlined,
   CloseOutlined,
-  LogoutOutlined
+  LogoutOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -1085,10 +1086,10 @@ export default function ChatsPage() {
   }, [messages, msgSearchText])
 
   return (
-    <div className="flex h-[calc(100vh-100px)] bg-slate-100 rounded-2xl border border-slate-200 overflow-hidden shadow-xl font-sans">
+    <div className="flex h-[calc(100vh-80px)] sm:h-[calc(100vh-100px)] bg-slate-100 rounded-2xl border border-slate-200 overflow-hidden shadow-xl font-sans w-full max-w-full">
 
       {/* LEFT PANEL: WHATSAPP-STYLE UNIFIED CHAT LIST */}
-      <div className="w-80 md:w-[380px] border-r border-slate-200 bg-white flex flex-col shrink-0">
+      <div className={`${selectedChatItem ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-[380px] border-r border-slate-200 bg-white flex-col shrink-0`}>
 
         {/* Top User Header & Action Controls */}
         <div className="p-3.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
@@ -1317,13 +1318,19 @@ export default function ChatsPage() {
       </div>
 
       {/* RIGHT PANEL: DYNAMIC CONVERSATION STREAM */}
-      <div className="flex-1 flex flex-col bg-[#efeae2] relative">
+      <div className={`${selectedChatItem ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-[#efeae2] relative w-full`}>
         {selectedChatItem?.itemType === 'proposal' && selectedProposal ? (
           /* PROPOSAL CONVERSATION PANEL */
           <>
             <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex flex-col gap-3 z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
+                  <Button
+                    type="text"
+                    icon={<ArrowLeftOutlined style={{ fontSize: '18px' }} />}
+                    onClick={() => setSelectedChatItem(null)}
+                    className="md:hidden flex items-center justify-center p-1 text-slate-700 hover:text-emerald-700"
+                  />
                   <div className="relative">
                     <Avatar className="bg-emerald-700 text-white font-bold" size={42}>
                       {(selectedProposal.project_co_ordinator || selectedProposal.quote_description || 'P').charAt(0).toUpperCase()}
@@ -1609,6 +1616,12 @@ export default function ChatsPage() {
           <>
             <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between z-10">
               <div className="flex items-center gap-3">
+                <Button
+                  type="text"
+                  icon={<ArrowLeftOutlined style={{ fontSize: '18px' }} />}
+                  onClick={() => setSelectedChatItem(null)}
+                  className="md:hidden flex items-center justify-center p-1 text-slate-700 hover:text-emerald-700"
+                />
                 <Avatar className="bg-emerald-700 text-white font-bold" size={44}>
                   <TeamOutlined />
                 </Avatar>

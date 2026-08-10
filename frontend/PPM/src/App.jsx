@@ -98,15 +98,13 @@ function RoleProtectedLayout({ basePath }) {
   }
 
   return (
-    <Layout className="min-h-screen">
+    <Layout className="min-h-screen flex flex-col lg:flex-row">
       <Sidebar />
       <Layout
-        className="bg-slate-100"
-        style={{ marginLeft: 260, minHeight: '100vh' }}
+        className="bg-slate-100 min-h-screen transition-all duration-200 lg:ml-[260px] ml-0 flex-1 w-full max-w-full overflow-x-hidden"
       >
         <Content
-          className="p-6"
-          style={{ height: '100vh', overflowY: 'auto' }}
+          className="p-3 sm:p-4 md:p-6 min-h-screen w-full max-w-full overflow-x-hidden"
         >
           <Suspense fallback={
             <div className="flex items-center justify-center h-full min-h-[400px]">
