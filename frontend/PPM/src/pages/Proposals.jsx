@@ -81,6 +81,15 @@ dayjs.extend(isSameOrBefore)
 const { Title } = Typography
 const { TextArea } = Input
 
+const getAuthHeaders = (extraHeaders = {}) => {
+  const token = localStorage.getItem('token')
+  return {
+    accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
+  }
+}
+
 const CUSTOMER_TYPE_OPTIONS = [
   'Govt',
   'Private',
@@ -1453,22 +1462,30 @@ function Proposals() {
 
   const fetchCustomerSuggestions = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/customers/`, {
-        headers: { accept: 'application/json' },
+      const response = await fetch(`${API_BASE_URL}/customer1/`, {
+        headers: getAuthHeaders(),
       })
       if (!response.ok) {
         throw new Error('Unable to fetch customer suggestions')
       }
       const payload = await response.json()
-      const normalized = Array.isArray(payload) ? payload.map(customer => ({
-        name: customer.name,
-        customer_type: customer.customer_type,
-        address: null,
-        email: customer.email,
-        phone_no: customer.phone_no,
-        alternate_contact_details: customer.alternate_contact_details,
-        addresses: customer.address ? [customer.address] : []
-      })).filter(c => c.name && c.name.trim()) : []
+      const normalized = Array.isArray(payload) ? payload.map(customer => {
+        const emails = Array.isArray(customer.email) ? customer.email : []
+        const phones = Array.isArray(customer.phone) ? customer.phone : []
+        const addresses = Array.isArray(customer.address) ? customer.address : []
+        const alternate_contacts = Array.isArray(customer.alternate_contact_details) ? customer.alternate_contact_details : []
+        
+        return {
+          name: customer.name,
+          customer_type: customer.customer_type,
+          email: emails[0] || '',
+          phone_no: phones[0] || '',
+          alternate_contact_details: alternate_contacts[0] || '',
+          addresses: addresses,
+          emails: emails,
+          phones: phones,
+        }
+      }).filter(c => c.name && c.name.trim()) : []
       setAllCustomerSuggestions(normalized)
       return normalized
     } catch (error) {
@@ -1521,25 +1538,17 @@ function Proposals() {
         return
       }
 
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/customers/addresses?name=${encodeURIComponent(currentName)}`,
-          { headers: { accept: 'application/json' } },
-        )
-        if (!response.ok) throw new Error('Unable to fetch addresses')
-        const payload = await response.json()
-        const addresses = Array.isArray(payload) ? payload : []
-        const normalized = searchValue.trim().toLowerCase()
-        const matches = addresses
-          .filter((a) => a?.toLowerCase().includes(normalized))
-          .slice(0, 20)
-        setAddressOptions(matches.map((a) => ({ value: a, label: a })))
-      } catch (error) {
-        console.error('Address search error:', error)
-        setAddressOptions([])
-      }
+      const normalized = searchValue.trim().toLowerCase()
+      const customer = allCustomerSuggestions.find(
+        (c) => c.name?.toLowerCase() === currentName.toLowerCase()
+      )
+      const addresses = customer && Array.isArray(customer.addresses) ? customer.addresses : []
+      const matches = addresses
+        .filter((a) => a?.toLowerCase().includes(normalized))
+        .slice(0, 20)
+      setAddressOptions(matches.map((a) => ({ value: a, label: a })))
     },
-    [form],
+    [allCustomerSuggestions, form],
   )
 
   const searchEmails = useCallback(
@@ -1557,12 +1566,12 @@ function Proposals() {
       }
 
       const matches = (customerList || [])
-        .map((c) => c.email)
+        .flatMap((c) => Array.isArray(c.emails) ? c.emails : [c.email])
         .filter(Boolean)
         .filter((e) => e.toLowerCase().includes(normalized))
         .slice(0, 20)
 
-      setEmailOptions(matches.map((e) => ({ value: e, label: e })))
+      setEmailOptions(Array.from(new Set(matches)).map((e) => ({ value: e, label: e })))
     },
     [allCustomerSuggestions, fetchCustomerSuggestions],
   )
@@ -1582,12 +1591,18 @@ function Proposals() {
       }
 
       const matches = (customerList || [])
-        .map((c) => c.phone_no)
+        .flatMap((c) => {
+          const arr = []
+          if (Array.isArray(c.phones)) arr.push(...c.phones)
+          else if (c.phone_no) arr.push(c.phone_no)
+          if (c.alternate_contact_details) arr.push(c.alternate_contact_details)
+          return arr
+        })
         .filter(Boolean)
         .filter((p) => p.toLowerCase().includes(normalized))
         .slice(0, 20)
 
-      setPhoneOptions(matches.map((p) => ({ value: p, label: p })))
+      setPhoneOptions(Array.from(new Set(matches)).map((p) => ({ value: p, label: p })))
     },
     [allCustomerSuggestions, fetchCustomerSuggestions],
   )
@@ -1628,13 +1643,13 @@ function Proposals() {
       const addresses = Array.isArray(customer.addresses) ? customer.addresses : []
       setAddressOptions(addresses.map((a) => ({ value: a, label: a })))
 
-      const phones = []
-      if (customer.phone_no) phones.push(customer.phone_no)
-      if (customer.alternate_contact_details) phones.push(customer.alternate_contact_details)
+      const phones = Array.isArray(customer.phones) ? customer.phones : []
+      if (customer.alternate_contact_details && !phones.includes(customer.alternate_contact_details)) {
+        phones.push(customer.alternate_contact_details)
+      }
       setPhoneOptions(Array.from(new Set(phones)).map((p) => ({ value: p, label: p })))
 
-      const emails = []
-      if (customer.email) emails.push(customer.email)
+      const emails = Array.isArray(customer.emails) ? customer.emails : []
       setEmailOptions(Array.from(new Set(emails)).map((e) => ({ value: e, label: e })))
 
       // Only pre-fill the customer name/type; let the user choose / type other contact details

@@ -18,6 +18,7 @@ import {
     AutoComplete,
     Select,
     Popover,
+    Tooltip,
 } from "antd";
 import {
     PlusOutlined,
@@ -149,7 +150,16 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     const [customRoleInput, setCustomRoleInput] = useState("");
     const [customRoleModalOpen, setCustomRoleModalOpen] = useState(false);
     const [editingRows, setEditingRows] = useState({});
-    const [rowFormModalIndex, setRowFormModalIndex] = useState(null);
+
+    // Vertical Form Window Modal State
+    const [rowFormModalOpen, setRowFormModalOpen] = useState(false);
+    const [editingRowIndex, setEditingRowIndex] = useState(null); // null = new item, number = edit existing
+    const [modalFormData, setModalFormData] = useState({
+        Role: "",
+        CostBreakup: { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 },
+        TotalAmount: 0,
+        customValues: {},
+    });
 
     const isRowComplete = useCallback((record) => {
         if (!record) return false;
@@ -164,8 +174,40 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
         if (editingRows[index] !== undefined) {
             return editingRows[index];
         }
-        return !isRowComplete(record);
-    }, [editingRows, isRowComplete]);
+        return false; // Default to LOCKED once saved!
+    }, [editingRows]);
+
+    const handleOpenAddDetails = () => {
+        setEditingRowIndex(null);
+        setModalFormData({
+            Role: "",
+            CostBreakup: { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 },
+            TotalAmount: 0,
+            customValues: {},
+        });
+        setRowFormModalOpen(true);
+    };
+
+    const handleOpenEditDetails = (index) => {
+        const r = rows[index];
+        setEditingRowIndex(index);
+        if (headerName === MANPOWER_HEADER) {
+            setModalFormData({
+                Role: r["Role"] || "",
+                CostBreakup: r["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 },
+                TotalAmount: r["Total Amount"] || 0,
+                customValues: {},
+            });
+        } else {
+            setModalFormData({
+                Role: "",
+                CostBreakup: {},
+                TotalAmount: r["Total Amount"] || 0,
+                customValues: { ...r },
+            });
+        }
+        setRowFormModalOpen(true);
+    };
 
     const toggleEditRow = (index, record) => {
         setEditingRows((prev) => {
@@ -299,20 +341,21 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     };
 
     const addRow = () => {
+        if (rows.length > 0) {
+            const lastRow = rows[rows.length - 1];
+            if (!isRowComplete(lastRow)) {
+                message.warning("Please enter data in the current row before adding a new row.");
+                return;
+            }
+        }
         const newIdx = rows.length;
         const nextRows = [...rows, emptyRow(columns, headerName)];
         onChange({ ...headerItem, rows: nextRows });
         setFocusRowIndex(newIdx);
-        setEditingRows((prev) => {
-            const updated = { ...prev };
-            rows.forEach((r, i) => {
-                if (isRowComplete(r) && updated[i] === undefined) {
-                    updated[i] = false;
-                }
-            });
-            updated[newIdx] = true;
-            return updated;
-        });
+        setEditingRows((prev) => ({
+            ...prev,
+            [newIdx]: true,
+        }));
     };
 
     useEffect(() => {
@@ -450,6 +493,29 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
 
     const tableColumns = [];
 
+    const handleRoleSelectOrChange = (index, value, option = null) => {
+        const next = [...rows];
+        const currentCb = next[index]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+        
+        let newRate = currentCb.rate || 0;
+        if (option && (option.rate_other || option.rate_dev)) {
+            if (!currentCb.rate || currentCb.rate === 0) {
+                newRate = option.rate_other || option.rate_dev || 0;
+            }
+        }
+
+        const updatedCb = { ...currentCb, rate: newRate };
+        const newAmount = computeRowAmount(updatedCb);
+
+        next[index] = {
+            ...next[index],
+            "Role": value,
+            "Cost Breakup": updatedCb,
+            "Total Amount": newAmount,
+        };
+        onChange({ ...headerItem, rows: next });
+    };
+
     if (headerName === MANPOWER_HEADER) {
         tableColumns.push(
             {
@@ -488,17 +554,8 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                 filterOption={(inputValue, option) =>
                                     option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
                                 }
-                                onSelect={(value, option) => {
-                                    updateRow(index, "Role", value);
-                                    if (option && (option.rate_other || option.rate_dev)) {
-                                        const suggestedRate = option.rate_other || option.rate_dev || 0;
-                                        const currentCb = record["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
-                                        if (!currentCb.rate || currentCb.rate === 0) {
-                                            updateManpowerField(index, "rate", suggestedRate);
-                                        }
-                                    }
-                                }}
-                                onChange={(value) => updateRow(index, "Role", value)}
+                                onSelect={(value, option) => handleRoleSelectOrChange(index, value, option)}
+                                onChange={(value) => handleRoleSelectOrChange(index, value)}
                                 style={{ width: "100%" }}
                             >
                                 <Input
@@ -872,18 +929,18 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     tableColumns.push({
         title: "",
         key: "actions",
-        width: 80,
+        width: 110,
         render: (_, record, index) => {
             const isEditing = checkIsRowEditing(index, record);
             return (
                 <div className="flex items-center justify-end gap-1">
                     <Button
                         size="small"
-                        type={isEditing ? "primary" : "default"}
-                        icon={isEditing ? <CheckOutlined style={{ fontSize: 11 }} /> : <EditOutlined style={{ fontSize: 11 }} />}
-                        onClick={() => toggleEditRow(index, record)}
-                        title={isEditing ? "Done editing (Lock row)" : "Edit row inline"}
-                        className={isEditing ? "bg-emerald-600 hover:bg-emerald-700 font-bold" : "text-blue-600 border-blue-200 hover:bg-blue-50"}
+                        type="default"
+                        icon={<EditOutlined style={{ fontSize: 11 }} />}
+                        onClick={() => handleOpenEditDetails(index)}
+                        title="Edit row details in Vertical Window"
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50 font-bold"
                     />
                     <Popconfirm title="Remove row?" onConfirm={() => removeRow(index)}>
                         <Button size="small" type="text" danger icon={<DeleteOutlined style={{ fontSize: 11 }} />} />
@@ -906,51 +963,18 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
 
         const finalRoleName = (customRoleOverride || designation).trim();
         const numRate = Number(rate) || 0;
-        let nextRows = [...rows];
 
-        // Prevent Duplicate: Check if exact same role and same rate already exists
-        const isDuplicate = nextRows.some(r => {
-            const role = (r["Role"] || "").trim().toLowerCase();
-            const cb = r["Cost Breakup"] || {};
-            return role === finalRoleName.toLowerCase() && Number(cb.rate) === numRate;
+        // Open the Vertical Window Modal with this Role & Rate pre-filled so the user can enter hours, days, quantity before saving/locking!
+        setEditingRowIndex(null);
+        setModalFormData({
+            Role: finalRoleName,
+            CostBreakup: { type: "hourly", rate: numRate, hours: 0, days: 0, months: 0, quantity: 1 },
+            TotalAmount: 0,
+            customValues: {},
         });
-
-        if (isDuplicate) {
-            message.warning(`"${finalRoleName}" (₹${numRate}) is already added in the table.`);
-            return;
-        }
-
-        // Find the first completely empty row (no role and no rate filled)
-        let targetIndex = nextRows.findIndex(r => {
-            const hasRole = r["Role"] && r["Role"].trim() !== "";
-            const cb = r["Cost Breakup"] || {};
-            const hasRate = cb.rate && cb.rate > 0;
-            return !hasRole && !hasRate;
-        });
-
-        if (targetIndex === -1) {
-            // Append a brand new row
-            const newRow = emptyRow(MANPOWER_COLUMNS, MANPOWER_HEADER);
-            newRow["Role"] = finalRoleName;
-            const currentCb = newRow["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
-            const updatedCb = { ...currentCb, rate: numRate };
-            newRow["Cost Breakup"] = updatedCb;
-            newRow["Total Amount"] = computeRowAmount(updatedCb);
-            nextRows.push(newRow);
-        } else {
-            // Populate into existing empty row
-            const currentCb = nextRows[targetIndex]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
-            const updatedCb = { ...currentCb, rate: numRate };
-            nextRows[targetIndex] = {
-                ...nextRows[targetIndex],
-                "Role": finalRoleName,
-                "Cost Breakup": updatedCb,
-                "Total Amount": computeRowAmount(updatedCb)
-            };
-        }
-
-        onChange({ ...headerItem, rows: nextRows });
-        message.success(`Inserted ${finalRoleName} (${activityTypeLabel}: ₹${rate}) into table`);
+        setRatesModalOpen(false);
+        setRowFormModalOpen(true);
+        message.info(`Pre-filled "${finalRoleName}" (₹${numRate}) in Vertical Form. Enter details and click Save.`);
     };
 
     const handleConfirmCustomRole = () => {
@@ -986,6 +1010,61 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
         }
         return rows.reduce((sum, r) => sum + (Number(r["Total Amount"]) || 0), 0);
     }, [headerName, rows]);
+
+    const handleSaveModalForm = () => {
+        if (headerName === MANPOWER_HEADER) {
+            if (!modalFormData.Role || !modalFormData.Role.trim()) {
+                message.warning("Please select or enter a Role / Item name");
+                return;
+            }
+            const newAmount = computeRowAmount(modalFormData.CostBreakup);
+            const newRowData = {
+                "Role": modalFormData.Role.trim(),
+                "Cost Breakup": modalFormData.CostBreakup,
+                "Total Amount": newAmount,
+            };
+
+            if (editingRowIndex === null) {
+                const nextRows = [...rows, newRowData];
+                const newIdx = nextRows.length - 1;
+                setEditingRows((prev) => ({ ...prev, [newIdx]: false }));
+                onChange({ ...headerItem, rows: nextRows });
+                message.success(`Added "${newRowData["Role"]}" to table`);
+            } else {
+                const nextRows = [...rows];
+                nextRows[editingRowIndex] = newRowData;
+                setEditingRows((prev) => ({ ...prev, [editingRowIndex]: false }));
+                onChange({ ...headerItem, rows: nextRows });
+                message.success(`Updated "${newRowData["Role"]}"`);
+            }
+        } else {
+            const firstCol = columns[0];
+            const firstVal = modalFormData.customValues[firstCol];
+            if (!firstVal || !String(firstVal).trim()) {
+                message.warning(`Please enter ${firstCol}`);
+                return;
+            }
+            const newRowData = { ...modalFormData.customValues };
+
+            if (editingRowIndex === null) {
+                const nextRows = [...rows, newRowData];
+                const newIdx = nextRows.length - 1;
+                setEditingRows((prev) => ({ ...prev, [newIdx]: false }));
+                onChange({ ...headerItem, rows: nextRows });
+                message.success("Added row to section");
+            } else {
+                const nextRows = [...rows];
+                nextRows[editingRowIndex] = newRowData;
+                setEditingRows((prev) => ({ ...prev, [editingRowIndex]: false }));
+                onChange({ ...headerItem, rows: nextRows });
+                message.success("Updated row");
+            }
+        }
+
+        setRowFormModalOpen(false);
+    };
+
+    const isLastRowIncomplete = rows.length > 0 && !isRowComplete(rows[rows.length - 1]);
 
     return (
         <div className="space-y-3">
@@ -1047,11 +1126,13 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", width: "100%" }}>
                         <div />
                         <Button
+                            type="primary"
                             icon={<PlusOutlined />}
-                            onClick={addRow}
+                            onClick={handleOpenAddDetails}
                             style={{ justifySelf: "center" }}
+                            className="font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
                         >
-                            Add Row
+                            + Add Details
                         </Button>
                         {previewTotal !== null && (
                             <div style={{ textAlign: "right", fontWeight: 600 }}>
@@ -1061,6 +1142,254 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                     </div>
                 )}
             />
+
+            {/* Vertical Window Data Entry Form Modal (Horizontal Label : Input Layout) */}
+            <Modal
+                title={
+                    <div className="text-slate-900 font-semibold text-lg pb-2 font-sans border-b border-slate-100">
+                        {editingRowIndex === null ? `New ${headerName === MANPOWER_HEADER ? 'Manpower Item' : 'Item'}` : `Edit ${headerName === MANPOWER_HEADER ? 'Manpower Item' : 'Item'}`}
+                    </div>
+                }
+                open={rowFormModalOpen}
+                onCancel={() => setRowFormModalOpen(false)}
+                footer={null}
+                width={580}
+                destroyOnClose
+                styles={{
+                    content: { borderRadius: "18px", padding: "32px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }
+                }}
+            >
+                <div className="py-4 space-y-5 font-sans text-sm">
+                    {headerName === MANPOWER_HEADER ? (
+                        <>
+                            {/* Row 1: Role / Item */}
+                            <div className="flex items-center gap-4">
+                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                    Role / Item <span className="text-red-500">*</span> :
+                                </label>
+                                <div className="flex-1">
+                                    <AutoComplete
+                                        value={modalFormData.Role || ""}
+                                        options={roleOptions}
+                                        filterOption={(inputValue, option) =>
+                                            option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                        }
+                                        onSelect={(val, option) => {
+                                            let newRate = modalFormData.CostBreakup.rate || 0;
+                                            if (option && (option.rate_other || option.rate_dev)) {
+                                                newRate = option.rate_other || option.rate_dev || 0;
+                                            }
+                                            setModalFormData((prev) => ({
+                                                ...prev,
+                                                Role: val,
+                                                CostBreakup: { ...prev.CostBreakup, rate: newRate },
+                                            }));
+                                        }}
+                                        onChange={(val) => setModalFormData((prev) => ({ ...prev, Role: val }))}
+                                        style={{ width: "100%" }}
+                                    >
+                                        <Input placeholder="Enter or select role..." className="rounded-lg py-2 font-normal text-slate-800" />
+                                    </AutoComplete>
+                                </div>
+                            </div>
+
+                            {/* Row 2: Price / Rate */}
+                            <div className="flex items-center gap-4">
+                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                    Price / Rate (₹) :
+                                </label>
+                                <div className="flex-1">
+                                    <InputNumber
+                                        min={0}
+                                        controls={false}
+                                        value={modalFormData.CostBreakup.rate || undefined}
+                                        onChange={(v) =>
+                                            setModalFormData((prev) => ({
+                                                ...prev,
+                                                CostBreakup: { ...prev.CostBreakup, rate: v ?? 0 },
+                                            }))
+                                        }
+                                        placeholder="Enter price or rate"
+                                        className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Row 3: Basis Type */}
+                            <div className="flex items-center gap-4">
+                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                    Basis Type :
+                                </label>
+                                <div className="flex-1">
+                                    <Select
+                                        value={modalFormData.CostBreakup.type || "hourly"}
+                                        onChange={(v) =>
+                                            setModalFormData((prev) => ({
+                                                ...prev,
+                                                CostBreakup: { ...prev.CostBreakup, type: v },
+                                            }))
+                                        }
+                                        options={[
+                                            { label: "Hourly Basis", value: "hourly" },
+                                            { label: "Monthly Basis", value: "monthly" },
+                                        ]}
+                                        className="w-full font-normal text-slate-800"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Row 4: Hours / Months */}
+                            <div className="flex items-center gap-4">
+                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                    {modalFormData.CostBreakup.type === "monthly" ? "Months Required :" : "Hours Required :"}
+                                </label>
+                                <div className="flex-1">
+                                    <InputNumber
+                                        min={0}
+                                        controls={false}
+                                        value={
+                                            modalFormData.CostBreakup.type === "monthly"
+                                                ? modalFormData.CostBreakup.months
+                                                : modalFormData.CostBreakup.hours
+                                        }
+                                        onChange={(v) =>
+                                            setModalFormData((prev) => ({
+                                                ...prev,
+                                                CostBreakup: {
+                                                    ...prev.CostBreakup,
+                                                    [prev.CostBreakup.type === "monthly" ? "months" : "hours"]: v ?? 0,
+                                                },
+                                            }))
+                                        }
+                                        placeholder="0"
+                                        className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Row 5: Days (if Hourly) */}
+                            {modalFormData.CostBreakup.type !== "monthly" && (
+                                <div className="flex items-center gap-4">
+                                    <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                        Days Required :
+                                    </label>
+                                    <div className="flex-1">
+                                        <InputNumber
+                                            min={0}
+                                            controls={false}
+                                            value={modalFormData.CostBreakup.days || undefined}
+                                            onChange={(v) =>
+                                                setModalFormData((prev) => ({
+                                                    ...prev,
+                                                    CostBreakup: { ...prev.CostBreakup, days: v ?? 0 },
+                                                }))
+                                            }
+                                            placeholder="Days"
+                                            className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Row 6: Quantity */}
+                            <div className="flex items-center gap-4">
+                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                    Default Quantity :
+                                </label>
+                                <div className="flex-1">
+                                    <InputNumber
+                                        min={1}
+                                        controls={false}
+                                        value={modalFormData.CostBreakup.quantity || 1}
+                                        onChange={(v) =>
+                                            setModalFormData((prev) => ({
+                                                ...prev,
+                                                CostBreakup: { ...prev.CostBreakup, quantity: v ?? 1 },
+                                            }))
+                                        }
+                                        placeholder="1"
+                                        className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Row 7: Calculated Total */}
+                            <div className="flex items-center gap-4">
+                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                    Calculated Total :
+                                </label>
+                                <div className="flex-1">
+                                    <div className="py-2 px-3 bg-slate-50 rounded-lg text-slate-900 font-bold text-sm border border-slate-200">
+                                        ₹{computeRowAmount(modalFormData.CostBreakup).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            {columns.map((col, cIdx) => (
+                                <div key={col} className="flex items-center gap-4">
+                                    <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
+                                        {col} {cIdx === 0 && <span className="text-red-500">*</span>} :
+                                    </label>
+                                    <div className="flex-1">
+                                        {cIdx === 0 ? (
+                                            <AutoComplete
+                                                value={modalFormData.customValues[col] || ""}
+                                                options={savedDescriptions}
+                                                onChange={(val) =>
+                                                    setModalFormData((prev) => ({
+                                                        ...prev,
+                                                        customValues: { ...prev.customValues, [col]: val },
+                                                    }))
+                                                }
+                                                style={{ width: "100%" }}
+                                            >
+                                                <Input placeholder={`Enter ${col.toLowerCase()}...`} className="rounded-lg py-2 font-normal text-slate-800" />
+                                            </AutoComplete>
+                                        ) : col === "Total Amount" ? (
+                                            <InputNumber
+                                                min={0}
+                                                controls={false}
+                                                value={modalFormData.customValues[col]}
+                                                onChange={(v) =>
+                                                    setModalFormData((prev) => ({
+                                                        ...prev,
+                                                        customValues: { ...prev.customValues, [col]: v ?? 0 },
+                                                    }))
+                                                }
+                                                className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                            />
+                                        ) : (
+                                            <Input
+                                                value={modalFormData.customValues[col] || ""}
+                                                onChange={(e) =>
+                                                    setModalFormData((prev) => ({
+                                                        ...prev,
+                                                        customValues: { ...prev.customValues, [col]: e.target.value },
+                                                    }))
+                                                }
+                                                className="rounded-lg py-2 font-normal text-slate-800"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </>
+                    )}
+
+                    {/* Dark Full-Width Save Button */}
+                    <div className="pt-2">
+                        <button
+                            type="button"
+                            onClick={handleSaveModalForm}
+                            className="w-full py-3 bg-slate-900 hover:bg-slate-950 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer shadow-sm"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
             <Drawer
                 title={
@@ -1223,165 +1552,6 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                     )}
                 </div>
             </Modal>
-
-            {/* Vertical Row Entry Modal Window */}
-            <Modal
-                title={
-                    <div className="flex items-center gap-2 text-slate-800 font-bold text-base border-b pb-2">
-                        <FormOutlined className="text-purple-600" />
-                        <span>Row #{rowFormModalIndex !== null ? rowFormModalIndex + 1 : 1} Details — {headerName}</span>
-                    </div>
-                }
-                open={rowFormModalIndex !== null}
-                onCancel={() => setRowFormModalIndex(null)}
-                footer={[
-                    <Button key="close" type="primary" onClick={() => setRowFormModalIndex(null)} className="bg-purple-600 hover:bg-purple-700 font-bold px-6">
-                        Done / Save Row
-                    </Button>
-                ]}
-                width={480}
-                destroyOnClose
-            >
-                {rowFormModalIndex !== null && rows[rowFormModalIndex] && (
-                    <div className="py-3 space-y-4">
-                        {headerName === MANPOWER_HEADER ? (
-                            <>
-                                {/* Vertical Field 1: Role */}
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-slate-700">Role / Designation</label>
-                                        <span className="text-[11px] text-blue-600 cursor-pointer font-semibold" onClick={() => setRatesModalOpen(true)}>View Rates Reference ↗</span>
-                                    </div>
-                                    <AutoComplete
-                                        value={rows[rowFormModalIndex]["Role"] || ""}
-                                        options={roleOptions}
-                                        filterOption={(inputValue, option) =>
-                                            option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
-                                        }
-                                        onSelect={(value, option) => {
-                                            updateRow(rowFormModalIndex, "Role", value);
-                                            if (option && (option.rate_other || option.rate_dev)) {
-                                                const suggestedRate = option.rate_other || option.rate_dev || 0;
-                                                const currentCb = rows[rowFormModalIndex]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
-                                                if (!currentCb.rate || currentCb.rate === 0) {
-                                                    updateManpowerField(rowFormModalIndex, "rate", suggestedRate);
-                                                }
-                                            }
-                                        }}
-                                        onChange={(value) => updateRow(rowFormModalIndex, "Role", value)}
-                                        className="w-full"
-                                    >
-                                        <Input placeholder="e.g. Scientist B, Senior Research Fellow..." className="text-sm font-semibold" />
-                                    </AutoComplete>
-                                </div>
-
-                                {/* Vertical Field 2: Rate */}
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-slate-700">Rate per Unit (₹)</label>
-                                    <InputNumber
-                                        min={0}
-                                        controls={false}
-                                        value={rows[rowFormModalIndex]["Cost Breakup"]?.rate || undefined}
-                                        onChange={(v) => updateManpowerField(rowFormModalIndex, "rate", v)}
-                                        placeholder="Enter rate..."
-                                        className="w-full text-sm font-semibold"
-                                    />
-                                </div>
-
-                                {/* Vertical Field 3: Type */}
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-slate-700">Calculation Basis (Type)</label>
-                                    <Radio.Group
-                                        value={rows[rowFormModalIndex]["Cost Breakup"]?.type || "hourly"}
-                                        onChange={(e) => updateManpowerField(rowFormModalIndex, "type", e.target.value)}
-                                        className="w-full grid grid-cols-2 gap-2"
-                                    >
-                                        <Radio.Button value="hourly" className="text-center font-bold">Hourly Basis</Radio.Button>
-                                        <Radio.Button value="monthly" className="text-center font-bold">Monthly Basis</Radio.Button>
-                                    </Radio.Group>
-                                </div>
-
-                                {/* Vertical Field 4 & 5: Hrs/Mos & Days */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-700">
-                                            {rows[rowFormModalIndex]["Cost Breakup"]?.type === "monthly" ? "Months Required" : "Hours per Day"}
-                                        </label>
-                                        <InputNumber
-                                            min={0}
-                                            controls={false}
-                                            value={rows[rowFormModalIndex]["Cost Breakup"]?.type === "monthly" ? rows[rowFormModalIndex]["Cost Breakup"]?.months : rows[rowFormModalIndex]["Cost Breakup"]?.hours}
-                                            onChange={(v) => updateManpowerField(rowFormModalIndex, rows[rowFormModalIndex]["Cost Breakup"]?.type === "monthly" ? "months" : "hours", v)}
-                                            placeholder="Enter value"
-                                            className="w-full text-sm font-semibold"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-700">Days Required</label>
-                                        <InputNumber
-                                            min={0}
-                                            controls={false}
-                                            disabled={rows[rowFormModalIndex]["Cost Breakup"]?.type === "monthly"}
-                                            value={rows[rowFormModalIndex]["Cost Breakup"]?.type === "monthly" ? undefined : rows[rowFormModalIndex]["Cost Breakup"]?.days}
-                                            onChange={(v) => updateManpowerField(rowFormModalIndex, "days", v)}
-                                            placeholder={rows[rowFormModalIndex]["Cost Breakup"]?.type === "monthly" ? "N/A" : "Enter days"}
-                                            className="w-full text-sm font-semibold"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Vertical Field 6: Quantity */}
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-slate-700">Number of People (Quantity)</label>
-                                    <InputNumber
-                                        min={1}
-                                        controls={false}
-                                        value={rows[rowFormModalIndex]["Cost Breakup"]?.quantity || 1}
-                                        onChange={(v) => updateManpowerField(rowFormModalIndex, "quantity", v)}
-                                        placeholder="1"
-                                        className="w-full text-sm font-semibold"
-                                    />
-                                </div>
-                            </>
-                        ) : (
-                            /* Custom Table Vertical Fields */
-                            <div className="space-y-3">
-                                {columns.map((col) => (
-                                    <div key={col} className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-700">{col}</label>
-                                        {col === "Total Amount" ? (
-                                            <InputNumber
-                                                min={0}
-                                                controls={false}
-                                                value={rows[rowFormModalIndex][col]}
-                                                onChange={(v) => updateRow(rowFormModalIndex, col, v ?? 0)}
-                                                className="w-full text-sm font-bold"
-                                            />
-                                        ) : (
-                                            <Input
-                                                value={rows[rowFormModalIndex][col]}
-                                                onChange={(e) => updateRow(rowFormModalIndex, col, e.target.value)}
-                                                className="w-full text-sm font-semibold"
-                                            />
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Calculated Subtotal Card */}
-                        <div className="mt-4 p-3 bg-purple-50/80 border border-purple-200/80 rounded-xl flex items-center justify-between">
-                            <span className="text-xs font-bold text-purple-900">Calculated Row Subtotal:</span>
-                            <span className="text-base font-black text-purple-950">
-                                ₹{(headerName === MANPOWER_HEADER 
-                                    ? computeRowAmount(rows[rowFormModalIndex]["Cost Breakup"])
-                                    : Number(rows[rowFormModalIndex]["Total Amount"] || 0)
-                                ).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                        </div>
-                    </div>
-                )}
-            </Modal>
         </div>
     );
 }
@@ -1404,7 +1574,7 @@ function AddHeaderForm({ existingHeaderNames, onAdd, isEnteringHeader, onCancelH
         onAdd({
             header_name: name,
             columns: DEFAULT_CUSTOM_COLUMNS,
-            rows: [emptyRow(DEFAULT_CUSTOM_COLUMNS, name)],
+            rows: [],
         });
         setCustomName("");
     };
@@ -1583,7 +1753,7 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
         const initial = {
             header_name: MANPOWER_HEADER,
             columns: MANPOWER_COLUMNS,
-            rows: [emptyRow(MANPOWER_COLUMNS, MANPOWER_HEADER)],
+            rows: [],
         };
         setHeaders([initial]);
         setActiveKey(MANPOWER_HEADER);

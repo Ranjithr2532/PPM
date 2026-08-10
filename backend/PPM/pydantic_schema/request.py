@@ -115,12 +115,12 @@ class StageUpdate(StageBase):
 # ---------------------------------------------
 class PaymentBase(BaseModel):
     invoice_no: Optional[str] = None
-    invoice_date: Optional[str] = None
+    invoice_date: Optional[Union[date, str]] = None
     gross_amount: Optional[str] = None
     get_amount: Optional[str] = None
     amount_claimed: Optional[str] = None
     amount_recieved: Optional[str] = None
-    recieved_date: Optional[str] = None
+    recieved_date: Optional[Union[date, str]] = None
     description: Optional[str] = None
     tds: Optional[str] = None
     get_tds: Optional[str] = None

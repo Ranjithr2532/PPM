@@ -25,6 +25,7 @@ from routes.groups import router as groups_router
 from routes.masterproposals import router as master_proposals_router
 from routes.notification import router as notification_router
 from routes.customers import router as customers_router
+from routes.customer1 import router as customer1_router
 from routes.remarksroutes import router as remarks_router
 from routes.projectpayment import router as project_payments_router
 from routes.acknowledgment import router as acknowledgment_router
@@ -85,6 +86,7 @@ app.include_router(groups_router, dependencies=jwt_auth)
 app.include_router(master_proposals_router, dependencies=jwt_auth)
 app.include_router(notification_router, dependencies=jwt_auth)
 app.include_router(customers_router, dependencies=jwt_auth)
+app.include_router(customer1_router, dependencies=jwt_auth)
 app.include_router(remarks_router, dependencies=jwt_auth)
 app.include_router(project_payments_router, dependencies=jwt_auth)
 app.include_router(acknowledgment_router, dependencies=jwt_auth)

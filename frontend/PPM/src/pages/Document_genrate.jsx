@@ -218,19 +218,31 @@ export default function DocumentGenerate() {
         // Fetch customer list with addresses from proposals/customer db
         const fetchCustomers = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/customers/from-proposals`);
-                if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-                    setCustomerSuggestions(res.data);
-                } else {
-                    const resFallback = await axios.get(`${API_BASE_URL}/customers/`);
-                    if (resFallback.data && Array.isArray(resFallback.data)) {
-                        setCustomerSuggestions(
-                            resFallback.data.map((c) => ({
-                                ...c,
-                                addresses: c.address ? [c.address] : [],
-                            }))
-                        );
-                    }
+                const token = localStorage.getItem('token');
+                const headers = {
+                    accept: 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                };
+                const res = await axios.get(`${API_BASE_URL}/customer1/`, { headers });
+                if (res.data && Array.isArray(res.data)) {
+                    const normalized = res.data.map(customer => {
+                        const emails = Array.isArray(customer.email) ? customer.email : [];
+                        const phones = Array.isArray(customer.phone) ? customer.phone : [];
+                        const addresses = Array.isArray(customer.address) ? customer.address : [];
+                        const alternate_contacts = Array.isArray(customer.alternate_contact_details) ? customer.alternate_contact_details : [];
+                        
+                        return {
+                            ...customer,
+                            name: customer.name,
+                            customer_type: customer.customer_type,
+                            email: emails.join(', '),
+                            phone_no: phones.join(', '),
+                            alternate_contact_details: alternate_contacts.join(', '),
+                            addresses: addresses,
+                            address: addresses.join('\n'),
+                        };
+                    });
+                    setCustomerSuggestions(normalized);
                 }
             } catch (err) {
                 console.error('Error loading customer suggestions:', err);

@@ -1,5 +1,5 @@
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Optional, Union
+from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from starlette.requests import Request
@@ -13,6 +13,29 @@ from pydantic_schema.request import PaymentCreate, PaymentUpdate
 from pydantic_schema.response import PaymentResponse
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
+
+
+def _parse_date(val: Optional[Union[date, str]]) -> Optional[date]:
+    if val is None:
+        return None
+    if isinstance(val, date) and not isinstance(val, datetime):
+        return val
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, str):
+        s = val.strip()
+        if not s or s.lower() in ("none", "null", "nan", "-"):
+            return None
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%m/%d/%Y", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                continue
+        try:
+            return date.fromisoformat(s)
+        except ValueError:
+            return None
+    return None
 
 
 def _extract_username_from_request(request: Request) -> Optional[str]:
@@ -76,6 +99,12 @@ def create_payment(
 
     valid_keys = {c.key for c in Payment.__table__.columns}
     payment_data = {k: v for k, v in payload.dict(exclude_unset=True).items() if k in valid_keys}
+    
+    if "invoice_date" in payment_data:
+        payment_data["invoice_date"] = _parse_date(payment_data["invoice_date"])
+    if "recieved_date" in payment_data:
+        payment_data["recieved_date"] = _parse_date(payment_data["recieved_date"])
+
     payment = Payment(**payment_data)
     db.add(payment)
     db.commit()
@@ -150,6 +179,8 @@ def update_payment(
     valid_keys = {c.key for c in Payment.__table__.columns}
     for key, value in update_data.items():
         if key in valid_keys and key not in ['updated_at', 'updated_by']:
+            if key in ('invoice_date', 'recieved_date'):
+                value = _parse_date(value)
             setattr(payment, key, value)
 
     # Auto-set updated_at and updated_by when payment is edited

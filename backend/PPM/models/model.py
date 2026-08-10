@@ -392,15 +392,16 @@ class MessageSeen(Base):
 class Customers(Base):
     __tablename__ = "customer1"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    email = Column(Text)
-    phone = Column(Text)
-    address = Column(Text)
-    alternate_contact_details = Column(Text)
-    gst = Column(Text)
-    pan = Column(Text)
-    tan = Column(Text)
+    customer_type = Column(String, nullable=True)
+    email = Column(JSON, nullable=True, default=list)
+    phone = Column(JSON, nullable=True, default=list)
+    address = Column(JSON, nullable=True, default=list)
+    alternate_contact_details = Column(JSON, nullable=True, default=list)
+    gst = Column(Text, nullable=True)
+    pan = Column(Text, nullable=True)
+    tan = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -51,8 +51,8 @@ function Sidebar() {
                       ? 'access-control'
                       : section === 'customers'
                         ? 'customers'
-                        : section === 'chats'
-                          ? 'chats'
+                      : section === 'chats'
+                        ? 'chats'
                           : section === 'document-generate' || section === 'documents-generate'
                             ? 'document-generate'
                             : 'proposals'
@@ -423,15 +423,11 @@ function Sidebar() {
                     icon: <UsergroupAddOutlined />,
                     label: 'Access Control'
                   },
-                ]
-                : []),
-              ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
-                ? [
                   {
                     key: 'customers',
                     icon: <TeamOutlined />,
                     label: 'Customers'
-                  }
+                  },
                 ]
                 : [])
             ]}
