@@ -2,7 +2,7 @@ import axios from 'axios';
 import { message } from 'antd';
 
 // Central API configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.18.7.91:5001';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.18.7.42:8001';
 
 const ACCESS_TOKEN_KEY = 'token';
 const CURRENT_USER_KEY = 'ppm_user';

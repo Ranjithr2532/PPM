@@ -322,20 +322,20 @@ function Customers() {
         <Text strong>Total Customers: {customerCount}</Text>
       </div>
 
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Space>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
+        <Space className="flex-wrap w-full md:w-auto">
           <Input
             placeholder="Search customers..."
             prefix={<SearchOutlined />}
             value={searchText}
             onChange={(e) => handleSearch(e.target.value)}
-            style={{ width: 300 }}
+            className="w-full sm:w-72"
           />
           <Select
             placeholder="Filter by Customer Type"
             value={customerTypeFilter}
             onChange={handleCustomerTypeFilter}
-            style={{ width: 200 }}
+            className="w-full sm:w-48"
             allowClear
           >
             {CUSTOMER_TYPE_OPTIONS.map((type) => (
@@ -344,7 +344,7 @@ function Customers() {
               </Option>
             ))}
           </Select>
-          {searchText || customerTypeFilter ? (
+          {(searchText || customerTypeFilter) && (
             <Button
               icon={<ClearOutlined />}
               onClick={() => {
@@ -355,17 +355,17 @@ function Customers() {
             >
               Clear Filters
             </Button>
-          ) : null}
+          )}
         </Space>
         {!isGuest && (
-        <Space>
-          <Button icon={<UploadOutlined />} onClick={handleUploadExcel}>
-            Upload Excel
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-            Add Customer
-          </Button>
-        </Space>
+          <Space className="flex-wrap">
+            <Button icon={<UploadOutlined />} onClick={handleUploadExcel}>
+              Upload Excel
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+              Add Customer
+            </Button>
+          </Space>
         )}
       </div>
 
@@ -379,7 +379,7 @@ function Customers() {
           showQuickJumper: true,
           showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} customers`,
         }}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 'max-content' }}
       />
 
       <Modal

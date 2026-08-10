@@ -2452,7 +2452,7 @@ export default function Allproposals() {
 
                 return (
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 flex-1">
                       {cards.map((card) => {
                         const isSelected = statusFilter === card.key
                         const isAnySelected = statusFilter !== null
@@ -2510,7 +2510,7 @@ export default function Allproposals() {
                   <div className="mb-4">
                     <Title level={4} className="!mb-0">Search & Filters</Title>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <Input
                       placeholder="Search proposals..."
                       prefix={<SearchOutlined />}
@@ -3325,7 +3325,7 @@ export default function Allproposals() {
 
             <Row gutter={[20, 20]} justify="center">
               {/* Option 1: Manual Entry */}
-              <Col xs={24} sm={12} md={8}>
+              <Col xs={24} sm={12} md={10}>
                 <Card
                   hoverable
                   onClick={() => setProposalCreationMode('manual')}
@@ -3356,50 +3356,8 @@ export default function Allproposals() {
                 </Card>
               </Col>
 
-              {/* Option 2: Upload Proposal Document */}
-              <Col xs={24} sm={12} md={8}>
-                <Card
-                  className="h-full border-2 border-slate-200 hover:border-green-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md"
-                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                    <FileWordOutlined className="text-2xl" />
-                  </div>
-                  <h4 className="text-base font-bold text-slate-800 mb-2">
-                    Upload Document (.docx)
-                  </h4>
-                  <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                    Upload an existing Word document (.docx) to automatically extract info.
-                  </p>
-
-                  <Upload.Dragger
-                    accept=".docx"
-                    beforeUpload={handleDocxUpload}
-                    showUploadList={false}
-                    disabled={docxUploading}
-                    className="rounded-xl border-dashed border-green-300 hover:border-green-500 bg-green-50/30 p-3"
-                  >
-                    {docxUploading ? (
-                      <div className="py-2">
-                        <Spin tip="Extracting proposal details..." />
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <UploadOutlined className="text-xl text-green-600" />
-                        <p className="font-semibold text-slate-700 text-xs">
-                          Click or Drag .docx
-                        </p>
-                        <p className="text-slate-400 text-[10px]">
-                          Parses quotation templates
-                        </p>
-                      </div>
-                    )}
-                  </Upload.Dragger>
-                </Card>
-              </Col>
-
-              {/* Option 3: Create Document */}
-              <Col xs={24} sm={12} md={8}>
+              {/* Option 2: Create Document */}
+              <Col xs={24} sm={12} md={10}>
                 <Card
                   hoverable
                   onClick={() => setProposalCreationMode('create_document')}
