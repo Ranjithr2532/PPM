@@ -480,7 +480,7 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
       {/* Header Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-100">
         <Typography.Title level={3} className="!mb-0 flex flex-wrap items-center gap-2 text-slate-800">
-          Acknowledge Proposals Submitted by Project Coordinators
+          Unacknowledge Proposals Submitted by Project Coordinators
           <span className="inline-flex items-center justify-center bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-200">
             {pendingProposals.length} Pending
           </span>

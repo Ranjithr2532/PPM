@@ -1099,8 +1099,8 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
                     key={filter}
                     onClick={() => setChatFilter(filter)}
                     className={`px-3 py-0.5 text-[11px] font-semibold rounded-full capitalize transition-all ${chatFilter === filter
-                        ? 'bg-emerald-700 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                   >
                     {filter}
@@ -1224,11 +1224,10 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
                         <Tooltip key={opt.value} title={opt.label}>
                           <button
                             onClick={() => setTargetRecipient(opt.value)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-xs shrink-0 ${
-                              isActive
+                            className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-xs shrink-0 ${isActive
                                 ? 'bg-emerald-700 text-white shadow-emerald-200 border border-emerald-800'
                                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                            }`}
+                              }`}
                           >
                             <UserOutlined className="text-[10px]" />
                             <span>{opt.shortLabel || opt.label}</span>
@@ -1259,7 +1258,7 @@ export default function FloatingChatsWidget({ open, onClose, onUnreadCountChange
             <div className="flex justify-center my-2">
               <div className="bg-[#ffeecd] border border-[#f5e2b8] text-[#856404] text-[11px] font-medium px-3 py-1.5 rounded-lg shadow-2xs max-w-sm text-center flex items-center justify-center gap-1.5 leading-snug">
                 <span>🔒</span>
-                <span>Messages and calls are end-to-end encrypted. No one outside of this chat can read.</span>
+                <span>Messages are end-to-end encrypted. No one outside of this chat can read.</span>
               </div>
             </div>
 

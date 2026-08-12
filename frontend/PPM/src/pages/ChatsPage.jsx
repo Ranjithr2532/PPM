@@ -1153,8 +1153,8 @@ export default function ChatsPage() {
             <button
               onClick={() => setChatFilter('all')}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'all'
-                  ? 'bg-emerald-700 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
               <span>All</span>
@@ -1166,8 +1166,8 @@ export default function ChatsPage() {
             <button
               onClick={() => setChatFilter('proposals')}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'proposals'
-                  ? 'bg-emerald-700 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
               <span>Proposals</span>
@@ -1181,8 +1181,8 @@ export default function ChatsPage() {
             <button
               onClick={() => setChatFilter('groups')}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'groups'
-                  ? 'bg-emerald-700 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
               <span>Groups</span>
@@ -1196,8 +1196,8 @@ export default function ChatsPage() {
             <button
               onClick={() => setChatFilter('unread')}
               className={`px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1 shrink-0 ${chatFilter === 'unread'
-                  ? 'bg-emerald-700 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
               <span>Unread</span>
@@ -1410,8 +1410,8 @@ export default function ChatsPage() {
                           key={opt.value}
                           onClick={() => setTargetRecipient(opt.value)}
                           className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${isActive
-                              ? 'bg-emerald-700 text-white shadow-emerald-200 border border-emerald-800'
-                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                            ? 'bg-emerald-700 text-white shadow-emerald-200 border border-emerald-800'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
                             }`}
                         >
                           <UserOutlined />
@@ -1445,7 +1445,7 @@ export default function ChatsPage() {
               <div className="flex justify-center mb-4">
                 <div className="bg-[#ffeecd] border border-[#f5e2b8] text-[#856404] text-xs font-medium px-4 py-2 rounded-xl shadow-xs max-w-md text-center flex items-center justify-center gap-2 leading-relaxed">
                   <span>🔒</span>
-                  <span>Messages and calls are end-to-end encrypted. No one outside of this chat can read.</span>
+                  <span>Messages are end-to-end encrypted. No one outside of this chat can read.</span>
                 </div>
               </div>
 
@@ -1479,8 +1479,8 @@ export default function ChatsPage() {
                         >
                           <div
                             className={`max-w-md px-4 py-2.5 rounded-2xl shadow-sm text-sm relative transition-all ${isMe
-                                ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none'
-                                : 'bg-white text-slate-900 rounded-tl-none'
+                              ? 'bg-[#d9fdd3] text-slate-900 rounded-tr-none'
+                              : 'bg-white text-slate-900 rounded-tl-none'
                               }`}
                           >
                             <span className="block text-[11px] font-bold text-slate-600 mb-0.5">

@@ -351,6 +351,8 @@ export default function Allproposals() {
   const [statusFilter, setStatusFilter] = useState(null)
   const [projectCodePrefix, setProjectCodePrefix] = useState('')
   const [projectNumberFilter, setProjectNumberFilter] = useState(null)
+  const [groupFilter, setGroupFilter] = useState(undefined)
+  const [quotationGivenByFilter, setQuotationGivenByFilter] = useState(undefined)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
@@ -1979,6 +1981,52 @@ export default function Allproposals() {
     }
   }, [tableData])
 
+  const groupOptions = useMemo(() => {
+    const groups = [
+      ...new Set(
+        tableData
+          .map((item) => (item.group || '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    return groups
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map((g) => ({ label: g, value: g }))
+  }, [tableData])
+
+  const quotationGivenByOptions = useMemo(() => {
+    let sourceItems = tableData
+    if (groupFilter) {
+      const groupLower = groupFilter.toLowerCase().trim()
+      sourceItems = tableData.filter(
+        (item) => (item.group || '').toString().toLowerCase().trim() === groupLower
+      )
+    }
+
+    const names = [
+      ...new Set(
+        sourceItems
+          .flatMap((item) => [
+            (item.quotation_given_by_name || '').trim(),
+            (item.project_co_ordinator || '').trim(),
+          ])
+          .filter(Boolean),
+      ),
+    ]
+    return names
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map((name) => ({ label: name, value: name }))
+  }, [tableData, groupFilter])
+
+  useEffect(() => {
+    if (groupFilter && quotationGivenByFilter) {
+      const validNames = new Set(quotationGivenByOptions.map((o) => o.value))
+      if (!validNames.has(quotationGivenByFilter)) {
+        setQuotationGivenByFilter(undefined)
+      }
+    }
+  }, [groupFilter, quotationGivenByOptions, quotationGivenByFilter])
+
   useEffect(() => {
     let filtered = tableData
 
@@ -2064,8 +2112,24 @@ export default function Allproposals() {
       })
     }
 
+    if (groupFilter) {
+      const groupLower = groupFilter.toLowerCase().trim()
+      filtered = filtered.filter(
+        (item) => (item.group || '').toString().toLowerCase().trim() === groupLower
+      )
+    }
+
+    if (quotationGivenByFilter) {
+      const searchLower = quotationGivenByFilter.toLowerCase().trim()
+      filtered = filtered.filter((item) => {
+        const name1 = (item.quotation_given_by_name || '').toString().toLowerCase().trim()
+        const name2 = (item.project_co_ordinator || '').toString().toLowerCase().trim()
+        return name1 === searchLower || name2 === searchLower
+      })
+    }
+
     setFilteredData(filtered)
-  }, [searchText, orderDateRange, enquiryDateRange, statusFilter, projectCodePrefix, projectNumberFilter, tableData])
+  }, [searchText, orderDateRange, enquiryDateRange, statusFilter, projectCodePrefix, projectNumberFilter, groupFilter, quotationGivenByFilter, tableData])
 
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
@@ -2518,18 +2582,33 @@ export default function Allproposals() {
                   <div className="mb-4">
                     <Title level={4} className="!mb-0">Search & Filters</Title>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                     <Input
                       placeholder="Search proposals..."
                       prefix={<SearchOutlined />}
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
                     />
+                    {(userRole === 'ch' || userRole === 'centre head' || userRole === 'center head' || userRole === 'admin') && (
+                      <Select
+                        placeholder="Filter by Group"
+                        value={groupFilter || undefined}
+                        onChange={setGroupFilter}
+                        allowClear
+                        showSearch
+                        filterOption={(input, option) =>
+                          (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                        }
+                        options={groupOptions}
+                        className="w-full"
+                      />
+                    )}
                     <Select
-                      placeholder="Filter by Project Number"
-                      value={projectCodePrefix}
+                      placeholder="Project Code"
+                      value={projectCodePrefix || undefined}
                       onChange={setProjectCodePrefix}
                       allowClear
+                      className="w-full"
                     >
                       {['GSP', 'ISP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'SVP', 'TOT'].map((code) => (
                         <Select.Option key={code} value={code}>
@@ -2537,6 +2616,20 @@ export default function Allproposals() {
                         </Select.Option>
                       ))}
                     </Select>
+                    {userRole !== 'scientist' && (
+                      <Select
+                        placeholder="Quotation Given By"
+                        value={quotationGivenByFilter || undefined}
+                        onChange={setQuotationGivenByFilter}
+                        allowClear
+                        showSearch
+                        filterOption={(input, option) =>
+                          (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                        }
+                        options={quotationGivenByOptions}
+                        className="w-full"
+                      />
+                    )}
                     <RangePicker
                       placeholder={['Enquiry Start', 'Enquiry End']}
                       value={enquiryDateRange}
@@ -2556,6 +2649,8 @@ export default function Allproposals() {
                         setEnquiryDateRange(null)
                         setStatusFilter(null)
                         setProjectCodePrefix('')
+                        setGroupFilter(undefined)
+                        setQuotationGivenByFilter(undefined)
                         setShowNewMessagesOnly(false)
                         setShowPendingReplyOnly(false)
                       }}>

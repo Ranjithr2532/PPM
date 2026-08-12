@@ -560,6 +560,7 @@ function Proposals() {
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
   const [projectNumberFilter, setProjectNumberFilter] = useState([])
   const [groupFilter, setGroupFilter] = useState([])
+  const [quotationGivenByFilter, setQuotationGivenByFilter] = useState([])
   const [isAcknowledgedFilter, setIsAcknowledgedFilter] = useState(null)
   const [smallValueProjectFilter, setSmallValueProjectFilter] = useState(null)
   const [selectedDateField, setSelectedDateField] = useState('enquiry_date')
@@ -1970,6 +1971,14 @@ function Proposals() {
       )
     }
 
+    if (quotationGivenByFilter && quotationGivenByFilter.length > 0) {
+      filtered = filtered.filter((item) => {
+        const name1 = (item.quotation_given_by_name || '').trim()
+        const name2 = (item.project_co_ordinator || '').trim()
+        return quotationGivenByFilter.includes(name1) || quotationGivenByFilter.includes(name2)
+      })
+    }
+
     if (centreFilter && centreFilter.length > 0) {
       filtered = filtered.filter((item) =>
         item.center && centreFilter.includes(item.center)
@@ -2086,7 +2095,7 @@ function Proposals() {
     }
 
     setFilteredData(filtered)
-  }, [searchText, centreFilter, orderDateRange, statusFilter, projectNumberFilter, isAcknowledgedFilter, smallValueProjectFilter, tableData, selectedDateField, errorDateFilter, startDate, endDate, showDuplicatesOnly])
+  }, [searchText, centreFilter, groupFilter, quotationGivenByFilter, orderDateRange, statusFilter, projectNumberFilter, isAcknowledgedFilter, smallValueProjectFilter, tableData, selectedDateField, errorDateFilter, startDate, endDate, showDuplicatesOnly])
 
   // Get unique centers for filter
   const uniqueCentres = useMemo(() => {
@@ -2105,17 +2114,72 @@ function Proposals() {
     [centres],
   )
 
+  // Extract groups matching selected centreFilter
+  const groupOptions = useMemo(() => {
+    let source = tableData
+    if (centreFilter && centreFilter.length > 0) {
+      source = source.filter((item) => item.center && centreFilter.includes(item.center))
+    }
+    const groups = [
+      ...new Set(source.map((item) => (item.group || '').trim()).filter(Boolean)),
+    ]
+    return groups.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [tableData, centreFilter])
+
+  // Extract quotation given by / coordinator names matching centreFilter and groupFilter
+  const quotationGivenByOptions = useMemo(() => {
+    let source = tableData
+    if (centreFilter && centreFilter.length > 0) {
+      source = source.filter((item) => item.center && centreFilter.includes(item.center))
+    }
+    if (groupFilter && groupFilter.length > 0) {
+      source = source.filter((item) => item.group && groupFilter.includes(item.group))
+    }
+    const names = [
+      ...new Set(
+        source
+          .flatMap((item) => [
+            (item.quotation_given_by_name || '').trim(),
+            (item.project_co_ordinator || '').trim(),
+          ])
+          .filter(Boolean),
+      ),
+    ]
+    return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [tableData, centreFilter, groupFilter])
+
+  useEffect(() => {
+    if (groupFilter && groupFilter.length > 0) {
+      const validGroups = new Set(groupOptions)
+      const newGroupFilter = groupFilter.filter((g) => validGroups.has(g))
+      if (newGroupFilter.length !== groupFilter.length) {
+        setGroupFilter(newGroupFilter)
+      }
+    }
+  }, [centreFilter, groupOptions])
+
+  useEffect(() => {
+    if (quotationGivenByFilter && quotationGivenByFilter.length > 0) {
+      const validNames = new Set(quotationGivenByOptions)
+      const newQFilter = quotationGivenByFilter.filter((n) => validNames.has(n))
+      if (newQFilter.length !== quotationGivenByFilter.length) {
+        setQuotationGivenByFilter(newQFilter)
+      }
+    }
+  }, [centreFilter, groupFilter, quotationGivenByOptions])
+
   const activeFilterCount = useMemo(() => {
     let count = 0
     if (projectNumberFilter.length > 0) count++
     if (centreFilter.length > 0) count++
     if (groupFilter.length > 0) count++
+    if (quotationGivenByFilter.length > 0) count++
     if (isAcknowledgedFilter !== null) count++
     if (smallValueProjectFilter !== null) count++
     if (errorDateFilter !== null) count++
     if (selectedDateField && startDate && endDate) count++
     return count
-  }, [projectNumberFilter, centreFilter, groupFilter, isAcknowledgedFilter, smallValueProjectFilter, errorDateFilter, selectedDateField, startDate, endDate])
+  }, [projectNumberFilter, centreFilter, groupFilter, quotationGivenByFilter, isAcknowledgedFilter, smallValueProjectFilter, errorDateFilter, selectedDateField, startDate, endDate])
 
   const departmentOptions = useMemo(
     () =>
@@ -3979,6 +4043,7 @@ function Proposals() {
                           setStatusFilter(null)
                           setProjectNumberFilter([])
                           setGroupFilter([])
+                          setQuotationGivenByFilter([])
                           setIsAcknowledgedFilter(null)
                           setSmallValueProjectFilter(null)
                           setErrorDateFilter(null)
@@ -4063,7 +4128,12 @@ function Proposals() {
                           ))}
                           {groupFilter.map((g) => (
                             <Tag key={`g-${g}`} closable onClose={() => setGroupFilter(groupFilter.filter((v) => v !== g))}>
-                              {formatGroupName(g)}
+                              Group: {formatGroupName(g)}
+                            </Tag>
+                          ))}
+                          {quotationGivenByFilter.map((q) => (
+                            <Tag key={`q-${q}`} closable onClose={() => setQuotationGivenByFilter(quotationGivenByFilter.filter((v) => v !== q))}>
+                              Given By: {q}
                             </Tag>
                           ))}
                           {isAcknowledgedFilter !== null && (
@@ -4125,6 +4195,40 @@ function Proposals() {
                               ))}
                             </Select>
                           </Col>
+
+                          <Col xs={24} sm={12} md={6}>
+                            <div className="mb-1 text-xs font-semibold text-slate-600">Group</div>
+                            <Select
+                              mode="multiple"
+                              placeholder="Select group"
+                              value={groupFilter}
+                              onChange={setGroupFilter}
+                              allowClear
+                              style={{ width: '100%' }}
+                            >
+                              {groupOptions.map((group) => (
+                                <Select.Option key={group} value={group}>{formatGroupName(group)}</Select.Option>
+                              ))}
+                            </Select>
+                          </Col>
+
+                          {currentUserRole !== 'scientist' && (
+                            <Col xs={24} sm={12} md={6}>
+                              <div className="mb-1 text-xs font-semibold text-slate-600">Quotation Given By</div>
+                              <Select
+                                mode="multiple"
+                                placeholder="Select quotation given by"
+                                value={quotationGivenByFilter}
+                                onChange={setQuotationGivenByFilter}
+                                allowClear
+                                style={{ width: '100%' }}
+                              >
+                                {quotationGivenByOptions.map((name) => (
+                                  <Select.Option key={name} value={name}>{name}</Select.Option>
+                                ))}
+                              </Select>
+                            </Col>
+                          )}
 
                           <Col xs={24} sm={12} md={6}>
                             <div className="mb-1 text-xs font-semibold text-slate-600">Is Acknowledged</div>
