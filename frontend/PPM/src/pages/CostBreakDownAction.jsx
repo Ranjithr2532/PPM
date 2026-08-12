@@ -63,6 +63,14 @@ const STANDARD_ROLES = [
 
 const api = axios.create({ baseURL: `${API_BASE_URL}/dynamic-tables` });
 
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
 /** POST /{projectId}/generate-word — saves as new version, downloads .docx */
 async function generateWordDocument(projectId, payload) {
     const res = await api.post(`/${projectId}/generate-word`, payload, { responseType: "blob" });
@@ -160,6 +168,15 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
         TotalAmount: 0,
         customValues: {},
     });
+
+    // Auto-open vertical window modal by default when opening section if it has 0 rows (Manpower only)
+    const autoOpenedRef = useRef(false);
+    useEffect(() => {
+        if (headerName === MANPOWER_HEADER && !autoOpenedRef.current && rows.length === 0) {
+            autoOpenedRef.current = true;
+            handleOpenAddDetails();
+        }
+    }, [headerName, rows.length]);
 
     const isRowComplete = useCallback((record) => {
         if (!record) return false;
@@ -496,7 +513,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     const handleRoleSelectOrChange = (index, value, option = null) => {
         const next = [...rows];
         const currentCb = next[index]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
-        
+
         let newRate = currentCb.rate || 0;
         if (option && (option.rate_other || option.rate_dev)) {
             if (!currentCb.rate || currentCb.rate === 0) {
@@ -858,71 +875,21 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                             return (
                                 <div className="flex items-center gap-2">
                                     {formMark}
-                                    <AutoComplete
+                                    <Input
                                         id={`row-desc-${index}`}
                                         value={record[col] || ""}
-                                        options={savedDescriptions}
-                                        filterOption={(inputValue, option) =>
-                                            option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
-                                        }
-                                        onChange={(value) => updateRow(index, col, value)}
-                                        onSelect={(value) => {
-                                            updateRow(index, col, value);
-                                            const match = savedDescriptions.find((item) => item.value === value);
-                                            if (match && match.rate > 0) {
-                                                const currentCb = record["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
-                                                const updatedCb = { ...currentCb, rate: match.rate };
-                                                const newAmount = computeRowAmount(updatedCb);
-                                                const nextRows = [...rows];
-                                                nextRows[index] = {
-                                                    ...nextRows[index],
-                                                    [col]: value,
-                                                    "Cost Breakup": updatedCb,
-                                                    "Total Amount": newAmount,
-                                                };
-                                                onChange({ ...headerItem, rows: nextRows });
-                                            }
-                                        }}
-                                        onBlur={(e) => {
-                                            const val = e.target.value;
-                                            const currentCb = record["Cost Breakup"] || {};
-                                            const rate = currentCb.rate || 0;
-                                            saveDescriptionToMemory(val, rate);
-                                        }}
-                                        style={{ width: "100%" }}
-                                    >
-                                        <Input
-                                            placeholder={`Enter ${col.toLowerCase()}...`}
-                                            className="text-[13.5px] font-medium"
-                                            style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
-                                        />
-                                    </AutoComplete>
+                                        onChange={(e) => updateRow(index, col, e.target.value)}
+                                        placeholder={`Enter ${col.toLowerCase()}...`}
+                                        className="text-[13.5px] font-medium"
+                                        style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
+                                    />
                                 </div>
                             );
                         }
                         return <Input value={record[col]} className="text-[13.5px] font-medium" onChange={(e) => updateRow(index, col, e.target.value)} />;
                     },
                 };
-            }),
-            {
-                title: (
-                    <Button
-                        size="small"
-                        type="text"
-                        icon={<PlusOutlined style={{ fontSize: 11 }} />}
-                        onClick={() => {
-                            setNewColumnName("");
-                            setAddingColumn(true);
-                        }}
-                        title="Add new column"
-                        className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                    >
-                        Add Column
-                    </Button>
-                ),
-                key: "__add_column__",
-                width: 110,
-            }
+            })
         );
     }
 
@@ -1017,6 +984,32 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 message.warning("Please select or enter a Role / Item name");
                 return;
             }
+            const cb = modalFormData.CostBreakup || {};
+            if (!cb.rate || Number(cb.rate) <= 0) {
+                message.warning("Please enter Price / Rate (₹)");
+                return;
+            }
+            const isMonthly = cb.type === "monthly";
+            if (isMonthly) {
+                if (!cb.months || Number(cb.months) <= 0) {
+                    message.warning("Please enter Months Required");
+                    return;
+                }
+            } else {
+                if (!cb.hours || Number(cb.hours) <= 0) {
+                    message.warning("Please enter Hours Required");
+                    return;
+                }
+                if (!cb.days || Number(cb.days) <= 0) {
+                    message.warning("Please enter Days Required");
+                    return;
+                }
+            }
+            if (!cb.quantity || Number(cb.quantity) <= 0) {
+                message.warning("Please enter Number of People");
+                return;
+            }
+
             const newAmount = computeRowAmount(modalFormData.CostBreakup);
             const newRowData = {
                 "Role": modalFormData.Role.trim(),
@@ -1095,28 +1088,37 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                             Subtotal: ₹{sectionSubtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                     </div>
-                    {onDeleteHeader && (
-                        <Popconfirm
-                            title={`Delete table "${headerName}"?`}
-                            description="This will permanently delete this section and all its rows."
-                            onConfirm={() => onDeleteHeader(headerName)}
-                            okText="Delete Table"
-                            cancelText="Cancel"
-                            okButtonProps={{ danger: true, size: "small" }}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setAddingColumn(true)}
+                            className="px-3 py-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
                         >
-                            <button
-                                type="button"
-                                className="px-3 py-1 text-xs font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200/80 hover:border-rose-600 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
+                            <PlusOutlined style={{ fontSize: 10 }} /> Add Column
+                        </button>
+                        {onDeleteHeader && (
+                            <Popconfirm
+                                title={`Delete table "${headerName}"?`}
+                                description="This will permanently delete this section and all its rows."
+                                onConfirm={() => onDeleteHeader(headerName)}
+                                okText="Delete Table"
+                                cancelText="Cancel"
+                                okButtonProps={{ danger: true, size: "small" }}
                             >
-                                <DeleteOutlined style={{ fontSize: 11 }} /> Delete Table
-                            </button>
-                        </Popconfirm>
-                    )}
+                                <button
+                                    type="button"
+                                    className="px-3 py-1 text-xs font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200/80 hover:border-rose-600 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
+                                >
+                                    <DeleteOutlined style={{ fontSize: 11 }} /> Delete Table
+                                </button>
+                            </Popconfirm>
+                        )}
+                    </div>
                 </div>
             )}
 
             <Table
-                rowKey={(_, index) => String(index)}
+                rowKey={(record) => record.id || record.Role || record.Description || JSON.stringify(record)}
                 columns={tableColumns}
                 dataSource={rows}
                 pagination={false}
@@ -1132,40 +1134,50 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                             style={{ justifySelf: "center" }}
                             className="font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
                         >
-                            + Add Details
+                            Add Details
                         </Button>
-                        {previewTotal !== null && (
-                            <div style={{ textAlign: "right", fontWeight: 600 }}>
-                                Total: {previewTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                        )}
                     </div>
                 )}
             />
 
-            {/* Vertical Window Data Entry Form Modal (Horizontal Label : Input Layout) */}
+            {/* Vertical Window Data Entry Form Modal */}
             <Modal
                 title={
-                    <div className="text-slate-900 font-semibold text-lg pb-2 font-sans border-b border-slate-100">
-                        {editingRowIndex === null ? `New ${headerName === MANPOWER_HEADER ? 'Manpower Item' : 'Item'}` : `Edit ${headerName === MANPOWER_HEADER ? 'Manpower Item' : 'Item'}`}
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 font-sans pr-6">
+                        <span className="text-slate-800 font-bold text-lg">
+                            {editingRowIndex === null
+                                ? `New ${headerName === MANPOWER_HEADER ? 'Manpower Role' : 'Item'}`
+                                : `Edit ${headerName === MANPOWER_HEADER ? 'Manpower Role' : 'Item'}`}
+                        </span>
+                        {headerName === MANPOWER_HEADER && (
+                            <a
+                                onClick={() => {
+                                    fetchOfficialRates();
+                                    setRatesModalOpen(true);
+                                }}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer flex items-center gap-1"
+                            >
+                                <InfoCircleOutlined /> View Rates Reference ↗
+                            </a>
+                        )}
                     </div>
                 }
                 open={rowFormModalOpen}
                 onCancel={() => setRowFormModalOpen(false)}
                 footer={null}
-                width={580}
+                width={560}
                 destroyOnClose
                 styles={{
-                    content: { borderRadius: "18px", padding: "32px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }
+                    content: { borderRadius: "12px", padding: "28px 32px 32px 32px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }
                 }}
             >
-                <div className="py-4 space-y-5 font-sans text-sm">
+                <div className="py-2 space-y-6 font-sans text-sm">
                     {headerName === MANPOWER_HEADER ? (
                         <>
-                            {/* Row 1: Role / Item */}
-                            <div className="flex items-center gap-4">
-                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                    Role / Item <span className="text-red-500">*</span> :
+                            {/* Row 1: Role */}
+                            <div className="flex items-start gap-4">
+                                <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0 pt-2">
+                                    Role <span className="text-red-500">*</span>
                                 </label>
                                 <div className="flex-1">
                                     <AutoComplete
@@ -1188,15 +1200,15 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                         onChange={(val) => setModalFormData((prev) => ({ ...prev, Role: val }))}
                                         style={{ width: "100%" }}
                                     >
-                                        <Input placeholder="Enter or select role..." className="rounded-lg py-2 font-normal text-slate-800" />
+                                        <Input placeholder="Enter or select role..." className="rounded-lg py-2 font-normal text-slate-800 border-slate-300" />
                                     </AutoComplete>
                                 </div>
                             </div>
 
                             {/* Row 2: Price / Rate */}
                             <div className="flex items-center gap-4">
-                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                    Price / Rate (₹) :
+                                <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                    Price <span className="text-red-500">*</span>
                                 </label>
                                 <div className="flex-1">
                                     <InputNumber
@@ -1209,16 +1221,16 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                                 CostBreakup: { ...prev.CostBreakup, rate: v ?? 0 },
                                             }))
                                         }
-                                        placeholder="Enter price or rate"
-                                        className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                        placeholder="Enter rate (₹)"
+                                        className="w-full rounded-lg py-1 font-normal text-slate-800 border-slate-300"
                                     />
                                 </div>
                             </div>
 
                             {/* Row 3: Basis Type */}
                             <div className="flex items-center gap-4">
-                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                    Basis Type :
+                                <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                    Basis Type
                                 </label>
                                 <div className="flex-1">
                                     <Select
@@ -1240,8 +1252,8 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
 
                             {/* Row 4: Hours / Months */}
                             <div className="flex items-center gap-4">
-                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                    {modalFormData.CostBreakup.type === "monthly" ? "Months Required :" : "Hours Required :"}
+                                <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                    {modalFormData.CostBreakup.type === "monthly" ? "Months Required" : "Hours Required"}
                                 </label>
                                 <div className="flex-1">
                                     <InputNumber
@@ -1262,16 +1274,16 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                             }))
                                         }
                                         placeholder="0"
-                                        className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                        className="w-full rounded-lg py-1 font-normal text-slate-800 border-slate-300"
                                     />
                                 </div>
                             </div>
 
-                            {/* Row 5: Days (if Hourly) */}
+                            {/* Row 5: Days Required (if Hourly) */}
                             {modalFormData.CostBreakup.type !== "monthly" && (
                                 <div className="flex items-center gap-4">
-                                    <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                        Days Required :
+                                    <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                        Days Required
                                     </label>
                                     <div className="flex-1">
                                         <InputNumber
@@ -1285,16 +1297,16 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                                 }))
                                             }
                                             placeholder="Days"
-                                            className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                            className="w-full rounded-lg py-1 font-normal text-slate-800 border-slate-300"
                                         />
                                     </div>
                                 </div>
                             )}
 
-                            {/* Row 6: Quantity */}
+                            {/* Row 6: Number of People */}
                             <div className="flex items-center gap-4">
-                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                    Default Quantity :
+                                <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                    Number of People
                                 </label>
                                 <div className="flex-1">
                                     <InputNumber
@@ -1308,18 +1320,18 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                             }))
                                         }
                                         placeholder="1"
-                                        className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                        className="w-full rounded-lg py-1 font-normal text-slate-800 border-slate-300"
                                     />
                                 </div>
                             </div>
 
                             {/* Row 7: Calculated Total */}
                             <div className="flex items-center gap-4">
-                                <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                    Calculated Total :
+                                <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                    Calculated Total
                                 </label>
                                 <div className="flex-1">
-                                    <div className="py-2 px-3 bg-slate-50 rounded-lg text-slate-900 font-bold text-sm border border-slate-200">
+                                    <div className="py-2.5 px-3.5 bg-slate-50 rounded-lg text-slate-900 font-bold text-sm border border-slate-200">
                                         ₹{computeRowAmount(modalFormData.CostBreakup).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </div>
                                 </div>
@@ -1329,24 +1341,22 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                         <>
                             {columns.map((col, cIdx) => (
                                 <div key={col} className="flex items-center gap-4">
-                                    <label className="w-36 text-right font-medium text-slate-700 text-xs shrink-0">
-                                        {col} {cIdx === 0 && <span className="text-red-500">*</span>} :
+                                    <label className="w-36 text-right font-medium text-slate-600 text-sm shrink-0">
+                                        {col} {cIdx === 0 && <span className="text-red-500">*</span>}
                                     </label>
                                     <div className="flex-1">
                                         {cIdx === 0 ? (
-                                            <AutoComplete
+                                            <Input
                                                 value={modalFormData.customValues[col] || ""}
-                                                options={savedDescriptions}
-                                                onChange={(val) =>
+                                                onChange={(e) =>
                                                     setModalFormData((prev) => ({
                                                         ...prev,
-                                                        customValues: { ...prev.customValues, [col]: val },
+                                                        customValues: { ...prev.customValues, [col]: e.target.value },
                                                     }))
                                                 }
-                                                style={{ width: "100%" }}
-                                            >
-                                                <Input placeholder={`Enter ${col.toLowerCase()}...`} className="rounded-lg py-2 font-normal text-slate-800" />
-                                            </AutoComplete>
+                                                placeholder={`Enter ${col.toLowerCase()}...`}
+                                                className="rounded-lg py-2 font-normal text-slate-800 border-slate-300"
+                                            />
                                         ) : col === "Total Amount" ? (
                                             <InputNumber
                                                 min={0}
@@ -1358,7 +1368,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                                         customValues: { ...prev.customValues, [col]: v ?? 0 },
                                                     }))
                                                 }
-                                                className="w-full rounded-lg py-0.5 font-normal text-slate-800"
+                                                className="w-full rounded-lg py-1 font-normal text-slate-800 border-slate-300"
                                             />
                                         ) : (
                                             <Input
@@ -1369,7 +1379,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                                         customValues: { ...prev.customValues, [col]: e.target.value },
                                                     }))
                                                 }
-                                                className="rounded-lg py-2 font-normal text-slate-800"
+                                                className="rounded-lg py-2 font-normal text-slate-800 border-slate-300"
                                             />
                                         )}
                                     </div>
@@ -1378,12 +1388,12 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                         </>
                     )}
 
-                    {/* Dark Full-Width Save Button */}
-                    <div className="pt-2">
+                    {/* Screenshot-Matching Solid Dark Save Button */}
+                    <div className="pt-4">
                         <button
                             type="button"
                             onClick={handleSaveModalForm}
-                            className="w-full py-3 bg-slate-900 hover:bg-slate-950 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer shadow-sm"
+                            className="w-full py-3 bg-[#2b2f38] hover:bg-[#1f2229] text-white font-medium rounded-lg text-sm transition-all cursor-pointer shadow-xs active:scale-[0.99]"
                         >
                             Save
                         </button>
@@ -1530,19 +1540,17 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 destroyOnClose
             >
                 <div className="py-2 space-y-3">
-                    <p className="text-xs text-slate-500">
-                        Type a column name and click <strong>Add Column</strong> (or press <strong>Enter</strong>). You can add multiple columns one by one, or enter comma-separated names (e.g. <code>Quantity, Unit Cost, Remarks</code>).
-                    </p>
                     <Input
-                        placeholder="e.g. Quantity, Unit Rate, Remarks..."
+                        placeholder="Enter column name..."
                         value={newColumnName}
                         onChange={(e) => setNewColumnName(e.target.value)}
                         onPressEnter={() => confirmAddColumn(true)}
+                        className="rounded-xl py-2 font-normal text-slate-800 border-slate-300"
                         autoFocus
                     />
                     {columns.length > 0 && (
                         <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] font-bold text-slate-400">Table Columns:</span>
+                            <span className="text-[11px] font-bold text-slate-400">Columns:</span>
                             {columns.map((col) => (
                                 <Tag key={col} color="blue" className="text-[11px] font-semibold rounded-md m-0">
                                     {col}
@@ -1556,15 +1564,13 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     );
 }
 
-
-
 function AddHeaderForm({ existingHeaderNames, onAdd, isEnteringHeader, onCancelHeader }) {
     const [customName, setCustomName] = useState("");
 
     const handleAddCustom = () => {
         const name = customName.trim();
         if (!name) {
-            message.warning("Enter a table name");
+            message.warning("Enter a section name");
             return;
         }
         if (existingHeaderNames.includes(name)) {
@@ -1582,20 +1588,36 @@ function AddHeaderForm({ existingHeaderNames, onAdd, isEnteringHeader, onCancelH
     if (!isEnteringHeader) return null;
 
     return (
-        <div style={{ border: "1px dashed #ccc", padding: 12, borderRadius: 8, marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 8 }}>
+        <div className="bg-blue-50/60 border border-blue-200/70 p-3.5 rounded-2xl mb-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Add New Cost Section Table
+                </span>
+                <button
+                    type="button"
+                    onClick={onCancelHeader}
+                    className="text-slate-400 hover:text-slate-600 text-xs font-medium cursor-pointer"
+                >
+                    Cancel
+                </button>
+            </div>
+
+            <div className="flex gap-2">
                 <Input
                     autoFocus
-                    placeholder="Enter Table Name"
+                    placeholder="Enter section name..."
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
                     onPressEnter={handleAddCustom}
+                    className="rounded-xl py-2 font-normal text-slate-800 border-slate-300"
                 />
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleAddCustom}>
-                    Create
-                </Button>
-                <Button onClick={onCancelHeader}>
-                    Cancel
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={handleAddCustom}
+                    className="bg-blue-600 hover:bg-blue-700 font-bold rounded-xl h-auto py-2"
+                >
+                    Create Section
                 </Button>
             </div>
         </div>
@@ -1764,6 +1786,29 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
 
     const closeModal = () => onClose();
 
+    const handleResetWorkspace = () => {
+        const initial = {
+            header_name: MANPOWER_HEADER,
+            columns: MANPOWER_COLUMNS,
+            rows: [],
+        };
+        setHeaders([initial]);
+        setActiveKey(MANPOWER_HEADER);
+        setCurrentVersion(null);
+        setIsEnteringHeader(false);
+        setLoadingSaved(false);
+        message.success("Workspace reset to initial state");
+    };
+
+    const handleOpenAddSection = () => {
+        const manpowerHeader = headers.find((h) => h.header_name === MANPOWER_HEADER);
+        if (!manpowerHeader || !manpowerHeader.rows || manpowerHeader.rows.length === 0) {
+            message.warning("Please enter at least one Manpower role before adding another section.");
+            return;
+        }
+        setIsEnteringHeader(true);
+    };
+
     const handleAddHeader = (item) => {
         setHeaders((prev) => [...prev, item]);
         setActiveKey(item.header_name);
@@ -1851,6 +1896,22 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
     const activeHeader = headers.find((h) => h.header_name === activeKey) || headers[0];
     const existingHeaderNames = headers.map((h) => h.header_name);
 
+    const activeHeaderSubtotal = useMemo(() => {
+        if (!activeHeader) return 0;
+        if (activeHeader.header_name === MANPOWER_HEADER) {
+            return (activeHeader.rows || []).reduce((sum, r) => {
+                const cb = r["Cost Breakup"] || {};
+                const type = cb.type ?? "hourly";
+                if (type === "monthly") {
+                    return sum + (cb.rate || 0) * (cb.months || 0) * (cb.quantity || 1);
+                } else {
+                    return sum + (cb.rate || 0) * (cb.hours || 0) * (cb.days || 0) * (cb.quantity || 1);
+                }
+            }, 0);
+        }
+        return (activeHeader.rows || []).reduce((sum, r) => sum + (Number(r["Total Amount"]) || 0), 0);
+    }, [activeHeader]);
+
     return (
         <>
             <Modal
@@ -1869,150 +1930,151 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
                     }
                 }}
             >
-                {/* Header section */}
-                <div className="mb-6">
-                    <span className="inline-block px-3 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 rounded-full tracking-wider uppercase">
-                        COST ESTIMATION
-                    </span>
-                    <div className="flex items-center gap-3 mt-2">
-                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                            {title || "Industry 4.0 Pilot Project"}
-                        </h1>
-                        {currentVersion && (
-                            <Tag color="blue" className="font-semibold rounded-md">
-                                Editing: Version {currentVersion}
-                            </Tag>
-                        )}
+                {/* Header section with Top Action Buttons */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200/80">
+                    <div>
+                        <span className="inline-block px-3 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 rounded-full tracking-wider uppercase">
+                            COST ESTIMATION
+                        </span>
+                        <div className="flex items-center gap-3 mt-1.5">
+                            <h1 className="text-2xl font-normal text-slate-900 font-['Times_New_Roman',serif]">
+                                {title || "Industry 4.0 Pilot Project"}
+                            </h1>
+                            {currentVersion && (
+                                <Tag color="blue" className="font-semibold rounded-md">
+                                    Editing: Version {currentVersion}
+                                </Tag>
+                            )}
+                        </div>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                        Role, cost breakup (rate × hours × days × quantity), amount calculated automatically.
-                    </p>
+
+                    {/* Top Action Buttons Group */}
+                    <div className="flex items-center gap-2.5 shrink-0">
+                        <button
+                            onClick={handleResetWorkspace}
+                            className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <ReloadOutlined /> Reset
+                        </button>
+                        <button
+                            onClick={() => setHistoryOpen(true)}
+                            disabled={!projectId}
+                            className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <HistoryOutlined /> History
+                        </button>
+                        <button
+                            onClick={handleGenerate}
+                            disabled={generating}
+                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        >
+                            <FileWordOutlined /> {generating ? "Generating..." : "Generate Word Document"}
+                        </button>
+                    </div>
                 </div>
 
-                {/* 2-Column Split Layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    {/* Left Column: Tables Studio */}
-                    <div className="lg:col-span-8 bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-4">
-                        {/* Tab Bar Header */}
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div className="flex items-center gap-2 overflow-x-auto">
-                                {headers.map((h) => {
-                                    const isActive = h.header_name === activeKey;
-                                    const isManpower = h.header_name === MANPOWER_HEADER;
-                                    const rowCount = (h.rows || []).length;
-                                    return (
-                                        <div
-                                            key={h.header_name}
-                                            onClick={() => setActiveKey(h.header_name)}
-                                            className={`group flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer select-none ${isActive
-                                                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10'
-                                                : 'text-slate-600 hover:bg-slate-100/90 border border-transparent'
-                                                }`}
-                                        >
-                                            <span className="font-extrabold tracking-tight">{h.header_name}</span>
-                                            <span className={`px-1.5 py-0.2 text-[10px] font-extrabold rounded-md ${isActive ? 'bg-slate-800 text-slate-300' : 'bg-slate-200/80 text-slate-500'
-                                                }`}>
-                                                {rowCount}
-                                            </span>
-                                            {!isManpower && (
-                                                <Popconfirm
-                                                    title={`Delete table "${h.header_name}"?`}
-                                                    description="This will permanently delete this section and all its rows."
-                                                    onConfirm={(e) => {
-                                                        e?.stopPropagation();
-                                                        handleRemoveHeader(h.header_name);
-                                                    }}
-                                                    onCancel={(e) => e?.stopPropagation()}
-                                                    okText="Delete"
-                                                    cancelText="Cancel"
-                                                    okButtonProps={{ danger: true, size: "small" }}
-                                                    cancelButtonProps={{ size: "small" }}
+                {/* Full-Width Tables Studio Workspace */}
+                <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-5">
+                    {/* Tab Bar Header */}
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 overflow-x-auto">
+                            {headers.map((h) => {
+                                const isActive = h.header_name === activeKey;
+                                const isManpower = h.header_name === MANPOWER_HEADER;
+                                const rowCount = (h.rows || []).length;
+                                return (
+                                    <div
+                                        key={h.header_name}
+                                        onClick={() => setActiveKey(h.header_name)}
+                                        className={`group flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer select-none ${isActive
+                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 border border-blue-600'
+                                            : 'text-slate-600 hover:bg-slate-100 border border-slate-200/80 bg-slate-50/50'
+                                            }`}
+                                    >
+                                        <span className="font-semibold tracking-tight">{h.header_name}</span>
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${isActive ? 'bg-blue-700/80 text-blue-50' : 'bg-slate-200/70 text-slate-500'
+                                            }`}>
+                                            {rowCount}
+                                        </span>
+                                        {!isManpower && (
+                                            <Popconfirm
+                                                title={`Delete table "${h.header_name}"?`}
+                                                description="This will permanently delete this section and all its rows."
+                                                onConfirm={(e) => {
+                                                    e?.stopPropagation();
+                                                    handleRemoveHeader(h.header_name);
+                                                }}
+                                                onCancel={(e) => e?.stopPropagation()}
+                                                okText="Delete"
+                                                cancelText="Cancel"
+                                                okButtonProps={{ danger: true, size: "small" }}
+                                                cancelButtonProps={{ size: "small" }}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => e?.stopPropagation()}
+                                                    className={`p-0.5 rounded-full transition-all cursor-pointer ${isActive
+                                                        ? 'text-blue-200 hover:text-white hover:bg-blue-700'
+                                                        : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                                                        }`}
+                                                    title="Delete section table"
                                                 >
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => e?.stopPropagation()}
-                                                        className={`p-0.5 rounded-full transition-all cursor-pointer ${isActive
-                                                            ? 'text-slate-400 hover:text-white hover:bg-slate-700'
-                                                            : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                                                            }`}
-                                                        title="Delete section table"
-                                                    >
-                                                        <CloseOutlined style={{ fontSize: 10 }} />
-                                                    </button>
-                                                </Popconfirm>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                                <button
-                                    onClick={() => setIsEnteringHeader(true)}
-                                    className="px-3.5 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 border border-blue-200/80 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
-                                >
-                                    <PlusOutlined style={{ fontSize: 10 }} /> Add Section
-                                </button>
-                            </div>
+                                                    <CloseOutlined style={{ fontSize: 10 }} />
+                                                </button>
+                                            </Popconfirm>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            <button
+                                onClick={handleOpenAddSection}
+                                className="px-3.5 py-2 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 border border-blue-200/80 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                            >
+                                <PlusOutlined style={{ fontSize: 10 }} /> Add Section
+                            </button>
                         </div>
 
-                        <AddHeaderForm
-                            existingHeaderNames={existingHeaderNames}
-                            onAdd={handleAddHeader}
-                            isEnteringHeader={isEnteringHeader}
-                            onCancelHeader={() => setIsEnteringHeader(false)}
-                        />
-
-                        {isEnteringHeader ? null : headers.length === 0 ? (
-                            <Empty description="No cost sections added yet" />
-                        ) : activeHeader ? (
-                            <HeaderRowsEditor
-                                key={activeHeader.header_name}
-                                headerItem={activeHeader}
-                                onChange={(updated) => {
-                                    const idx = headers.findIndex((h) => h.header_name === activeHeader.header_name);
-                                    if (idx > -1) handleHeaderChange(idx, updated);
-                                }}
-                                onNewTable={() => setIsEnteringHeader(true)}
-                                onDeleteHeader={handleRemoveHeader}
-                            />
-                        ) : null}
+                        {/* Grand Total Summary Display */}
+                        <div className="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-200/80 text-blue-900 px-4 py-2 rounded-xl">
+                            <span className="text-xs font-semibold text-blue-700 tracking-wider">Grand Total:</span>
+                            <span className="text-base font-extrabold text-blue-700">
+                                ₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
                     </div>
 
-                    {/* Right Column: Grand Total & Actions Sidebar */}
-                    <div className="lg:col-span-4 space-y-4">
-                        {/* Navy Grand Total Box */}
-                        <div className="bg-[#1e2238] rounded-2xl p-6 text-white shadow-md space-y-2">
-                            <div className="text-[11px] font-bold tracking-wider uppercase text-slate-400">
-                                GRAND TOTAL
-                            </div>
-                            <div className="text-3xl font-black tracking-tight text-white">
-                                ₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                            <div className="text-xs text-slate-400">
-                                Across {headers.length} {headers.length === 1 ? 'category' : 'categories'}
-                            </div>
-                        </div>
+                    <AddHeaderForm
+                        existingHeaderNames={existingHeaderNames}
+                        onAdd={handleAddHeader}
+                        isEnteringHeader={isEnteringHeader}
+                        onCancelHeader={() => setIsEnteringHeader(false)}
+                    />
 
-                        {/* Action Buttons Card */}
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-3">
-                            <button
-                                onClick={closeModal}
-                                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <ReloadOutlined /> Cancel / Reset
-                            </button>
-                            <button
-                                onClick={() => setHistoryOpen(true)}
-                                disabled={!projectId}
-                                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <HistoryOutlined /> History
-                            </button>
-                            <button
-                                onClick={handleGenerate}
-                                disabled={generating}
-                                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
-                            >
-                                <FileWordOutlined /> {generating ? "Generating..." : "Generate Word Document"}
-                            </button>
+                    {isEnteringHeader ? null : headers.length === 0 ? (
+                        <Empty description="No cost sections added yet" />
+                    ) : activeHeader ? (
+                        <HeaderRowsEditor
+                            key={activeHeader.header_name}
+                            headerItem={activeHeader}
+                            onChange={(updated) => {
+                                const idx = headers.findIndex((h) => h.header_name === activeHeader.header_name);
+                                if (idx > -1) handleHeaderChange(idx, updated);
+                            }}
+                            onNewTable={() => setIsEnteringHeader(true)}
+                            onDeleteHeader={handleRemoveHeader}
+                        />
+                    ) : null}
+
+                    {/* Bottom Active Table Estimated Total Footer Bar */}
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs">
+                        <span className="text-slate-500 font-medium">
+                            Section: <strong className="text-slate-800 font-bold">{activeHeader?.header_name || "Section"}</strong> ({(activeHeader?.rows || []).length} {(activeHeader?.rows || []).length === 1 ? 'row' : 'rows'})
+                        </span>
+                        <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                            <span>Estimated Total ({activeHeader?.header_name || "Section"}):</span>
+                            <span className="text-lg font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200/80">
+                                ₹{activeHeaderSubtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
                         </div>
                     </div>
                 </div>
