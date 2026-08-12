@@ -40,6 +40,7 @@ import { formatDateTime } from '../config/date.js'
 import dayjs from 'dayjs'
 import { ExcelRenderer } from 'react-excel-renderer'
 import mammoth from 'mammoth'
+import { NotConvertedDocumentsView } from '../utils/notconverteddocuments.jsx'
 
 const { Title, Text } = Typography
 const { TextArea } = Input
@@ -140,6 +141,8 @@ const getProjectTheme = (projectNumber) => {
 function Projects() {
   const apiBase = API_BASE_URL
   console.log('--- RENDERING UNIFIED PROJECTS PAGE ---')
+
+  const [mainSectionTab, setMainSectionTab] = useState('projects')
 
   // Projects list state
   const [projectRows, setProjectRows] = useState([])
@@ -1404,6 +1407,43 @@ function Projects() {
     )
   }
 
+  const renderTopTabs = () => (
+    <div className="rounded-2xl bg-white px-6 pt-3 pb-0 shadow-sm border border-gray-100 mb-4">
+      <Tabs
+        activeKey={mainSectionTab}
+        onChange={setMainSectionTab}
+        size="large"
+        items={[
+          {
+            key: 'projects',
+            label: (
+              <span className="text-base font-semibold px-1">
+                <FileTextOutlined className="mr-2" /> Projects
+              </span>
+            ),
+          },
+          {
+            key: 'proposals',
+            label: (
+              <span className="text-base font-semibold px-1">
+                <InboxOutlined className="mr-2" /> Proposals (Not Converted)
+              </span>
+            ),
+          },
+        ]}
+      />
+    </div>
+  )
+
+  if (mainSectionTab === 'proposals') {
+    return (
+      <div className="space-y-4">
+        {renderTopTabs()}
+        <NotConvertedDocumentsView />
+      </div>
+    )
+  }
+
   // Project details view
   if (selectedProject) {
     const getAllotmentPaymentRow = (index) => {
@@ -1412,7 +1452,9 @@ function Projects() {
     }
 
     return (
-      <div className="rounded-3xl bg-white p-6 shadow-sm">
+      <div className="space-y-4">
+        {renderTopTabs()}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button
@@ -2726,6 +2768,7 @@ function Projects() {
         </Modal>
 
       </div>
+      </div>
     )
   }
 
@@ -2763,7 +2806,9 @@ function Projects() {
 
   // Projects list view
   return (
-    <div className="rounded-3xl bg-white p-6 shadow-sm">
+    <div className="space-y-4">
+      {renderTopTabs()}
+      <div className="rounded-3xl bg-white p-6 shadow-sm">
       <Title level={3}>Projects</Title>
 
       <div className="mb-6 flex flex-wrap gap-4 items-center">
@@ -2904,6 +2949,7 @@ function Projects() {
           })}
         </div>
       )}
+    </div>
     </div>
   )
 }
