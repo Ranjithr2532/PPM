@@ -2,12 +2,17 @@ import os
 import tempfile
 import uuid
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 from docx import Document as DocxDocument
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import qn, nsdecls
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from docx.shared import RGBColor, Pt
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -17,25 +22,36 @@ from services.dynamic_table_headers import compute_rows_for_header, set_cell_bac
 
 router = APIRouter(prefix="/dynamic-tables", tags=["Dynamic Tables"])
 
+# ------------------------------------------------------------------
+# Design tokens for the compact/simple document style
+# ------------------------------------------------------------------
+INK = RGBColor(0x22, 0x22, 0x22)
+MUTE = RGBColor(0x66, 0x66, 0x66)
+ACCENT = RGBColor(0x7A, 0x2E, 0x2E)
+RULE_HEX = "CFCFCF"
+LIGHT_HEX = "F7F7F7"
+DARK_HEX = "222222"
+FONT = "Calibri"
+
 
 def format_indian_currency(amount: float) -> str:
     s = f"{amount:.2f}"
     parts = s.split(".")
     integer_part = parts[0]
     decimal_part = parts[1] if len(parts) > 1 else "00"
-    
+
     reversed_int = integer_part[::-1]
     first_three = reversed_int[:3]
     remaining = reversed_int[3:]
-    
+
     groups = [first_three]
     for i in range(0, len(remaining), 2):
-        groups.append(remaining[i:i+2])
-        
+        groups.append(remaining[i:i + 2])
+
     formatted_int = ",".join(groups)[::-1]
     if formatted_int.startswith("-,") or formatted_int.startswith("-"):
         formatted_int = "-" + formatted_int.replace("-", "").lstrip(",")
-        
+
     return f"{formatted_int}.{decimal_part}"
 
 
@@ -53,8 +69,6 @@ class GenerateWordPayload(BaseModel):
 
 # ------------------------------------------------------------------
 # GET /dynamic-tables/{project_id}
-# Returns the LATEST version's tables for a project (for auto-load
-# when the modal opens).
 # ------------------------------------------------------------------
 @router.get("/{project_id}")
 def get_saved_tables(project_id: int, db: Session = Depends(get_db)):
@@ -62,7 +76,6 @@ def get_saved_tables(project_id: int, db: Session = Depends(get_db)):
     Returns the latest version's (raw, editable) tables for a project.
     Frontend uses this to pre-populate the Cost Estimation modal.
     """
-    # Find the highest version number saved for this project
     max_version = (
         db.query(func.max(DynamicTable.version))
         .filter(DynamicTable.project_id == project_id)
@@ -92,8 +105,6 @@ def get_saved_tables(project_id: int, db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------
 # GET /dynamic-tables/{project_id}/versions
-# Returns a summary list of all versions for this project.
-# Used by the History drawer to list versions with dates.
 # ------------------------------------------------------------------
 @router.get("/{project_id}/versions")
 def list_versions(project_id: int, db: Session = Depends(get_db)):
@@ -101,7 +112,6 @@ def list_versions(project_id: int, db: Session = Depends(get_db)):
     Returns all distinct versions for a project along with metadata
     (who created it, when). One entry per version number.
     """
-    # Get the first row per version (for metadata) ordered by version asc
     subq = (
         db.query(
             DynamicTable.version,
@@ -126,7 +136,6 @@ def list_versions(project_id: int, db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------
 # GET /dynamic-tables/{project_id}/version/{version}
-# Loads table data for one specific version.
 # ------------------------------------------------------------------
 @router.get("/{project_id}/version/{version}")
 def get_version_tables(project_id: int, version: int, db: Session = Depends(get_db)):
@@ -160,7 +169,6 @@ def get_version_tables(project_id: int, version: int, db: Session = Depends(get_
 
 # ------------------------------------------------------------------
 # DELETE /dynamic-tables/{project_id}/version/{version}
-# Permanently deletes all rows belonging to one specific version.
 # ------------------------------------------------------------------
 @router.delete("/{project_id}/version/{version}")
 def delete_version(project_id: int, version: int, db: Session = Depends(get_db)):
@@ -188,37 +196,33 @@ def delete_version(project_id: int, version: int, db: Session = Depends(get_db))
 # ------------------------------------------------------------------
 # POST /dynamic-tables/{project_id}/generate-word
 # Saves tables as a NEW version (never overwrites old versions),
-# then returns the formatted .docx file.
+# then returns the formatted .docx file in the compact/simple style.
 # ------------------------------------------------------------------
 @router.post("/{project_id}/generate-word")
 def save_and_generate_word_document(
     project_id: int, payload: GenerateWordPayload, db: Session = Depends(get_db)
 ):
     """
-    Determines the current max version for this project, saves all
-    tables as (max + 1), then generates and returns a formatted .docx.
-    Old versions are never deleted.
+    Saves all tables under a version number and generates a compact,
+    single-accent-color corporate Word proposal.
     """
-    
-
     if not payload.tables:
         raise HTTPException(status_code=400, detail="At least one table is required")
 
     # 1. Check if this exact table configuration matches any existing version to prevent duplicates
     matched_version = None
-    # Get all unique versions for this project
     versions = [v[0] for v in db.query(DynamicTable.version).filter(DynamicTable.project_id == project_id).distinct().all()]
-    
+
     for ver in versions:
         db_tables = db.query(DynamicTable).filter(
             DynamicTable.project_id == project_id,
             DynamicTable.version == ver
         ).order_by(DynamicTable.header_name).all()
-        
+
         p_tables = sorted(payload.tables, key=lambda x: x.header_name)
         if len(db_tables) != len(p_tables):
             continue
-            
+
         match = True
         for db_tab, p_tab in zip(db_tables, p_tables):
             if db_tab.header_name != p_tab.header_name or db_tab.columns != p_tab.columns or db_tab.rows != p_tab.rows:
@@ -231,7 +235,6 @@ def save_and_generate_word_document(
     if matched_version is not None:
         new_version = matched_version
     else:
-        # Find the next version number for this project
         max_version = (
             db.query(func.max(DynamicTable.version))
             .filter(DynamicTable.project_id == project_id)
@@ -239,7 +242,6 @@ def save_and_generate_word_document(
         ) or 0
         new_version = max_version + 1
 
-        # Save all tables under the new version (old rows untouched)
         for item in payload.tables:
             db.add(
                 DynamicTable(
@@ -253,90 +255,320 @@ def save_and_generate_word_document(
             )
         db.commit()
 
-    # 3. Build the Word document from freshly computed rows (display-only, never persisted)
+    # 2. Build the compact/simple corporate Word document (Targeted for 1-page layout)
     doc = DocxDocument()
 
-    title_heading = doc.add_heading(payload.title or "Cost Breakdown", level=1)
-    title_heading.runs[0].font.color.rgb = RGBColor(0x2B, 0x57, 0x9A)
+    for section in doc.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.6)
+        section.right_margin = Inches(0.6)
 
-    if payload.created_by:
-        meta = doc.add_paragraph()
-        meta_run = meta.add_run(f"Prepared by: {payload.created_by}")
-        meta_run.font.size = Pt(10)
-        meta_run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+    # ---- low-level OOXML helpers -----------------------------------
+    def set_cell_padding(cell, top=45, bottom=45, left=100, right=100):
+        tcPr = cell._tc.get_or_add_tcPr()
+        tcMar = OxmlElement('w:tcMar')
+        for margin_name, val in [('top', top), ('left', left), ('bottom', bottom), ('right', right)]:
+            node = OxmlElement(f'w:{margin_name}')
+            node.set(qn('w:w'), str(val))
+            node.set(qn('w:type'), 'dxa')
+            tcMar.append(node)
+        tcPr.append(tcMar)
 
+    def set_cell_border(cell, top=None, left=None, bottom=None, right=None):
+        """Each side, if given, is a dict: {"sz": int, "color": "RRGGBB", "val": "single"}"""
+        tcPr = cell._tc.get_or_add_tcPr()
+        tcBorders = OxmlElement('w:tcBorders')
+        for side, spec in [('top', top), ('left', left), ('bottom', bottom), ('right', right)]:
+            el = OxmlElement(f'w:{side}')
+            if spec is None:
+                el.set(qn('w:val'), 'none')
+            else:
+                el.set(qn('w:val'), spec.get('val', 'single'))
+                el.set(qn('w:sz'), str(spec.get('sz', 4)))
+                el.set(qn('w:space'), '0')
+                el.set(qn('w:color'), spec.get('color', '000000'))
+            tcBorders.append(el)
+        tcPr.append(tcBorders)
 
+    def apply_table_no_borders(table):
+        tblPr = table._tbl.tblPr
+        borders_el = parse_xml(f'''
+            <w:tblBorders {nsdecls("w")}>
+                <w:top w:val="none"/>
+                <w:left w:val="none"/>
+                <w:bottom w:val="none"/>
+                <w:right w:val="none"/>
+                <w:insideH w:val="none"/>
+                <w:insideV w:val="none"/>
+            </w:tblBorders>
+        ''')
+        tbl_look = tblPr.find(qn('w:tblLook'))
+        if tbl_look is not None:
+            tbl_look.addprevious(borders_el)
+        else:
+            tblPr.append(borders_el)
 
-    doc.add_paragraph()
+    def set_row_cant_split(row):
+        trPr = row._tr.get_or_add_trPr()
+        trPr.append(OxmlElement('w:cantSplit'))
 
+    def set_row_repeat_header(row):
+        trPr = row._tr.get_or_add_trPr()
+        trPr.append(OxmlElement('w:tblHeader'))
+
+    def run_size(run, pt):
+        run.font.size = Pt(pt)
+
+    def add_section_heading(text):
+        p = doc.add_paragraph()
+        pPr = p._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        bottom.set(qn('w:val'), 'single')
+        bottom.set(qn('w:sz'), '6')
+        bottom.set(qn('w:space'), '2')
+        bottom.set(qn('w:color'), '7A2E2E')
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
+        p.paragraph_format.space_before = Pt(8)
+        p.paragraph_format.space_after = Pt(3)
+        r = p.add_run(text)
+        r.font.bold = True
+        run_size(r, 9.5)
+        r.font.name = FONT
+        r.font.color.rgb = INK
+        return p
+
+    def add_subsection_heading(text):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(5)
+        p.paragraph_format.space_after = Pt(2)
+        r = p.add_run(text)
+        r.font.bold = True
+        run_size(r, 9)
+        r.font.name = FONT
+        r.font.color.rgb = ACCENT
+        return p
+
+    def build_data_table(headers, rows, is_total_row_fn):
+        n_cols = len(headers)
+        table = doc.add_table(rows=1, cols=n_cols)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        apply_table_no_borders(table)
+
+        header_cells = table.rows[0].cells
+        set_row_repeat_header(table.rows[0])
+        set_row_cant_split(table.rows[0])
+        for c_idx, htext in enumerate(headers):
+            cell = header_cells[c_idx]
+            set_cell_border(cell, bottom={"sz": 6, "color": DARK_HEX})
+            set_cell_background(cell, LIGHT_HEX)
+            set_cell_padding(cell, top=45, bottom=45, left=80, right=80)
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
+            is_last = (c_idx == n_cols - 1)
+            if is_last:
+                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            r = p.add_run(str(htext))
+            r.font.bold = True
+            run_size(r, 8.5)
+            r.font.name = FONT
+            r.font.color.rgb = INK
+
+        for row_data in rows:
+            row_cells = table.add_row().cells
+            set_row_cant_split(table.rows[-1])
+            is_total = is_total_row_fn(row_data)
+            bg = LIGHT_HEX if is_total else None
+
+            for c_idx, htext in enumerate(headers):
+                cell = row_cells[c_idx]
+                if is_total:
+                    set_cell_border(cell, top={"sz": 5, "color": DARK_HEX})
+                else:
+                    set_cell_border(cell, bottom={"sz": 2, "color": RULE_HEX})
+                if bg:
+                    set_cell_background(cell, bg)
+                set_cell_padding(cell, top=40, bottom=40, left=80, right=80)
+
+                raw_val = row_data.get(htext, "")
+                if isinstance(raw_val, (int, float)):
+                    cell_value = format_indian_currency(raw_val)
+                else:
+                    cell_value = str(raw_val if raw_val is not None else "")
+
+                p = cell.paragraphs[0]
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(0)
+                is_last = (c_idx == n_cols - 1)
+                if is_last:
+                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                r = p.add_run(cell_value)
+                run_size(r, 9 if is_total else 8.5)
+                r.font.name = FONT
+                r.font.bold = bool(is_total)
+                r.font.color.rgb = INK
+        return table
+
+    # ---- Header / Title ----
+    header_para = doc.add_paragraph()
+    header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    header_para.paragraph_format.space_before = Pt(0)
+    header_para.paragraph_format.space_after = Pt(2)
+
+    sub_run = header_para.add_run("Standard Project Cost Estimation Proposal\n")
+    run_size(sub_run, 8)
+    sub_run.font.bold = True
+    sub_run.font.name = FONT
+    sub_run.font.color.rgb = ACCENT
+
+    title_run = header_para.add_run(payload.title or "Industry 4.0 Pilot Project")
+    run_size(title_run, 15)
+    title_run.font.bold = True
+    title_run.font.name = FONT
+    title_run.font.color.rgb = INK
+
+    # ---- Metadata block (compact, thin rule between rows) ----
+    meta_table = doc.add_table(rows=4, cols=2)
+    meta_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    apply_table_no_borders(meta_table)
+
+    meta_items = [
+        ("Project Name", payload.title or "Industry 4.0 Pilot Project"),
+        ("Prepared By", payload.created_by or "Project Management Team"),
+        ("Date Created", datetime.now().strftime("%d-%m-%Y")),
+        ("Document Version", f"Version {new_version}"),
+    ]
+
+    for idx, (lbl, v) in enumerate(meta_items):
+        row_cells = meta_table.rows[idx].cells
+        for cell in row_cells:
+            set_cell_border(cell, bottom={"sz": 2, "color": RULE_HEX})
+            set_cell_padding(cell, top=30, bottom=30, left=0, right=60)
+
+        p0 = row_cells[0].paragraphs[0]
+        p0.paragraph_format.space_before = Pt(0)
+        p0.paragraph_format.space_after = Pt(0)
+        r0 = p0.add_run(lbl)
+        r0.font.bold = True
+        run_size(r0, 8.5)
+        r0.font.name = FONT
+        r0.font.color.rgb = MUTE
+
+        p1 = row_cells[1].paragraphs[0]
+        p1.paragraph_format.space_before = Pt(0)
+        p1.paragraph_format.space_after = Pt(0)
+        r1 = p1.add_run(v)
+        run_size(r1, 8.5)
+        r1.font.name = FONT
+        r1.font.color.rgb = INK
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+    # ---- Pre-compute totals ----
+    computed_tables_data = []
     grand_total = 0.0
     table_letters = []
 
     for idx, item in enumerate(payload.tables):
         if not item.columns:
-            raise HTTPException(
-                status_code=400,
-                detail=f"'{item.header_name}' requires at least one column",
-            )
+            raise HTTPException(status_code=400, detail=f"'{item.header_name}' requires at least one column")
 
-        rows, total_amount = compute_rows_for_header(
-            item.header_name, item.rows, item.columns
-        )
-        
-        letter = chr(65 + idx)  # A, B, C, D...
+        rows, total_amount = compute_rows_for_header(item.header_name, item.rows, item.columns)
+        letter = chr(65 + idx)
         if total_amount is not None:
             grand_total += total_amount
             table_letters.append(letter)
+        computed_tables_data.append((letter, item.header_name, item.columns, rows, total_amount))
 
-        section_heading = doc.add_heading(f"{letter}. {item.header_name}", level=2)
-        section_heading.runs[0].font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+    # ---- 1. Executive Financial Summary ----
+    add_section_heading("1. Executive Financial Summary")
 
-        word_table = doc.add_table(rows=1, cols=len(item.columns))
-        word_table.style = "Table Grid"
+    exec_headers = ["Ref", "Cost Section Category", "Subtotal (₹)"]
+    exec_rows = [
+        {"Ref": f"Section {let}", "Cost Section Category": h_name, "Subtotal (₹)": (sub_tot or 0.0)}
+        for (let, h_name, cols, r_data, sub_tot) in computed_tables_data
+    ]
+    exec_rows.append({"Ref": "", "Cost Section Category": "Grand Total", "Subtotal (₹)": grand_total})
 
-        header_cells = word_table.rows[0].cells
-        for col_idx, col_name in enumerate(item.columns):
-            header_cells[col_idx].text = str(col_name)
-            set_cell_background(header_cells[col_idx], "EDF2F7")
-            for p in header_cells[col_idx].paragraphs:
-                for run in p.runs:
-                    run.font.bold = True
-
-        for row_data in rows:
-            row_cells = word_table.add_row().cells
-            first_val = str(row_data.get(item.columns[0], "") or "").lower()
-            is_total_row = "total" in first_val
-
-            for col_idx, col_name in enumerate(item.columns):
-                raw_val = row_data.get(col_name, "")
-                if isinstance(raw_val, (int, float)):
-                    cell_value = format_indian_currency(raw_val)
-                else:
-                    cell_value = str(raw_val or "")
-                row_cells[col_idx].text = cell_value
-                if is_total_row:
-                    set_cell_background(row_cells[col_idx], "F7FAFC")
-                    for p in row_cells[col_idx].paragraphs:
-                        for run in p.runs:
-                            run.font.bold = True
-
-        doc.add_paragraph()
-
-    doc.add_paragraph()
-    summary_para = doc.add_paragraph()
-    summary_run = summary_para.add_run(
-        f"The Amount for this project {payload.title or ''} is."
+    build_data_table(
+        exec_headers,
+        exec_rows,
+        is_total_row_fn=lambda r: r.get("Cost Section Category") == "Grand Total",
     )
-    summary_run.font.size = Pt(11)
 
-    total_para = doc.add_paragraph()
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+    # ---- 2. Detailed Cost Breakdown ----
+    add_section_heading("2. Detailed Cost Breakdown")
+
+    for (let, h_name, columns, rows, total_amount) in computed_tables_data:
+        add_subsection_heading(f"Section {let} — {h_name}")
+        # columns here can be any length — a 3-column table and a
+        # 7-column table both render correctly, independently sized.
+        build_data_table(
+            columns,
+            rows,
+            is_total_row_fn=lambda r, cols=columns: str(r.get(cols[0], "")).strip().lower() == "total",
+        )
+
+    # ---- Grand Total banner ----
+    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    grand_box = doc.add_table(rows=1, cols=1)
+    grand_box.alignment = WD_TABLE_ALIGNMENT.CENTER
+    c = grand_box.rows[0].cells[0]
+    set_cell_border(c, top={"sz": 5, "color": DARK_HEX}, bottom={"sz": 5, "color": DARK_HEX})
+    set_cell_background(c, LIGHT_HEX)
+    set_cell_padding(c, top=120, bottom=120, left=160, right=160)
+
+    p = c.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     formula_suffix = f" ({' + '.join(table_letters)})" if table_letters else ""
-    total_label_run = total_para.add_run(f"Total Amount{formula_suffix}: ")
-    total_label_run.font.bold = True
-    total_label_run.font.size = Pt(12)
-    total_value_run = total_para.add_run(format_indian_currency(grand_total))
-    total_value_run.font.bold = True
-    total_value_run.font.size = Pt(12)
+    r1 = p.add_run(f"Grand Total Estimated Cost{formula_suffix}:  ")
+    r1.font.bold = True
+    run_size(r1, 10)
+    r1.font.name = FONT
+    r1.font.color.rgb = INK
+
+    r2 = p.add_run(f"₹ {format_indian_currency(grand_total)}")
+    r2.font.bold = True
+    run_size(r2, 13)
+    r2.font.name = FONT
+    r2.font.color.rgb = ACCENT
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+
+    # ---- Sign-off matrix ----
+    sig_table = doc.add_table(rows=2, cols=3)
+    sig_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    apply_table_no_borders(sig_table)
+
+    signatories = [
+        ("Prepared By", payload.created_by or "Project Engineer"),
+        ("Reviewed By", "Head of Division"),
+        ("Approved By", "Director / General Manager"),
+    ]
+
+    for col_idx, (title, role) in enumerate(signatories):
+        cell_top = sig_table.rows[0].cells[col_idx]
+        set_cell_border(cell_top, top={"sz": 4, "color": RULE_HEX})
+        set_cell_padding(cell_top, top=100, bottom=20, left=0, right=100)
+
+        cell_bot = sig_table.rows[1].cells[col_idx]
+        set_cell_padding(cell_bot, top=20, bottom=100, left=0, right=100)
+        p_bot = cell_bot.paragraphs[0]
+        r_t = p_bot.add_run(f"{title}\n")
+        r_t.font.bold = True
+        run_size(r_t, 9.5)
+        r_t.font.name = FONT
+        r_t.font.color.rgb = INK
+        r_r = p_bot.add_run(f"({role})")
+        run_size(r_r, 9)
+        r_r.font.name = FONT
+        r_r.font.color.rgb = MUTE
 
     tmp_dir = tempfile.gettempdir()
     filename = f"cost_breakdown_{uuid.uuid4().hex[:8]}.docx"
