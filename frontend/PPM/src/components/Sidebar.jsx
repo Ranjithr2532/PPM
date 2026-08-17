@@ -9,7 +9,8 @@ import {
   TeamOutlined,
   MessageOutlined,
   FileWordOutlined,
-  MenuOutlined
+  MenuOutlined,
+  FilePdfOutlined
 } from '@ant-design/icons'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -81,10 +82,23 @@ function Sidebar() {
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
   const [selectedRole, setSelectedRole] = useState('');
   const isDirector = basePath === 'director'
-  const isCH = basePath === 'ch'
+  const isCH = basePath === 'ch' || userRole === 'ch'
   const isGuest = basePath === 'guest'
   // Treat Scientist as same as GH
   const isGHOrScientist = basePath === 'gh' || basePath === 'scientist'
+
+  // Determine role-specific User Manual PDF URL
+  const activeRole = (basePath || userRole || '').toLowerCase()
+  let manualPdfUrl = null
+  if (activeRole === 'scientist') {
+    manualPdfUrl = '/Sci_manual.pdf'
+  } else if (activeRole === 'gh') {
+    manualPdfUrl = '/GH_manual.pdf'
+  } else if (activeRole === 'ch') {
+    manualPdfUrl = '/CH_manual.pdf'
+  } else if (activeRole === 'admin') {
+    manualPdfUrl = '/Admin_manual.pdf'
+  }
 
   const [unreadChatCount, setUnreadChatCount] = useState(0);
 
@@ -428,7 +442,23 @@ function Sidebar() {
       </div>
 
       {/* Footer & Logout */}
-      <div className="px-4 pb-6 border-t border-slate-100 pt-4 bg-slate-50/50">
+      <div className="px-4 pb-6 border-t border-slate-100 pt-4 bg-slate-50/50 flex flex-col gap-2.5">
+        {manualPdfUrl && (
+          <Button
+            block
+            size="large"
+            type="default"
+            icon={<FilePdfOutlined className="text-slate-500" />}
+            onClick={() => {
+              setMobileOpen(false)
+              window.open(manualPdfUrl, '_blank')
+            }}
+            style={{ borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            className="text-slate-700 hover:text-blue-600 font-medium"
+          >
+            User Manual
+          </Button>
+        )}
         <Button
           danger
           block
@@ -459,14 +489,27 @@ function Sidebar() {
           />
           <img src={cmtiLogo} alt="CMTI logo" className="h-8 w-auto object-contain" />
         </div>
-        {userName && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-700 truncate max-w-[120px]">{userName}</span>
-            <span className="px-2 py-0.5 bg-blue-500/10 text-blue-600 rounded-full text-[10px] font-bold uppercase">
-              {userRole || 'User'}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {manualPdfUrl && (
+            <Button
+              size="small"
+              type="default"
+              icon={<FilePdfOutlined className="text-slate-500" />}
+              onClick={() => window.open(manualPdfUrl, '_blank')}
+              className="text-xs font-medium text-slate-700 flex items-center rounded-md"
+            >
+              Manual
+            </Button>
+          )}
+          {userName && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-700 truncate max-w-[120px]">{userName}</span>
+              <span className="px-2 py-0.5 bg-blue-500/10 text-blue-600 rounded-full text-[10px] font-bold uppercase">
+                {userRole || 'User'}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile Sidebar Drawer (Visible under 1024px when open) */}

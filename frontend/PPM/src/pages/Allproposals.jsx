@@ -2579,10 +2579,28 @@ export default function Allproposals() {
               <div className="flex flex-col gap-6 mt-6">
                 {/* Search & Filters */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                     <Title level={4} className="!mb-0">Search & Filters</Title>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button onClick={() => {
+                        setSearchText('')
+                        setOrderDateRange(null)
+                        setEnquiryDateRange(null)
+                        setStatusFilter(null)
+                        setProjectCodePrefix('')
+                        setGroupFilter(undefined)
+                        setQuotationGivenByFilter(undefined)
+                        setShowNewMessagesOnly(false)
+                        setShowPendingReplyOnly(false)
+                      }}>
+                        Clear Filters
+                      </Button>
+                      <Button type="primary" icon={<DownloadOutlined />} onClick={handleExportExcel}>
+                        Export to Excel
+                      </Button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                     <Input
                       placeholder="Search proposals..."
                       prefix={<SearchOutlined />}
@@ -2642,24 +2660,6 @@ export default function Allproposals() {
                       onChange={setOrderDateRange}
                       format={DISPLAY_DATE_FORMAT}
                     />
-                    <div className="flex gap-2">
-                      <Button onClick={() => {
-                        setSearchText('')
-                        setOrderDateRange(null)
-                        setEnquiryDateRange(null)
-                        setStatusFilter(null)
-                        setProjectCodePrefix('')
-                        setGroupFilter(undefined)
-                        setQuotationGivenByFilter(undefined)
-                        setShowNewMessagesOnly(false)
-                        setShowPendingReplyOnly(false)
-                      }}>
-                        Clear Filters
-                      </Button>
-                      <Button type="primary" icon={<DownloadOutlined />} onClick={handleExportExcel}>
-                        Export to Excel
-                      </Button>
-                    </div>
                   </div>
                 </div>
 
