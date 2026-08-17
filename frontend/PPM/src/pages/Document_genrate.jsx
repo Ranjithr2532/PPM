@@ -33,6 +33,7 @@ import {
     FileTextOutlined,
     CheckCircleOutlined,
     PrinterOutlined,
+    CalculatorOutlined,
     EyeOutlined,
     CompressOutlined,
     ExpandOutlined,
@@ -40,9 +41,11 @@ import {
     SafetyCertificateOutlined,
     PaperClipOutlined,
     UploadOutlined,
+    EditOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
+import { CostEstimationModal, convertHeadersToDocumentTables } from './CostBreakDownAction';
 
 const { TextArea } = Input;
 const { Text, Title, Paragraph } = Typography;
@@ -115,7 +118,7 @@ const transformTablesForPreviewAndPayload = (structuredTables) => {
     });
 };
 
-export default function DocumentGenerate({ onAddToProposals }) {
+export default function DocumentGenerate({ onAddToProposals, projectId }) {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
     const [addToProposalsLoading, setAddToProposalsLoading] = useState(false);
@@ -133,6 +136,35 @@ export default function DocumentGenerate({ onAddToProposals }) {
 
     // Dynamic state for Pricing Tables (Starts empty)
     const [tables, setTables] = useState([]);
+
+    // Dynamic state for Internal Cost Estimation Tables (Starts empty)
+    const [internalCostTables, setInternalCostTables] = useState([]);
+    const [rawStudioHeaders, setRawStudioHeaders] = useState([]);
+    const [costModalOpen, setCostModalOpen] = useState(false);
+
+    // Helper to calculate subtotal for a table in internalCostTables
+    const getTableSubtotal = (tbl) => {
+        if (!tbl || !tbl.rows || !Array.isArray(tbl.rows)) return 0;
+        const headers = tbl.headers || [];
+        let amtColIdx = headers.findIndex(h => /amount|cost|total/i.test(h));
+        if (amtColIdx === -1) amtColIdx = headers.length - 1;
+
+        return tbl.rows.reduce((sum, r) => {
+            let val = 0;
+            if (Array.isArray(r)) {
+                const raw = r[amtColIdx] !== undefined ? r[amtColIdx] : r[r.length - 1];
+                val = parseFloat(String(raw || '').replace(/[^0-9.-]+/g, '')) || 0;
+            } else if (typeof r === 'object' && r !== null) {
+                const raw = r[headers[amtColIdx]] || r['Total Amount'] || r['Total Amount (₹)'] || '0';
+                val = parseFloat(String(raw || '').replace(/[^0-9.-]+/g, '')) || 0;
+            }
+            return sum + val;
+        }, 0);
+    };
+
+    const grandInternalTotal = useMemo(() => {
+        return internalCostTables.reduce((sum, tbl) => sum + getTableSubtotal(tbl), 0);
+    }, [internalCostTables]);
 
     // Dynamic state for Multiple Signatories
     const [signatories, setSignatories] = useState([
@@ -427,6 +459,71 @@ export default function DocumentGenerate({ onAddToProposals }) {
         setTables(updated);
     };
 
+    // Internal Cost Estimation Table Handlers
+    const handleAddInternalTable = () => {
+        setInternalCostTables([
+            ...internalCostTables,
+            {
+                title: 'Internal Cost Estimation Breakup',
+                headers: ['Role / Item', 'Rate (₹)', 'Duration (Days)', 'Qty', 'Total Amount (₹)'],
+                rows: [['', '', '', '', '']],
+            },
+        ]);
+    };
+
+    const handleRemoveInternalTable = (tIndex) => {
+        setInternalCostTables(internalCostTables.filter((_, i) => i !== tIndex));
+    };
+
+    const handleInternalTableTitleChange = (tIndex, value) => {
+        const updated = [...internalCostTables];
+        updated[tIndex].title = value;
+        setInternalCostTables(updated);
+    };
+
+    const handleInternalHeaderChange = (tIndex, hIndex, value) => {
+        const updated = [...internalCostTables];
+        updated[tIndex].headers[hIndex] = value;
+        setInternalCostTables(updated);
+    };
+
+    const handleAddInternalHeaderColumn = (tIndex) => {
+        const updated = [...internalCostTables];
+        updated[tIndex].headers.push(`Column ${updated[tIndex].headers.length + 1}`);
+        updated[tIndex].rows.forEach((row) => row.push(''));
+        setInternalCostTables(updated);
+    };
+
+    const handleRemoveInternalHeaderColumn = (tIndex, hIndex) => {
+        const updated = [...internalCostTables];
+        if (updated[tIndex].headers.length <= 1) {
+            message.warning('A table must have at least 1 column');
+            return;
+        }
+        updated[tIndex].headers.splice(hIndex, 1);
+        updated[tIndex].rows.forEach((row) => row.splice(hIndex, 1));
+        setInternalCostTables(updated);
+    };
+
+    const handleInternalCellChange = (tIndex, rIndex, cIndex, value) => {
+        const updated = [...internalCostTables];
+        updated[tIndex].rows[rIndex][cIndex] = value;
+        setInternalCostTables(updated);
+    };
+
+    const handleAddInternalTableRow = (tIndex) => {
+        const updated = [...internalCostTables];
+        const newRow = new Array(updated[tIndex].headers.length).fill('');
+        updated[tIndex].rows.push(newRow);
+        setInternalCostTables(updated);
+    };
+
+    const handleRemoveInternalTableRow = (tIndex, rIndex) => {
+        const updated = [...internalCostTables];
+        updated[tIndex].rows.splice(rIndex, 1);
+        setInternalCostTables(updated);
+    };
+
     // Signatory handlers
     const handleAddSignatory = () => {
         setSignatories([
@@ -503,6 +600,7 @@ export default function DocumentGenerate({ onAddToProposals }) {
                 scope_items: scopeItems,
                 terms_items: termsItems,
                 tables: tables,
+                internal_cost_tables: internalCostTables,
                 signatory_name: primarySig.name,
                 signatory_lines: primarySig.lines,
                 signatories: formattedSignatories,
@@ -1399,7 +1497,137 @@ export default function DocumentGenerate({ onAddToProposals }) {
                                 )}
                             </Card>
 
-                            {/* Card 7: Signatories & Approval Blocks */}
+                            {/* Card 7: Internal Cost Estimation */}
+                            <Card
+                                title={
+                                    <div className="flex items-center justify-between py-1">
+                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
+                                            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shadow-2xs">
+                                                <CalculatorOutlined className="text-lg" />
+                                            </div>
+                                            <span>7. Internal Cost Estimation</span>
+                                        </Space>
+                                        <Button
+                                            type="primary"
+                                            icon={<EditOutlined />}
+                                            onClick={() => setCostModalOpen(true)}
+                                            className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 h-8 px-3 text-xs shadow-xs"
+                                        >
+                                            {internalCostTables.length === 0 ? "Add Cost Breakdown ↗" : "Edit Cost Breakdown ↗"}
+                                        </Button>
+                                    </div>
+                                }
+                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                styles={{ body: { padding: '24px' } }}
+                            >
+                                <CostEstimationModal
+                                    open={costModalOpen}
+                                    onClose={() => setCostModalOpen(false)}
+                                    projectId={projectId || null}
+                                    hideGenerateWord={true}
+                                    initialHeaders={rawStudioHeaders}
+                                    onApply={(studioHeaders) => {
+                                        setRawStudioHeaders(studioHeaders);
+                                        const formattedTables = convertHeadersToDocumentTables(studioHeaders);
+                                        if (formattedTables && formattedTables.length > 0) {
+                                            setInternalCostTables(formattedTables);
+                                        }
+                                    }}
+                                    title={formValues.subject || "Internal Cost Estimation"}
+                                />
+
+                                {internalCostTables.length === 0 ? (
+                                    <div className="p-6 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 space-y-2">
+                                        <Text className="text-xs text-slate-500 block">No internal cost breakdown attached to this proposal.</Text>
+                                        <Button
+                                            type="primary"
+                                            size="small"
+                                            icon={<PlusOutlined />}
+                                            onClick={() => setCostModalOpen(true)}
+                                            className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-xs shadow-2xs"
+                                        >
+                                            Add Cost Breakdown ↗
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <Text className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                                                Cost Summary ({internalCostTables.length} {internalCostTables.length === 1 ? 'Section' : 'Sections'})
+                                            </Text>
+                                            <Popconfirm
+                                                title="Clear Internal Cost Breakdown?"
+                                                description="This will remove all internal cost tables attached to this proposal draft."
+                                                onConfirm={() => {
+                                                    setInternalCostTables([]);
+                                                    setRawStudioHeaders([]);
+                                                }}
+                                                okText="Clear"
+                                                cancelText="Cancel"
+                                                okButtonProps={{ danger: true, size: "small" }}
+                                            >
+                                                <Button danger type="text" size="small" icon={<DeleteOutlined style={{ fontSize: 11 }} />} className="text-xs">
+                                                    Clear
+                                                </Button>
+                                            </Popconfirm>
+                                        </div>
+
+                                        <div className="overflow-hidden border border-slate-200/90 rounded-xl bg-white shadow-2xs">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-slate-50 border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600">Ref</th>
+                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600">Cost Section Category</th>
+                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600 text-center">Items</th>
+                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600 text-right">Subtotal (₹)</th>
+                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600 text-center w-16">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {internalCostTables.map((tbl, idx) => {
+                                                        const letter = String.fromCharCode(65 + idx);
+                                                        const subtotal = getTableSubtotal(tbl);
+                                                        return (
+                                                            <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                                                                <td className="py-2.5 px-3.5 font-bold text-purple-700">Section {letter}</td>
+                                                                <td className="py-2.5 px-3.5 font-semibold text-slate-800">{tbl.title || `Section ${letter}`}</td>
+                                                                <td className="py-2.5 px-3.5 text-center font-medium text-slate-500">{tbl.rows?.length || 0}</td>
+                                                                <td className="py-2.5 px-3.5 text-right font-bold text-slate-900">
+                                                                    ₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                                <td className="py-2.5 px-3.5 text-center">
+                                                                    <Button
+                                                                        type="link"
+                                                                        size="small"
+                                                                        icon={<EditOutlined style={{ fontSize: 11 }} />}
+                                                                        onClick={() => setCostModalOpen(true)}
+                                                                        className="text-purple-600 hover:text-purple-800 p-0 text-xs font-semibold"
+                                                                    >
+                                                                        Edit
+                                                                    </Button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="bg-slate-50/90 border-t border-slate-200">
+                                                    <tr>
+                                                        <td colSpan={3} className="py-2.5 px-3.5 font-bold text-slate-700 text-right">
+                                                            Grand Total Estimated Cost:
+                                                        </td>
+                                                        <td className="py-2.5 px-3.5 text-right font-extrabold text-purple-700 text-sm">
+                                                            ₹ {grandInternalTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                        <td />
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </Card>
+
+                            {/* Card 8: Signatories & Approval Blocks */}
                             <Card
                                 title={
                                     <div className="flex items-center justify-between py-1">
@@ -1407,7 +1635,7 @@ export default function DocumentGenerate({ onAddToProposals }) {
                                             <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
                                                 <UserOutlined className="text-lg" />
                                             </div>
-                                            <span>7. Signatory & Approval Blocks</span>
+                                            <span>8. Signatory & Approval Blocks</span>
                                         </Space>
                                         <Button
                                             type="primary"

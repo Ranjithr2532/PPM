@@ -34,25 +34,48 @@ DARK_HEX = "222222"
 FONT = "Calibri"
 
 
-def format_indian_currency(amount: float) -> str:
-    s = f"{amount:.2f}"
-    parts = s.split(".")
-    integer_part = parts[0]
-    decimal_part = parts[1] if len(parts) > 1 else "00"
+def format_indian_currency(value: Any, include_decimals: bool = True) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        if isinstance(value, str):
+            clean_str = value.replace(",", "").replace(" ", "").strip()
+            if not clean_str:
+                return value
+            num = float(clean_str)
+        else:
+            num = float(value)
+    except (ValueError, TypeError):
+        return str(value)
 
-    reversed_int = integer_part[::-1]
-    first_three = reversed_int[:3]
-    remaining = reversed_int[3:]
+    if include_decimals:
+        s = f"{num:.2f}"
+        parts = s.split(".")
+        integer_part = parts[0]
+        decimal_part = parts[1]
+    else:
+        integer_part = str(int(round(num)))
+        decimal_part = ""
 
-    groups = [first_three]
-    for i in range(0, len(remaining), 2):
-        groups.append(remaining[i:i + 2])
+    is_negative = integer_part.startswith("-")
+    if is_negative:
+        integer_part = integer_part[1:]
 
-    formatted_int = ",".join(groups)[::-1]
-    if formatted_int.startswith("-,") or formatted_int.startswith("-"):
-        formatted_int = "-" + formatted_int.replace("-", "").lstrip(",")
+    if len(integer_part) <= 3:
+        formatted_int = integer_part
+    else:
+        last_three = integer_part[-3:]
+        remaining = integer_part[:-3]
+        groups = []
+        for i in range(len(remaining), 0, -2):
+            start = max(0, i - 2)
+            groups.insert(0, remaining[start:i])
+        formatted_int = ",".join(groups) + "," + last_three
 
-    return f"{formatted_int}.{decimal_part}"
+    if is_negative:
+        formatted_int = "-" + formatted_int
+
+    return f"{formatted_int}.{decimal_part}" if include_decimals else formatted_int
 
 
 class DynamicTableItem(BaseModel):
@@ -369,10 +392,16 @@ def save_and_generate_word_document(
             p = cell.paragraphs[0]
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
-            is_last = (c_idx == n_cols - 1)
-            if is_last:
+            
+            h_str = str(htext).strip()
+            if h_str in ["Basis", "People"]:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif "Total" in h_str or "Amount" in h_str or "Subtotal" in h_str or c_idx == n_cols - 1:
                 p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            r = p.add_run(str(htext))
+            else:
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+            r = p.add_run(h_str)
             r.font.bold = True
             run_size(r, 8.5)
             r.font.name = FONT
@@ -395,17 +424,29 @@ def save_and_generate_word_document(
                 set_cell_padding(cell, top=40, bottom=40, left=80, right=80)
 
                 raw_val = row_data.get(htext, "")
+                h_str = str(htext).strip()
+
                 if isinstance(raw_val, (int, float)):
-                    cell_value = format_indian_currency(raw_val)
+                    inc_dec = ("Total" in h_str or "Amount" in h_str or "Subtotal" in h_str)
+                    cell_value = format_indian_currency(raw_val, include_decimals=inc_dec)
+                elif isinstance(raw_val, str) and ("Rate" in h_str or "Total" in h_str or "Amount" in h_str or "Subtotal" in h_str):
+                    inc_dec = ("Total" in h_str or "Amount" in h_str or "Subtotal" in h_str)
+                    cell_value = format_indian_currency(raw_val, include_decimals=inc_dec)
                 else:
                     cell_value = str(raw_val if raw_val is not None else "")
 
                 p = cell.paragraphs[0]
                 p.paragraph_format.space_before = Pt(0)
                 p.paragraph_format.space_after = Pt(0)
-                is_last = (c_idx == n_cols - 1)
-                if is_last:
+
+                h_str = str(htext).strip()
+                if h_str in ["Basis", "People"]:
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif "Total" in h_str or "Amount" in h_str or "Subtotal" in h_str or c_idx == n_cols - 1:
                     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                else:
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
                 r = p.add_run(cell_value)
                 run_size(r, 9 if is_total else 8.5)
                 r.font.name = FONT
@@ -418,12 +459,6 @@ def save_and_generate_word_document(
     header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     header_para.paragraph_format.space_before = Pt(0)
     header_para.paragraph_format.space_after = Pt(2)
-
-    sub_run = header_para.add_run("Standard Project Cost Estimation Proposal\n")
-    run_size(sub_run, 8)
-    sub_run.font.bold = True
-    sub_run.font.name = FONT
-    sub_run.font.color.rgb = ACCENT
 
     title_run = header_para.add_run(payload.title or "Industry 4.0 Pilot Project")
     run_size(title_run, 15)
@@ -439,8 +474,7 @@ def save_and_generate_word_document(
     meta_items = [
         ("Project Name", payload.title or "Industry 4.0 Pilot Project"),
         ("Prepared By", payload.created_by or "Project Management Team"),
-        ("Date Created", datetime.now().strftime("%d-%m-%Y")),
-        ("Document Version", f"Version {new_version}"),
+        ("Date Created", datetime.now().strftime("%d-%m-%Y"))
     ]
 
     for idx, (lbl, v) in enumerate(meta_items):
@@ -477,15 +511,19 @@ def save_and_generate_word_document(
         if not item.columns:
             raise HTTPException(status_code=400, detail=f"'{item.header_name}' requires at least one column")
 
+        cols = item.columns
+        if item.header_name == "Manpower":
+            cols = ["Role", "Rate (₹)", "Basis", "Duration", "People", "Total (₹)"]
+
         rows, total_amount = compute_rows_for_header(item.header_name, item.rows, item.columns)
         letter = chr(65 + idx)
         if total_amount is not None:
             grand_total += total_amount
             table_letters.append(letter)
-        computed_tables_data.append((letter, item.header_name, item.columns, rows, total_amount))
+        computed_tables_data.append((letter, item.header_name, cols, rows, total_amount))
 
-    # ---- 1. Executive Financial Summary ----
-    add_section_heading("1. Executive Financial Summary")
+    # ---- 1. Cost Summary ----
+    add_section_heading("1. Cost Summary")
 
     exec_headers = ["Ref", "Cost Section Category", "Subtotal (₹)"]
     exec_rows = [
@@ -507,12 +545,10 @@ def save_and_generate_word_document(
 
     for (let, h_name, columns, rows, total_amount) in computed_tables_data:
         add_subsection_heading(f"Section {let} — {h_name}")
-        # columns here can be any length — a 3-column table and a
-        # 7-column table both render correctly, independently sized.
         build_data_table(
             columns,
             rows,
-            is_total_row_fn=lambda r, cols=columns: str(r.get(cols[0], "")).strip().lower() == "total",
+            is_total_row_fn=lambda r, cols=columns: str(r.get(cols[0], "")).strip().lower() == "total" or str(r.get("People", "")).strip().lower() == "total",
         )
 
     # ---- Grand Total banner ----
