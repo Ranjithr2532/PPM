@@ -7,10 +7,52 @@ from docx.oxml.ns import qn
 # Predefined header -> default column list.
 # If the user types a header name not in this dict, they define their own columns manually.
 PREDEFINED_HEADERS = {
-    "Manpower": ["Role", "Cost Breakup", "Total"],
-    
+    "Manpower": ["Role", "Rate (₹)", "Basis", "Duration", "People", "Total (₹)"],
 }
 
+
+def format_indian_currency(value: Any, include_decimals: bool = True) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        if isinstance(value, str):
+            clean_str = value.replace(",", "").replace(" ", "").strip()
+            if not clean_str:
+                return value
+            num = float(clean_str)
+        else:
+            num = float(value)
+    except (ValueError, TypeError):
+        return str(value)
+
+    if include_decimals:
+        s = f"{num:.2f}"
+        parts = s.split(".")
+        integer_part = parts[0]
+        decimal_part = parts[1]
+    else:
+        integer_part = str(int(round(num)))
+        decimal_part = ""
+
+    is_negative = integer_part.startswith("-")
+    if is_negative:
+        integer_part = integer_part[1:]
+
+    if len(integer_part) <= 3:
+        formatted_int = integer_part
+    else:
+        last_three = integer_part[-3:]
+        remaining = integer_part[:-3]
+        groups = []
+        for i in range(len(remaining), 0, -2):
+            start = max(0, i - 2)
+            groups.insert(0, remaining[start:i])
+        formatted_int = ",".join(groups) + "," + last_three
+
+    if is_negative:
+        formatted_int = "-" + formatted_int
+
+    return f"{formatted_int}.{decimal_part}" if include_decimals else formatted_int
 
 
 def compute_manpower(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], float]:
@@ -26,23 +68,45 @@ def compute_manpower(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], 
         if calc_type == "monthly":
             months = float(cb.get("months", 0) or 0)
             amount = rate * months * quantity
-            breakup_str = f"{rate:g}*{months:g}(months)*{quantity:g}"
+            basis_str = "Monthly"
+            m_val = int(months) if months.is_integer() else months
+            duration_str = f"{m_val} month{'s' if m_val != 1 else ''}"
         else:
             hours = float(cb.get("hours", 0) or 0)
             days = float(cb.get("days", 0) or 0)
             amount = rate * hours * days * quantity
-            breakup_str = f"{rate:g}*{hours:g}(hours)*{days:g}(days)*{quantity:g}"
+            basis_str = "Hourly"
+            h_val = int(hours) if hours.is_integer() else hours
+            d_val = int(days) if days.is_integer() else days
+            hr_unit = "hr" if h_val == 1 else "hrs"
+            duration_str = f"{h_val} {hr_unit} × {d_val} days"
 
         total += amount
 
+        rate_fmt = format_indian_currency(rate, include_decimals=False)
+        total_fmt = format_indian_currency(amount, include_decimals=True)
+        people_fmt = str(int(quantity) if quantity.is_integer() else quantity)
+
         computed_rows.append({
             "Role": row.get("Role", ""),
-            "Cost Breakup": breakup_str,
-            "Total Amount": round(amount, 2)
+            "Rate (₹)": rate_fmt,
+            "Basis": basis_str,
+            "Duration": duration_str,
+            "People": people_fmt,
+            "Total (₹)": total_fmt,
         })
 
     total = round(total, 2)
-    computed_rows.append({"Role": "Total", "Cost Breakup": "", "Total Amount": total})
+    total_fmt = format_indian_currency(total, include_decimals=True)
+
+    computed_rows.append({
+        "Role": "",
+        "Rate (₹)": "",
+        "Basis": "",
+        "Duration": "",
+        "People": "Total",
+        "Total (₹)": total_fmt,
+    })
 
     return computed_rows, total
 

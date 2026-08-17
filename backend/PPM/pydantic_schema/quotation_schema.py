@@ -39,6 +39,7 @@ class QuotationRequest(BaseModel):
     commercial_contact: Optional[str] = None
     terms_items: List[str] = Field(default_factory=list)
     tables: List[TableSpec] = Field(default_factory=list)
+    internal_cost_tables: List[TableSpec] = Field(default_factory=list)
     signatory_name: Optional[str] = None
     signatory_lines: List[str] = Field(default_factory=list)
     signatories: List[SignatorySpec] = Field(default_factory=list)

@@ -138,8 +138,21 @@ def add_table_block(document, table_spec):
 
     for row_vals in rows:
         cells = table.add_row().cells
-        for i in range(len(headers)):
-            cells[i].text = row_vals[i] if i < len(row_vals) else ""
+        for i, h in enumerate(headers):
+            if isinstance(row_vals, dict):
+                raw_v = row_vals.get(h, "")
+                if isinstance(raw_v, (int, float)):
+                    cells[i].text = f"₹ {raw_v:,.2f}"
+                else:
+                    cells[i].text = str(raw_v if raw_v is not None else "")
+            elif isinstance(row_vals, list):
+                raw_v = row_vals[i] if i < len(row_vals) else ""
+                if isinstance(raw_v, (int, float)):
+                    cells[i].text = f"₹ {raw_v:,.2f}"
+                else:
+                    cells[i].text = str(raw_v if raw_v is not None else "")
+            else:
+                cells[i].text = str(row_vals or "")
 
     document.add_paragraph()
 
@@ -271,6 +284,7 @@ def build_proposal_document(data: dict) -> Document:
     scope_items = data.get("scope_items") or data.get("scope_of_work") or []
     terms_items = data.get("terms_items") or []
     tables = data.get("tables") or []
+    internal_cost_tables = data.get("internal_cost_tables") or []
     signatories = data.get("signatories") or []
     signatory_name = data.get("signatory_name")
     signatory_lines = data.get("signatory_lines")
@@ -398,6 +412,18 @@ def build_proposal_document(data: dict) -> Document:
             add_table_block(document, t.dict())
         elif hasattr(t, "model_dump"):
             add_table_block(document, t.model_dump())
+
+    # Internal Cost Estimation section generated on a NEW PAGE before signature block
+    if internal_cost_tables:
+        document.add_page_break()
+        add_section_heading(document, "INTERNAL COST ESTIMATION", center=True)
+        for t in internal_cost_tables:
+            if isinstance(t, dict):
+                add_table_block(document, t)
+            elif hasattr(t, "dict"):
+                add_table_block(document, t.dict())
+            elif hasattr(t, "model_dump"):
+                add_table_block(document, t.model_dump())
 
     add_signature_block(document, name=signatory_name, designation_lines=signatory_lines, signatories=signatories)
 

@@ -39,6 +39,8 @@ import {
     LockOutlined,
     FormOutlined,
     ExpandOutlined,
+    RiseOutlined,
+    BarChartOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
 import { API_BASE_URL } from '../config/api.js';
@@ -536,28 +538,28 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     if (headerName === MANPOWER_HEADER) {
         tableColumns.push(
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">Role</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">ROLE</span>,
                 dataIndex: "Role",
                 key: "Role",
-                width: 175,
+                width: 200,
                 render: (_, record, index) => {
                     const isEditing = checkIsRowEditing(index, record);
                     const formMark = (
                         <button
                             type="button"
-                            onClick={() => setRowFormModalIndex(index)}
-                            className="p-1 hover:bg-purple-100 text-purple-700 bg-purple-50 border border-purple-200/80 rounded-md transition-all cursor-pointer shrink-0 shadow-2xs flex items-center justify-center"
-                            title="Touch to open vertical form window"
+                            onClick={() => handleOpenEditDetails(index)}
+                            className="w-7 h-7 flex items-center justify-center text-purple-600 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 rounded-md transition-all cursor-pointer shrink-0"
+                            title="Edit row details"
                         >
-                            <FormOutlined style={{ fontSize: 12 }} />
+                            <FormOutlined style={{ fontSize: 13 }} />
                         </button>
                     );
 
                     if (!isEditing) {
                         return (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2.5">
                                 {formMark}
-                                <span className="font-semibold text-slate-900 text-[13.5px]">{record["Role"] || "—"}</span>
+                                <span className="font-semibold text-slate-800 text-[13.5px]">{record["Role"] || "—"}</span>
                             </div>
                         );
                     }
@@ -586,14 +588,14 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 },
             },
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">Rate</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">RATE</span>,
                 key: "rate",
-                width: 115,
+                width: 120,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const isEditing = checkIsRowEditing(index, record);
                     if (!isEditing) {
-                        return <span className="font-semibold text-slate-900 text-[13.5px] tabular-nums">{cb.rate ? `₹${Number(cb.rate).toLocaleString("en-IN")}` : "—"}</span>;
+                        return <span className="font-semibold text-slate-800 text-[13.5px] tabular-nums">{cb.rate ? `₹${Number(cb.rate).toLocaleString("en-IN")}` : "—"}</span>;
                     }
 
                     const roleName = record["Role"] || "";
@@ -647,18 +649,22 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 },
             },
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">Type</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">TYPE</span>,
                 key: "type",
-                width: 105,
+                width: 110,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const type = cb.type ?? "hourly";
                     const isEditing = checkIsRowEditing(index, record);
                     if (!isEditing) {
-                        return (
-                            <Tag color={type === "monthly" ? "purple" : "blue"} className="font-bold text-[11px] px-2.5 py-0.5 rounded-full border border-blue-200/60 m-0">
-                                {type === "monthly" ? "Monthly" : "Hourly"}
-                            </Tag>
+                        return type === "monthly" ? (
+                            <span className="inline-block px-3 py-1 text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 rounded-full">
+                                Monthly
+                            </span>
+                        ) : (
+                            <span className="inline-block px-3 py-1 text-[11px] font-bold text-sky-700 bg-sky-50 border border-sky-200/80 rounded-full">
+                                Hourly
+                            </span>
                         );
                     }
                     return (
@@ -676,9 +682,9 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 },
             },
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">Hrs / Month</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">HRS / MONTH</span>,
                 key: "hours_months",
-                width: 110,
+                width: 120,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const type = cb.type ?? "hourly";
@@ -686,7 +692,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                     const val = isMonthly ? cb.months : cb.hours;
                     const isEditing = checkIsRowEditing(index, record);
                     if (!isEditing) {
-                        return <span className="text-slate-800 font-medium text-[13.5px] tabular-nums">{val ? `${val} ${isMonthly ? "Mos" : "Hrs"}` : "—"}</span>;
+                        return <span className="text-slate-800 font-semibold text-[13.5px] tabular-nums">{val ? `${val} ${isMonthly ? "Mos" : "Hrs"}` : "—"}</span>;
                     }
                     return (
                         <InputNumber
@@ -702,16 +708,16 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 },
             },
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">Days</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">DAYS</span>,
                 key: "days",
-                width: 85,
+                width: 95,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const type = cb.type ?? "hourly";
                     const isMonthly = type === "monthly";
                     const isEditing = checkIsRowEditing(index, record);
                     if (!isEditing) {
-                        return <span className="text-slate-800 font-medium text-[13.5px] tabular-nums">{isMonthly ? "—" : (cb.days ? `${cb.days} Days` : "—")}</span>;
+                        return <span className="text-slate-800 font-semibold text-[13.5px] tabular-nums">{isMonthly ? "—" : (cb.days ? `${cb.days} Days` : "—")}</span>;
                     }
                     if (isMonthly) {
                         return <span style={{ color: "#ccc", display: "block", textAlign: "center" }}>—</span>;
@@ -730,9 +736,9 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 },
             },
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">No. of People</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">NO. OF PEOPLE</span>,
                 key: "quantity",
-                width: 100,
+                width: 120,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const isEditing = checkIsRowEditing(index, record);
@@ -753,16 +759,16 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 },
             },
             {
-                title: <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">Amount</span>,
+                title: <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">AMOUNT</span>,
                 dataIndex: "Total Amount",
                 key: "Total Amount",
-                width: 120,
+                width: 140,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const isEditing = checkIsRowEditing(index, record);
                     const amount = computeRowAmount(cb);
                     if (!isEditing) {
-                        return <span className="font-bold text-slate-900 text-[13.5px] tabular-nums">₹{amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+                        return <span className="font-extrabold text-slate-900 text-[14px] tabular-nums">₹{amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
                     }
                     return (
                         <InputNumber
@@ -781,7 +787,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
         tableColumns.push(
             ...columns.map((col) => {
                 const isColEditing = editingCol === col;
-                const isFirstCol = col === columns[0]; // usually Description
+                const isFirstCol = col === columns[0];
                 return {
                     title: (
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
@@ -797,7 +803,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                     onClick={(e) => e.stopPropagation()}
                                 />
                             ) : (
-                                <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">{col}</span>
+                                <span className="text-[12px] font-extrabold text-slate-500 uppercase tracking-wider">{col}</span>
                             )}
                             {!isFirstCol && col !== "Total Amount" && (
                                 <div style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={(e) => e.stopPropagation()}>
@@ -837,7 +843,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
 
                         if (col === "Total Amount") {
                             if (!isRowEditing) {
-                                return <span className="font-bold text-slate-900 text-[13.5px] tabular-nums">₹{(Number(record[col]) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+                                return <span className="font-extrabold text-slate-900 text-[14px] tabular-nums">₹{(Number(record[col]) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
                             }
                             return (
                                 <InputNumber
@@ -854,19 +860,19 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                         const formMark = (
                             <button
                                 type="button"
-                                onClick={() => setRowFormModalIndex(index)}
-                                className="p-1 hover:bg-purple-100 text-purple-700 bg-purple-50 border border-purple-200/80 rounded-md transition-all cursor-pointer shrink-0 shadow-2xs flex items-center justify-center"
-                                title="Touch to open vertical form window"
+                                onClick={() => handleOpenEditDetails(index)}
+                                className="w-7 h-7 flex items-center justify-center text-purple-600 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 rounded-md transition-all cursor-pointer shrink-0"
+                                title="Edit row details"
                             >
-                                <FormOutlined style={{ fontSize: 12 }} />
+                                <FormOutlined style={{ fontSize: 13 }} />
                             </button>
                         );
 
                         if (!isRowEditing) {
                             return (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2.5">
                                     {isFirstCol && formMark}
-                                    <span className="font-semibold text-slate-900 text-[13.5px]">{record[col] || "—"}</span>
+                                    <span className="font-semibold text-slate-800 text-[13.5px]">{record[col] || "—"}</span>
                                 </div>
                             );
                         }
@@ -896,21 +902,26 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
     tableColumns.push({
         title: "",
         key: "actions",
-        width: 110,
+        width: 90,
         render: (_, record, index) => {
-            const isEditing = checkIsRowEditing(index, record);
             return (
-                <div className="flex items-center justify-end gap-1">
-                    <Button
-                        size="small"
-                        type="default"
-                        icon={<EditOutlined style={{ fontSize: 11 }} />}
+                <div className="flex items-center justify-end gap-1.5">
+                    <button
+                        type="button"
                         onClick={() => handleOpenEditDetails(index)}
-                        title="Edit row details in Vertical Window"
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50 font-bold"
-                    />
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 rounded-lg transition-all cursor-pointer"
+                        title="Edit row details"
+                    >
+                        <EditOutlined style={{ fontSize: 12 }} />
+                    </button>
                     <Popconfirm title="Remove row?" onConfirm={() => removeRow(index)}>
-                        <Button size="small" type="text" danger icon={<DeleteOutlined style={{ fontSize: 11 }} />} />
+                        <button
+                            type="button"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-lg transition-all cursor-pointer"
+                            title="Delete row"
+                        >
+                            <DeleteOutlined style={{ fontSize: 12 }} />
+                        </button>
                     </Popconfirm>
                 </div>
             );
@@ -1741,11 +1752,110 @@ function HistoryDrawer({ open, onClose, projectId, onLoadVersion }) {
     );
 }
 
+function formatIndianCurrency(num, includeDecimals = true) {
+    if (num === null || num === undefined || isNaN(Number(num))) return "0";
+    const val = Number(num);
+    const parts = (includeDecimals ? val.toFixed(2) : Math.round(val).toString()).split(".");
+    let integerPart = parts[0];
+    const decimalPart = parts[1];
+
+    const isNegative = integerPart.startsWith("-");
+    if (isNegative) integerPart = integerPart.slice(1);
+
+    let formattedInt = integerPart;
+    if (integerPart.length > 3) {
+        const lastThree = integerPart.slice(-3);
+        const remaining = integerPart.slice(0, -3);
+        const groups = [];
+        for (let i = remaining.length; i > 0; i -= 2) {
+            const start = Math.max(0, i - 2);
+            groups.unshift(remaining.slice(start, i));
+        }
+        formattedInt = groups.join(",") + "," + lastThree;
+    }
+    if (isNegative) formattedInt = "-" + formattedInt;
+    return includeDecimals ? `${formattedInt}.${decimalPart}` : formattedInt;
+}
+
+export function convertHeadersToDocumentTables(headers) {
+    if (!headers || !Array.isArray(headers)) return [];
+    return headers.map((h) => {
+        if (h.header_name === MANPOWER_HEADER) {
+            const cols = ["Role", "Rate (₹)", "Basis", "Duration", "People", "Total (₹)"];
+            let sectionTotal = 0;
+            const rows = (h.rows || []).map((r) => {
+                const cb = r["Cost Breakup"] || {};
+                const type = cb.type ?? "hourly";
+                const basis = type === "monthly" ? "Monthly" : "Hourly";
+                let dur = "";
+                let amt = 0;
+                if (type === "monthly") {
+                    const months = cb.months || 0;
+                    dur = `${months} month${months !== 1 ? 's' : ''}`;
+                    amt = (cb.rate || 0) * (cb.months || 0) * (cb.quantity || 1);
+                } else {
+                    const hrs = cb.hours || 0;
+                    const days = cb.days || 0;
+                    const hrUnit = hrs === 1 ? 'hr' : 'hrs';
+                    dur = `${hrs} ${hrUnit} × ${days} days`;
+                    amt = (cb.rate || 0) * (cb.hours || 0) * (cb.days || 0) * (cb.quantity || 1);
+                }
+                sectionTotal += amt;
+                const rateFormatted = formatIndianCurrency(cb.rate || 0, false);
+                const totalFormatted = formatIndianCurrency(amt, true);
+                return [
+                    r.Role || "",
+                    rateFormatted,
+                    basis,
+                    dur,
+                    String(cb.quantity || 1),
+                    totalFormatted,
+                ];
+            });
+
+            // Append Total row matching screenshot format
+            rows.push([
+                "",
+                "",
+                "",
+                "",
+                "Total",
+                formatIndianCurrency(sectionTotal, true),
+            ]);
+
+            return {
+                title: "Manpower",
+                headers: cols,
+                rows: rows,
+            };
+        } else {
+            const cols = h.columns || ["Description", "Total Amount"];
+            const rows = (h.rows || []).map((r) => {
+                return cols.map((col) => String(r[col] ?? ""));
+            });
+            return {
+                title: h.header_name,
+                headers: cols,
+                rows: rows,
+            };
+        }
+    });
+}
+
 /* ============================================================
    MAIN COMPONENT: CostEstimationModal
    ============================================================ */
 
-export function CostEstimationModal({ open, onClose, title, createdBy, projectId }) {
+export function CostEstimationModal({
+    open,
+    onClose,
+    title,
+    createdBy,
+    projectId,
+    onApply,
+    hideGenerateWord = false,
+    initialHeaders = null,
+}) {
     const [headers, setHeaders] = useState([]); // [{header_name, columns, rows}]
     const [activeKey, setActiveKey] = useState("");
     const [generating, setGenerating] = useState(false);
@@ -1760,8 +1870,7 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
     // Incremented every time: (a) a new load cycle starts, OR (b) the user manually picks a version.
     const loadNonceRef = useRef(0);
 
-    // Reset form state each time the modal is freshly opened.
-    // Start with a blank Manpower table; no auto-fetching from database.
+    // Initialize or restore form state each time the modal is freshly opened.
     useEffect(() => {
         if (!open) {
             setHeaders([]);
@@ -1772,17 +1881,22 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
             return;
         }
 
-        const initial = {
-            header_name: MANPOWER_HEADER,
-            columns: MANPOWER_COLUMNS,
-            rows: [],
-        };
-        setHeaders([initial]);
-        setActiveKey(MANPOWER_HEADER);
+        if (initialHeaders && Array.isArray(initialHeaders) && initialHeaders.length > 0) {
+            setHeaders(initialHeaders);
+            setActiveKey(initialHeaders[0]?.header_name || MANPOWER_HEADER);
+        } else {
+            const initial = {
+                header_name: MANPOWER_HEADER,
+                columns: MANPOWER_COLUMNS,
+                rows: [],
+            };
+            setHeaders([initial]);
+            setActiveKey(MANPOWER_HEADER);
+        }
         setCurrentVersion(null);
         setIsEnteringHeader(false);
         setLoadingSaved(false);
-    }, [open]);
+    }, [open, initialHeaders]);
 
     const closeModal = () => onClose();
 
@@ -1963,37 +2077,84 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
                         >
                             <HistoryOutlined /> History
                         </button>
-                        <button
-                            onClick={handleGenerate}
-                            disabled={generating}
-                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                        >
-                            <FileWordOutlined /> {generating ? "Generating..." : "Generate Word Document"}
-                        </button>
+                        {onApply || hideGenerateWord ? (
+                            <button
+                                onClick={() => {
+                                    if (onApply) {
+                                        onApply(headers);
+                                    }
+                                    message.success("Cost breakdown applied to proposal document");
+                                    onClose();
+                                }}
+                                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                            >
+                                <CheckOutlined /> Apply Cost Breakdown
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleGenerate}
+                                disabled={generating}
+                                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                            >
+                                <FileWordOutlined /> {generating ? "Generating..." : "Generate Word Document"}
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {/* Full-Width Tables Studio Workspace */}
-                <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-5">
-                    {/* Tab Bar Header */}
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <div className="flex items-center gap-2 overflow-x-auto">
+                <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-5">
+                    {/* Tab Bar & Grand Total Header */}
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div className="flex items-center gap-3 overflow-x-auto flex-wrap">
                             {headers.map((h) => {
                                 const isActive = h.header_name === activeKey;
                                 const isManpower = h.header_name === MANPOWER_HEADER;
                                 const rowCount = (h.rows || []).length;
+                                
+                                // Calculate subtotal for tab subtitle
+                                let subtotal = 0;
+                                if (isManpower) {
+                                    subtotal = (h.rows || []).reduce((sum, r) => {
+                                        const cb = r["Cost Breakup"] || {};
+                                        const type = cb.type ?? "hourly";
+                                        if (type === "monthly") {
+                                            return sum + (cb.rate || 0) * (cb.months || 0) * (cb.quantity || 1);
+                                        } else {
+                                            return sum + (cb.rate || 0) * (cb.hours || 0) * (cb.days || 0) * (cb.quantity || 1);
+                                        }
+                                    }, 0);
+                                } else {
+                                    subtotal = (h.rows || []).reduce((sum, r) => sum + (Number(r["Total Amount"]) || 0), 0);
+                                }
+
+                                if (isActive) {
+                                    return (
+                                        <div
+                                            key={h.header_name}
+                                            className="bg-blue-50/80 border-2 border-blue-500/80 rounded-2xl px-4 py-2.5 flex flex-col justify-center cursor-pointer select-none transition-all shadow-xs"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-extrabold text-slate-900 text-sm">{h.header_name}</span>
+                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-200/80 text-blue-800 rounded-md">
+                                                    {rowCount}
+                                                </span>
+                                            </div>
+                                            <div className="text-[11px] font-bold text-slate-700 mt-0.5">
+                                                {h.header_name} ({rowCount}) - ₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
                                 return (
                                     <div
                                         key={h.header_name}
                                         onClick={() => setActiveKey(h.header_name)}
-                                        className={`group flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer select-none ${isActive
-                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 border border-blue-600'
-                                            : 'text-slate-600 hover:bg-slate-100 border border-slate-200/80 bg-slate-50/50'
-                                            }`}
+                                        className="group flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-2xl border border-slate-200 bg-slate-50/60 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer select-none"
                                     >
-                                        <span className="font-semibold tracking-tight">{h.header_name}</span>
-                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${isActive ? 'bg-blue-700/80 text-blue-50' : 'bg-slate-200/70 text-slate-500'
-                                            }`}>
+                                        <span>{h.header_name}</span>
+                                        <span className="px-2 py-0.5 text-[10px] font-bold bg-slate-200 text-slate-600 rounded-md">
                                             {rowCount}
                                         </span>
                                         {!isManpower && (
@@ -2013,10 +2174,7 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
                                                 <button
                                                     type="button"
                                                     onClick={(e) => e?.stopPropagation()}
-                                                    className={`p-0.5 rounded-full transition-all cursor-pointer ${isActive
-                                                        ? 'text-blue-200 hover:text-white hover:bg-blue-700'
-                                                        : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                                                        }`}
+                                                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded-full transition-colors cursor-pointer"
                                                     title="Delete section table"
                                                 >
                                                     <CloseOutlined style={{ fontSize: 10 }} />
@@ -2026,20 +2184,26 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
                                     </div>
                                 );
                             })}
+
                             <button
                                 onClick={handleOpenAddSection}
-                                className="px-3.5 py-2 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 border border-blue-200/80 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                className="px-4 py-2.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50/60 hover:bg-blue-100/80 border border-blue-200/80 rounded-2xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                             >
-                                <PlusOutlined style={{ fontSize: 10 }} /> Add Section
+                                <PlusOutlined style={{ fontSize: 11 }} /> Add Section
                             </button>
                         </div>
 
-                        {/* Grand Total Summary Display */}
-                        <div className="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-200/80 text-blue-900 px-4 py-2 rounded-xl">
-                            <span className="text-xs font-semibold text-blue-700 tracking-wider">Grand Total:</span>
-                            <span className="text-base font-extrabold text-blue-700">
-                                ₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
+                        {/* Grand Total Card (Top Right) */}
+                        <div className="flex items-center gap-3 bg-white border border-slate-200/80 p-3 px-5 rounded-2xl shadow-xs shrink-0 self-start lg:self-auto">
+                            <div>
+                                <div className="text-[11px] font-semibold text-slate-400">Grand Total:</div>
+                                <div className="text-xl font-black text-slate-900 tracking-tight">
+                                    ₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                            </div>
+                            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+                                <RiseOutlined style={{ fontSize: 18 }} />
+                            </div>
                         </div>
                     </div>
 
@@ -2067,12 +2231,12 @@ export function CostEstimationModal({ open, onClose, title, createdBy, projectId
 
                     {/* Bottom Active Table Estimated Total Footer Bar */}
                     <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs">
-                        <span className="text-slate-500 font-medium">
-                            Section: <strong className="text-slate-800 font-bold">{activeHeader?.header_name || "Section"}</strong> ({(activeHeader?.rows || []).length} {(activeHeader?.rows || []).length === 1 ? 'row' : 'rows'})
+                        <span className="text-slate-500 font-semibold">
+                            Section: <strong className="text-slate-900 font-bold">{activeHeader?.header_name || "Section"}</strong> ({(activeHeader?.rows || []).length} {(activeHeader?.rows || []).length === 1 ? 'row' : 'rows'})
                         </span>
-                        <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
-                            <span>Estimated Total ({activeHeader?.header_name || "Section"}):</span>
-                            <span className="text-lg font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200/80">
+                        <div className="flex items-center gap-3 text-slate-800 font-bold text-sm">
+                            <span className="text-slate-700 font-bold">Estimated Total ({activeHeader?.header_name || "Section"}):</span>
+                            <span className="text-lg font-extrabold text-blue-600 bg-blue-50/80 px-4 py-1.5 rounded-2xl border border-blue-200/80 shadow-2xs">
                                 ₹{activeHeaderSubtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
