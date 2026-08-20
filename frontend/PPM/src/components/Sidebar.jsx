@@ -58,7 +58,9 @@ function Sidebar() {
                           ? 'chats'
                           : section === 'document-generate' || section === 'documents-generate'
                             ? 'document-generate'
-                            : 'proposals'
+                            : section === 'iso-generation'
+                              ? 'iso-generation'
+                              : 'proposals'
 
   let userName = ''
   let userRole = ''
@@ -260,6 +262,7 @@ function Sidebar() {
             else if (info.key === 'overall-analytics') navigate(`${prefix}/overall-analytics`)
             else if (info.key === 'chats') navigate(`${prefix}/chats`)
             else if (info.key === 'document-generate') navigate(`${prefix}/document-generate`)
+            else if (info.key === 'iso-generation') navigate(`${prefix}/iso-generation`)
 
             else navigate(`${prefix}/proposals`)
           }}
@@ -290,6 +293,7 @@ function Sidebar() {
               )
             }] : []),
             ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
+            { key: 'iso-generation', icon: <FileWordOutlined />, label: 'ISO Generation' },
 
             ...(isGHOrScientist
               ? [
