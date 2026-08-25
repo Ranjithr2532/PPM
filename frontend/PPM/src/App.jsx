@@ -21,6 +21,7 @@ const UserAccess = lazy(() => import('./pages/AccessControl'))
 const Customers = lazy(() => import('./pages/customers'))
 const CustomersPremium = lazy(() => import('./pages/CustomersPremium'))
 const DocumentGenerate = lazy(() => import('./pages/Document_genrate'))
+const Isogenration = lazy(() => import('./pages/isogenration'))
 
 const { Content } = Layout
 
@@ -128,6 +129,7 @@ function RoleProtectedLayout({ basePath }) {
               <Route path='gh-notification' element={<GhNotification />} />
               <Route path='document-generate' element={<DocumentGenerate />} />
               <Route path='documents-generate' element={<DocumentGenerate />} />
+              <Route path='iso-generation' element={<Isogenration />} />
 
               {/* Only admins can access configuration */}
               {isAdmin && (

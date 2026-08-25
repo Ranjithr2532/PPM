@@ -33,6 +33,11 @@ from routes.dynamic_table import router as dynamic_table_router
 from routes.groupchatroutes import router as groupchat_router
 from routes.count import router as count_router
 from routes.quotation import router as quotation_router, proposal_alias_router, proposal_lc_alias_router
+from iso.header import router as iso_header_router
+from iso.finalfooter import router as iso_footer_router
+from iso.fesiablity import router as iso_feasibility_router
+from iso.contractreview import router as iso_contractreview_router
+from iso.projectteam import router as iso_projectteam_router
 # from ai_routes.ai import router as ai_router
 
 from sqlalchemy import text
@@ -74,6 +79,11 @@ app.include_router(count_router)
 app.include_router(quotation_router)
 app.include_router(proposal_alias_router)
 app.include_router(proposal_lc_alias_router)
+app.include_router(iso_header_router)
+app.include_router(iso_footer_router)
+app.include_router(iso_feasibility_router)
+app.include_router(iso_contractreview_router)
+app.include_router(iso_projectteam_router)
 # app.include_router(ai_router)
 
 # --------------------------------------------------------------------------
