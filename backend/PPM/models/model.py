@@ -1,7 +1,9 @@
-from sqlalchemy import Column, DateTime, ARRAY, ForeignKey, Integer, String, Date, func , Boolean , TIMESTAMP, JSON, Numeric, Text
+from sqlalchemy import Column, DateTime, ARRAY, ForeignKey, Integer, String, Date, func , Boolean , TIMESTAMP, JSON, Numeric, Text, BigInteger
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from db import Base
 from datetime import datetime
+
 
 
 
@@ -406,3 +408,44 @@ class Customers(Base):
     
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# -------------------------------------------------
+# ISO SUBMISSIONS TABLE (DRAFT, EDIT, APPROVAL FLOW)
+# -------------------------------------------------
+class ISOSubmission(Base):
+    __tablename__ = "iso_submissions"
+
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    doc_type = Column(String(50), nullable=False, index=True) # FEASIBILITY, CONTRACT_REVIEW, PROJECT_TEAM
+    document_no = Column(String(100), nullable=False, index=True)
+    proposal_id = Column(BigInteger, ForeignKey("proposals.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    header_data = Column(JSONB, nullable=False, default=dict)
+    form_data = Column(JSONB, nullable=False, default=dict)
+    
+    status = Column(String(30), nullable=False, default="DRAFT", server_default="DRAFT", index=True) # DRAFT, SUBMITTED, APPROVED, REJECTED
+    rejection_comment = Column(Text, nullable=True)
+
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+    approved_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    approved_at = Column(DateTime(timezone=False), nullable=True)
+
+
+# -------------------------------------------------
+# ISO DOCUMENT LIST TABLE
+# -------------------------------------------------
+class ISODocumentList(Base):
+    __tablename__ = "iso_document_list"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    initial = Column(String(50), nullable=True)
+    code = Column(String(100), nullable=True)
+    document_no = Column(String(100), nullable=True)
+    is_active = Column(Boolean, default=True, server_default="true", nullable=False)
+    created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+

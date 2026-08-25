@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     FileTextOutlined, 
     ArrowLeftOutlined, 
@@ -12,7 +12,19 @@ import ProjectTeam from '../isopages/projectteam.jsx';
 export default function Isogenration() {
     const [activeForm, setActiveForm] = useState(null); // null | 'feasibility' | 'contractreview' | 'projectteam'
 
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const formParam = searchParams.get('form') || searchParams.get('doc_type');
+        if (formParam) {
+            const normalized = formParam.toLowerCase().replace('_', '');
+            if (['feasibility', 'contractreview', 'projectteam'].includes(normalized)) {
+                setActiveForm(normalized);
+            }
+        }
+    }, []);
+
     // If a form is selected, show that form with a Back Button
+
     if (activeForm === 'feasibility') {
         return (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-h-screen">
