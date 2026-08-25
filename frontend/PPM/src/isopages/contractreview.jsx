@@ -5,15 +5,14 @@ import {
     FileWordOutlined,
     ArrowLeftOutlined,
     CheckOutlined,
-    CloseOutlined
-
+    CloseOutlined,
+    UploadOutlined,
+    FileTextOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
-
-
 
 const normalizeCentreDept = (centre) => {
     if (!centre) return '';
@@ -89,9 +88,11 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [readingQuotation, setReadingQuotation] = useState(false);
     const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
+
 
     // Details state
     const [quoteNo, setQuoteNo] = useState('');
@@ -151,11 +152,13 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                         rList.forEach((pt, idx) => {
                             const template = REVIEW_ITEMS_TEMPLATES[idx];
                             if (template) {
-                                updatedValues[template.key_q] = pt.yes_no_na || pt.response || '';
-                                updatedValues[template.key_p] = pt.details || '';
+                                updatedValues[template.key_q] = pt.quotation_clause || pt.yes_no_na || pt.response || '';
+                                updatedValues[template.key_p] = pt.po_clause || pt.details || '';
+                                updatedValues[template.key_d] = pt.deviations || '';
                             }
                         });
                         setReviewValues(updatedValues);
+
                     }
                 } catch (err) {
                     console.error('Failed to load ISO Contract Review submission:', err);
@@ -257,6 +260,9 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             } else {
                 setSelectType('Quotation');
             }
+
+            // Auto-load quotation details for selected proposal
+            handleLoadQuotationData(val);
         } else {
             setQuoteNo('');
             setQuoteDate('');
@@ -266,6 +272,82 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             setSelectType('Quotation');
         }
     };
+
+    // Read and load quotation details from backend quotation reader
+    const handleLoadQuotationData = async (proposalIdToLoad = null) => {
+        const pId = proposalIdToLoad || selectedProposalId;
+        if (!pId) {
+            alert('Please select a proposal first, or upload a quotation file.');
+            return;
+        }
+
+        setReadingQuotation(true);
+        try {
+            const res = await axios.get(`${API_BASE_URL}/iso/quotation-reader/proposal-quotation/${pId}`);
+            if (res.data) {
+                const data = res.data;
+                if (data.company_name) setCustomerName(data.company_name);
+                if (data.enquiry_ref) setQuoteNo(data.enquiry_ref);
+                if (data.date) setQuoteDate(data.date);
+
+                setReviewValues(prev => ({
+                    ...prev,
+                    q1_val: data.company_name || prev.q1_val || '',
+                    q2_val: data.subject || prev.q2_val || '',
+                    q6_val: data.delivery_period || '06 months from the date of acceptance',
+                    q10_val: data.payment_terms || '80% after completion of the work & 20% after the successful implementation & submission of report.'
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to load quotation data:', err);
+        } finally {
+            setReadingQuotation(false);
+        }
+    };
+
+    // Direct file upload quotation reader
+    const handleQuotationFileUpload = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setReadingQuotation(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await axios.post(`${API_BASE_URL}/iso/quotation-reader/extract`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            if (res.data) {
+                const data = res.data;
+                if (data.company_name) setCustomerName(data.company_name);
+                if (data.enquiry_ref) setQuoteNo(data.enquiry_ref);
+                if (data.date) setQuoteDate(data.date);
+
+                setReviewValues(prev => ({
+                    ...prev,
+                    q1_val: data.company_name || prev.q1_val || '',
+                    q2_val: data.subject || prev.q2_val || '',
+                    q6_val: data.delivery_period || '06 months from the date of acceptance',
+                    q10_val: data.payment_terms || '80% after completion of the work & 20% after the successful implementation & submission of report.'
+                }));
+
+                alert(`File "${file.name}" read successfully! Quotation details filled.`);
+            }
+
+
+
+
+        } catch (err) {
+            console.error('File quotation OCR error:', err);
+            alert('Failed to read quotation file.');
+        } finally {
+            setReadingQuotation(false);
+            event.target.value = '';
+        }
+    };
+
 
     const handleReset = () => {
         setSelectedProposalId('');
@@ -518,6 +600,29 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                         ))}
                     </select>
 
+                    {!isReadOnly && (
+                        <>
+                            <button
+                                onClick={() => handleLoadQuotationData()}
+                                disabled={readingQuotation || !selectedProposalId}
+                                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-sm disabled:opacity-50"
+                                title="Auto-fill details from Proposal Quotation document"
+                            >
+                                <FileTextOutlined /> {readingQuotation ? 'Reading Quotation...' : 'Load Data from Quotation'}
+                            </button>
+
+                            <label className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer transition-all shadow-sm">
+                                <UploadOutlined /> Read Quotation File
+                                <input
+                                    type="file"
+                                    accept=".pdf,.png,.jpg,.jpeg"
+                                    onChange={handleQuotationFileUpload}
+                                    className="hidden"
+                                />
+                            </label>
+                        </>
+                    )}
+
                     <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
                         status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
                         status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
@@ -539,6 +644,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                             >
                                 {submitting ? 'Saving...' : 'Save Draft'}
                             </button>
+
 
                             <button
                                 onClick={() => handleSaveSubmission('SUBMITTED')}
@@ -742,52 +848,55 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                 <table className="w-full border-collapse border border-slate-800 text-xs mb-6">
                     <thead>
                         <tr className="bg-slate-900 text-white font-bold text-center">
-                            <th className="border border-slate-800 p-2.5 w-[6%]">Sl. No.</th>
-                            <th className="border border-slate-800 p-2.5 w-[42%]">Aspects to be Reviewed</th>
-                            <th className="border border-slate-800 p-2.5 w-[14%]">Quotation Ref / Clause</th>
-                            <th className="border border-slate-800 p-2.5 w-[14%]">PO Ref / Clause</th>
-                            <th className="border border-slate-800 p-2.5 w-[24%]">Deviations / Remarks</th>
+                            <th className="border border-slate-800 p-2 w-[5%]">Sl. No.</th>
+                            <th className="border border-slate-800 p-2 w-[35%]">Aspects to be Reviewed</th>
+                            <th className="border border-slate-800 p-2 w-[20%]">Quotation Ref / Clause</th>
+                            <th className="border border-slate-800 p-2 w-[20%]">PO Ref / Clause</th>
+                            <th className="border border-slate-800 p-2 w-[20%]">Deviations / Remarks</th>
                         </tr>
                     </thead>
                     <tbody>
                         {REVIEW_ITEMS_TEMPLATES.map((item) => (
 
                             <tr key={item.sl_no} className="hover:bg-slate-50/30 transition-colors">
-                                <td className="border border-slate-800 p-2 text-center font-semibold text-slate-600">{item.sl_no}.</td>
-                                <td className="border border-slate-800 p-2 text-left text-[11px] leading-relaxed text-slate-700">{item.checklist}</td>
-                                <td className="border border-slate-800 p-2 text-center">
+                                <td className="border border-slate-800 p-2 text-center font-semibold text-slate-600 align-top">{item.sl_no}.</td>
+                                <td className="border border-slate-800 p-2 text-left text-[11px] leading-relaxed text-slate-700 align-top font-medium">{item.checklist}</td>
+                                <td className="border border-slate-800 p-1 text-center align-top">
                                     {isReadOnly ? (
-                                        <span className="font-semibold text-slate-800">{reviewValues[item.key_q] || '--'}</span>
+                                        <span className="font-semibold text-slate-800 text-[11px] leading-snug break-words whitespace-pre-wrap block">{reviewValues[item.key_q] || '--'}</span>
                                     ) : (
-                                        <input
-                                            type="text"
+                                        <textarea
                                             value={reviewValues[item.key_q] || ''}
                                             onChange={(e) => setReviewValues({ ...reviewValues, [item.key_q]: e.target.value })}
-                                            className="w-full bg-transparent outline-none text-center font-medium text-slate-800"
+                                            rows={2}
+                                            placeholder="--"
+                                            className="w-full bg-transparent outline-none focus:bg-slate-50 text-center font-medium text-slate-800 text-[11px] leading-snug p-1 resize-y rounded"
                                         />
                                     )}
                                 </td>
-                                <td className="border border-slate-800 p-2 text-center">
+                                <td className="border border-slate-800 p-1 text-center align-top">
                                     {isReadOnly ? (
-                                        <span className="font-semibold text-slate-800">{reviewValues[item.key_p] || '--'}</span>
+                                        <span className="font-semibold text-slate-800 text-[11px] leading-snug break-words whitespace-pre-wrap block">{reviewValues[item.key_p] || '--'}</span>
                                     ) : (
-                                        <input
-                                            type="text"
+                                        <textarea
                                             value={reviewValues[item.key_p] || ''}
                                             onChange={(e) => setReviewValues({ ...reviewValues, [item.key_p]: e.target.value })}
-                                            className="w-full bg-transparent outline-none text-center font-medium text-slate-800"
+                                            rows={2}
+                                            placeholder="--"
+                                            className="w-full bg-transparent outline-none focus:bg-slate-50 text-center font-medium text-slate-800 text-[11px] leading-snug p-1 resize-y rounded"
                                         />
                                     )}
                                 </td>
-                                <td className="border border-slate-800 p-2">
+                                <td className="border border-slate-800 p-1 text-center align-top">
                                     {isReadOnly ? (
-                                        <span className="font-medium text-slate-800">{reviewValues[item.key_d] || '--'}</span>
+                                        <span className="font-medium text-slate-800 text-[11px] leading-snug break-words whitespace-pre-wrap block">{reviewValues[item.key_d] || '--'}</span>
                                     ) : (
-                                        <input
-                                            type="text"
+                                        <textarea
                                             value={reviewValues[item.key_d] || ''}
                                             onChange={(e) => setReviewValues({ ...reviewValues, [item.key_d]: e.target.value })}
-                                            className="w-full bg-transparent outline-none text-left font-medium text-slate-800"
+                                            rows={2}
+                                            placeholder="--"
+                                            className="w-full bg-transparent outline-none focus:bg-slate-50 text-center font-medium text-slate-800 text-[11px] leading-snug p-1 resize-y rounded"
                                         />
                                     )}
                                 </td>
@@ -795,6 +904,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                         ))}
                     </tbody>
                 </table>
+
 
                 <table className="w-full border-collapse border border-slate-800 text-xs mt-auto">
                     <tbody>
