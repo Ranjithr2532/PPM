@@ -1,4 +1,8 @@
 from routes.manpower import router as manpower_router
+from routes.iso_submission import router as iso_submission_router
+from routes.iso_document_list import router as iso_document_list_router
+
+
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
@@ -38,7 +42,9 @@ from iso.finalfooter import router as iso_footer_router
 from iso.fesiablity import router as iso_feasibility_router
 from iso.contractreview import router as iso_contractreview_router
 from iso.projectteam import router as iso_projectteam_router
+from iso.mom import router as iso_mom_router
 # from ai_routes.ai import router as ai_router
+
 
 from sqlalchemy import text
 
@@ -84,6 +90,12 @@ app.include_router(iso_footer_router)
 app.include_router(iso_feasibility_router)
 app.include_router(iso_contractreview_router)
 app.include_router(iso_projectteam_router)
+app.include_router(iso_mom_router)
+app.include_router(iso_submission_router)
+app.include_router(iso_document_list_router)
+
+
+
 # app.include_router(ai_router)
 
 # --------------------------------------------------------------------------

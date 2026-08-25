@@ -5,11 +5,17 @@ import {
     FileWordOutlined,
     ArrowLeftOutlined,
     PlusOutlined,
-    DeleteOutlined
+    DeleteOutlined,
+    CheckOutlined,
+    CloseOutlined
+
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
+import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
+
+
 
 const normalizeCentreDept = (centre) => {
     if (!centre) return '';
@@ -62,28 +68,79 @@ const getDefaultRevisionCode = (docCode) => {
     return `CMTI-QMS-${groupStr}-${docCode}/Rev00`;
 };
 
-export default function ProjectTeam() {
+export default function ProjectTeam({ proposalId: propProposalId, submissionId: propSubmissionId, onBack }) {
     const [proposals, setProposals] = useState([]);
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
-    const [selectedProposalId, setSelectedProposalId] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
+    const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
+    const [status, setStatus] = useState('DRAFT');
 
-    // Document state
+    // Details state
     const [projectNo, setProjectNo] = useState('');
+    const [projectTitle, setProjectTitle] = useState('');
+    const [customerName, setCustomerName] = useState('');
+    const [projectLeader, setProjectLeader] = useState('');
     const [poReference, setPoReference] = useState('');
     const [proposalRef, setProposalRef] = useState('');
-    const [subject, setSubject] = useState('Concerning formation of team for the project ""');
-    const [preparedBy, setPreparedBy] = useState('');
-    const [approvedBy, setApprovedBy] = useState('');
-    const [filename, setFilename] = useState('CMTI_Project_Team_Letter.docx');
+    const [subject, setSubject] = useState('');
+
+
+    const [filename, setFilename] = useState('Constitution_of_Project_Team.docx');
     const loggedCentreDept = getLoggedUserCentreDept();
     const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('045'));
     const [docNo, setDocNo] = useState('');
     const [docDate, setDocDate] = useState(getTodayDateString());
+    const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
+    const [approvedBy, setApprovedBy] = useState('');
+
 
     // Lists of team and review members (empty by default as requested)
     const [teamMembers, setTeamMembers] = useState([]);
     const [reviewMembers, setReviewMembers] = useState([]);
+
+    // Check props or URL parameters to load existing submission
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlId = propSubmissionId || searchParams.get('id') || searchParams.get('submission_id');
+        const urlPropId = propProposalId || searchParams.get('proposal_id');
+
+        if (urlPropId) {
+            setSelectedProposalId(String(urlPropId));
+        }
+
+        if (urlId) {
+            async function loadSubmission() {
+                try {
+                    const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
+                    if (res.data) {
+
+                        const sub = res.data;
+                        setSubmissionId(sub.id);
+                        setStatus(sub.status || 'DRAFT');
+                        setDocNo(sub.document_no || '');
+                        if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
+
+                        const hData = sub.header_data || {};
+                        if (hData.dateStr) setDocDate(hData.dateStr);
+
+                        const fData = sub.form_data || {};
+                        if (fData.project_no) setProjectNo(fData.project_no);
+                        if (fData.project_title) setProjectTitle(fData.project_title);
+                        if (fData.customer_name) setCustomerName(fData.customer_name);
+                        if (fData.project_leader) setProjectLeader(fData.project_leader);
+                        if (fData.team_members) setTeamMembers(fData.team_members);
+                        if (fData.review_members) setReviewMembers(fData.review_members);
+                    }
+                } catch (err) {
+                    console.error('Failed to load ISO Project Team submission:', err);
+                }
+            }
+            loadSubmission();
+        }
+    }, []);
+
 
     // Fetch user details and load proposals
     const fetchProposals = useCallback(async () => {
@@ -286,8 +343,144 @@ export default function ProjectTeam() {
 
 
 
+    // Handle saving draft or submitting form to PostgreSQL database
+    const handleSaveSubmission = async (targetStatus = 'DRAFT') => {
+        setSubmitting(true);
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'CONSTITUTION OF PROJECT TEAM',
+                docNo: docNo || '045/001',
+                dateStr: docDate,
+                pageStr: '1 of 1',
+                centreDept: loggedCentreDept || 'SMPM',
+                isoSpec: 'ISO 9001-2015',
+                groupName: revisionCode,
+            };
+
+            const formDataPayload = {
+                project_no: projectNo,
+                project_title: projectTitle,
+                customer_name: customerName,
+                project_leader: projectLeader,
+                team_members: teamMembers,
+                review_members: reviewMembers,
+            };
+
+            const payload = {
+                doc_type: 'PROJECT_TEAM',
+                document_no: docNo || '045/001',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formDataPayload,
+                status: targetStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionId) {
+                response = await axios.put(`${API_BASE_URL}/iso-submissions/${submissionId}`, payload);
+            } else {
+                response = await axios.post(`${API_BASE_URL}/iso-submissions/`, payload);
+                if (response.data && response.data.id) {
+                    setSubmissionId(response.data.id);
+                }
+            }
+
+            setStatus(response.data.status || targetStatus);
+            alert(`ISO Constitution of Project Team ${targetStatus === 'SUBMITTED' ? 'Submitted for Approval' : 'Saved as Draft'} successfully!`);
+        } catch (err) {
+            console.error('Error saving submission:', err);
+            alert(err.response?.data?.detail || 'Failed to save submission.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Approval / Rejection handlers for CH / GH / Admin
+    const handleFormStatusUpdate = async (newStatus) => {
+        if (!submissionId) return;
+        let rejectComment = null;
+        if (newStatus === 'REJECTED') {
+            rejectComment = prompt('Please enter the reason for rejection:');
+            if (!rejectComment) return;
+        }
+
+        setSubmitting(true);
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const userId = rawUser ? JSON.parse(rawUser)?.id : null;
+            const currentApproverName = getLoggedUserName();
+
+            if (newStatus === 'APPROVED' && currentApproverName) {
+                setApprovedBy(currentApproverName);
+                await isoSubmissionService.updateSubmission(submissionId, {
+                    form_data: {
+                        project_no: projectNo,
+                        po_reference: poReference,
+                        proposal_ref: proposalRef,
+                        subject: subject,
+                        prepared_by: preparedBy || getLoggedUserName(),
+                        approved_by: currentApproverName,
+                        team_members: teamMembers,
+                        review_members: reviewMembers
+                    },
+                    header_data: {
+                        docNo: docNo,
+                        dateStr: docDate,
+                        centreDept: loggedCentreDept,
+                        preparedName: preparedBy || getLoggedUserName(),
+                        approvedName: currentApproverName
+                    }
+                });
+            }
+
+            await isoSubmissionService.updateStatus(submissionId, newStatus, rejectComment, userId);
+            setStatus(newStatus);
+            alert(`ISO Document marked as ${newStatus} successfully!`);
+        } catch (err) {
+            console.error('Status update error:', err);
+            alert('Failed to update status.');
+        } finally {
+            setSubmitting(false);
+        }
+
+    };
+
+    // Check user role
+    const currentUserRole = (() => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
+    const isApproved = status === 'APPROVED';
+    const isSubmitted = status === 'SUBMITTED';
+    // Approvers and Scientists viewing SUBMITTED or APPROVED docs are strictly READ-ONLY
+    const isReadOnly = isApproved || isSubmitted || isApprover;
+
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
+            {/* Status Alert Banner */}
+            {isApproved && (
+                <div className="w-full max-w-4xl bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
+                    <span>🔒 ISO Document APPROVED. This document is officially approved and locked against editing.</span>
+                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-mono uppercase">APPROVED</span>
+                </div>
+            )}
+            {!isApproved && isSubmitted && (
+                <div className="w-full max-w-4xl bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
+                    <span>{isApprover ? '📋 Review Mode: ISO Document Submitted by Scientist. Read-Only View for CH/GH.' : '⏳ ISO Document Submitted. Pending approval review by CH / GH.'}</span>
+                    <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded font-mono uppercase">SUBMITTED</span>
+                </div>
+            )}
+
             {/* Top Toolbar Control Bar */}
             <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto">
@@ -295,8 +488,8 @@ export default function ProjectTeam() {
                     <select
                         value={selectedProposalId}
                         onChange={handleProposalChange}
-                        disabled={proposalsLoading}
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium"
+                        disabled={proposalsLoading || isReadOnly}
+                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium disabled:opacity-60"
                     >
                         <option value="">-- Choose proposal to auto-fill --</option>
                         {proposals.map(p => (
@@ -305,31 +498,71 @@ export default function ProjectTeam() {
                             </option>
                         ))}
                     </select>
+
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                        'bg-amber-100 text-amber-800'
+                    }`}>
+                        {status}
+                    </span>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                    <input
-                        type="text"
-                        value={filename}
-                        onChange={(e) => setFilename(e.target.value)}
-                        placeholder="filename.docx"
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl p-2.5 w-44 font-medium"
-                    />
-                    <button
-                        onClick={handleReset}
-                        className="flex items-center justify-center gap-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all"
-                    >
-                        <ReloadOutlined /> Reset
-                    </button>
+                <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
+                    {/* Scientist Create / Edit Controls */}
+                    {!isReadOnly && !isApprover && (
+                        <>
+                            <button
+                                onClick={() => handleSaveSubmission('DRAFT')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
+                            >
+                                {submitting ? 'Saving...' : 'Save Draft'}
+                            </button>
+
+                            <button
+                                onClick={() => handleSaveSubmission('SUBMITTED')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                            >
+                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                            </button>
+                        </>
+                    )}
+
+                    {/* CH / GH Approver Review Controls */}
+                    {isApprover && isSubmitted && (
+                        <>
+                            <button
+                                onClick={() => handleFormStatusUpdate('APPROVED')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                            >
+                                <CheckOutlined /> Approve Document
+                            </button>
+
+                            <button
+                                onClick={() => handleFormStatusUpdate('REJECTED')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-rose-600/10"
+                            >
+                                <CloseOutlined /> Reject Document
+                            </button>
+                        </>
+                    )}
+
                     <button
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10"
+                        className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10"
                     >
-                        {generating ? 'Generating...' : <><DownloadOutlined /> Download Word Doc</>}
+                        {generating ? 'Generating...' : <><DownloadOutlined /> Download Word</>}
                     </button>
                 </div>
             </div>
+
+
 
             {/* A4 simulated page */}
             <div className="w-full max-w-[21cm] bg-white shadow-2xl border border-slate-200 p-[1.5cm] flex flex-col font-sans text-slate-800 text-xs leading-relaxed min-h-[29.7cm]">
@@ -351,13 +584,17 @@ export default function ProjectTeam() {
                         </tr>
                         <tr>
                             <td className="border border-slate-800 px-2 py-1 text-left text-[9px] font-semibold">
-                                Doc. No: <input
-                                    type="text"
-                                    value={docNo}
-                                    onChange={(e) => setDocNo(e.target.value)}
-                                    placeholder="--"
-                                    className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-28 px-1 py-0 text-[9px] font-normal text-slate-800"
-                                />
+                                Doc. No: {isReadOnly ? (
+                                    <span className="font-bold text-slate-900 px-1">{docNo || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={docNo}
+                                        onChange={(e) => setDocNo(e.target.value)}
+                                        placeholder="--"
+                                        className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-28 px-1 py-0 text-[9px] font-normal text-slate-800"
+                                    />
+                                )}
                             </td>
                         </tr>
                         <tr>
@@ -365,59 +602,79 @@ export default function ProjectTeam() {
                                 Project Team Letter
                             </td>
                             <td className="border border-slate-800 px-2 py-1 text-left text-[9px] font-semibold">
-                                Date: <input
-                                    type="text"
-                                    value={docDate}
-                                    onChange={(e) => setDocDate(e.target.value)}
-                                    className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-20 px-1 py-0 text-[9px] font-normal text-slate-800"
-                                /><br />
+                                Date: {isReadOnly ? (
+                                    <span className="font-bold text-slate-900 px-1">{docDate || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={docDate}
+                                        onChange={(e) => setDocDate(e.target.value)}
+                                        className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-20 px-1 py-0 text-[9px] font-normal text-slate-800"
+                                    />
+                                )}<br />
                                 Page: <span className="font-normal text-slate-600">1 of 1</span>
                             </td>
                         </tr>
                     </tbody>
                 </table>
 
-                {/* 2. Metadata details (borderless input box lines) */}
+                {/* 2. Metadata details */}
                 <div className="flex flex-col gap-2.5 mb-6 text-slate-800 leading-relaxed font-semibold">
                     <div className="flex items-center gap-1.5">
                         <span className="text-slate-900 font-bold whitespace-nowrap">Project No :</span>
-                        <input
-                            type="text"
-                            value={projectNo}
-                            onChange={(e) => setProjectNo(e.target.value)}
-                            placeholder="GST..."
-                            className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-semibold text-slate-800 p-0.5"
-                        />
+                        {isReadOnly ? (
+                            <span className="font-bold text-slate-900">{projectNo || '--'}</span>
+                        ) : (
+                            <input
+                                type="text"
+                                value={projectNo}
+                                onChange={(e) => setProjectNo(e.target.value)}
+                                placeholder="GST..."
+                                className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-semibold text-slate-800 p-0.5"
+                            />
+                        )}
                     </div>
                     <div className="flex items-center gap-1.5">
                         <span className="text-slate-900 font-bold whitespace-nowrap">Customer PO Reference with date:</span>
-                        <input
-                            type="text"
-                            value={poReference}
-                            onChange={(e) => setPoReference(e.target.value)}
-                            placeholder="PO details..."
-                            className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-normal text-slate-800 p-0.5"
-                        />
+                        {isReadOnly ? (
+                            <span className="font-semibold text-slate-900">{poReference || '--'}</span>
+                        ) : (
+                            <input
+                                type="text"
+                                value={poReference}
+                                onChange={(e) => setPoReference(e.target.value)}
+                                placeholder="PO details..."
+                                className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-normal text-slate-800 p-0.5"
+                            />
+                        )}
                     </div>
                     <div className="flex items-center gap-1.5">
                         <span className="text-slate-900 font-bold whitespace-nowrap">Ref Proposal / Quotation:</span>
-                        <input
-                            type="text"
-                            value={proposalRef}
-                            onChange={(e) => setProposalRef(e.target.value)}
-                            placeholder=""
-                            className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-normal text-slate-800 p-0.5"
-                        />
+                        {isReadOnly ? (
+                            <span className="font-semibold text-slate-900">{proposalRef || '--'}</span>
+                        ) : (
+                            <input
+                                type="text"
+                                value={proposalRef}
+                                onChange={(e) => setProposalRef(e.target.value)}
+                                placeholder=""
+                                className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-normal text-slate-800 p-0.5"
+                            />
+                        )}
                     </div>
                     <div className="flex items-start gap-1.5">
                         <span className="text-slate-900 font-bold whitespace-nowrap mt-0.5">Subject:</span>
-                        <textarea
-                            value={subject}
-                            onChange={(e) => setSubject(e.target.value)}
-                            placeholder="Concerning formation of team..."
-                            rows={2}
-                            className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-normal text-slate-800 p-0.5 resize-none leading-relaxed"
-                        />
+                        {isReadOnly ? (
+                            <span className="font-semibold text-slate-900 leading-relaxed">{subject || '--'}</span>
+                        ) : (
+                            <textarea
+                                value={subject}
+                                onChange={(e) => setSubject(e.target.value)}
+                                placeholder="Concerning formation of team..."
+                                rows={2}
+                                className="bg-transparent border-b border-transparent focus:border-slate-300 hover:border-slate-200 outline-none flex-1 font-normal text-slate-800 p-0.5 resize-none leading-relaxed"
+                            />
+                        )}
                     </div>
                 </div>
 
@@ -430,81 +687,94 @@ export default function ProjectTeam() {
                 <div className="mb-6">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Project Team Members</span>
-                        <button
-                            onClick={addTeamRow}
-                            className="flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 font-semibold px-2.5 py-1 rounded-lg transition-all border border-slate-200"
-                        >
-                            <PlusOutlined /> Add Member
-                        </button>
+                        {!isReadOnly && (
+                            <button
+                                onClick={addTeamRow}
+                                className="flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 font-semibold px-2.5 py-1 rounded-lg transition-all border border-slate-200"
+                            >
+                                <PlusOutlined /> Add Member
+                            </button>
+                        )}
                     </div>
 
                     <table className="w-full border-collapse border border-slate-800 text-xs">
                         <thead>
                             <tr className="bg-slate-900 text-white font-bold text-center">
                                 <th className="border border-slate-800 p-2.5 w-[7%]">Sl No</th>
-                                <th className="border border-slate-800 p-2.5 w-[24%]">Name</th>
-                                <th className="border border-slate-800 p-2.5 w-[18%]">Designation</th>
-                                <th className="border border-slate-800 p-2.5 w-[19%]">Type (Mech/Elect/software)</th>
-                                <th className="border border-slate-800 p-2.5 w-[19%]">Roles</th>
-                                <th className="border border-slate-800 p-2.5 w-[13%]">Actions</th>
+                                <th className="border border-slate-800 p-2.5 w-[28%]">Name</th>
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Designation</th>
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Type</th>
+                                <th className="border border-slate-800 p-2.5 w-[25%]">Roles</th>
+                                {!isReadOnly && <th className="border border-slate-800 p-2.5 w-[10%]">Actions</th>}
                             </tr>
                         </thead>
                         <tbody>
                             {teamMembers.map((member, index) => (
                                 <tr key={index} className="hover:bg-slate-50/30 transition-colors">
                                     <td className="border border-slate-800 p-2 text-center font-semibold text-slate-500">
-                                        {member.sl_no}.
+                                        {index + 1}.
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.name}
-                                            onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
-                                            placeholder="Enter name..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-800 font-medium"
-                                        />
+                                    <td className="border border-slate-800 p-2 font-semibold text-slate-900">
+                                        {isReadOnly ? (member.name || '--') : (
+                                            <input
+                                                type="text"
+                                                value={member.name}
+                                                onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
+                                                placeholder="Enter name..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-800 font-medium"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.designation}
-                                            onChange={(e) => handleTeamMemberChange(index, 'designation', e.target.value)}
-                                            placeholder="Designation..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
-                                        />
+                                    <td className="border border-slate-800 p-2 text-slate-700">
+                                        {isReadOnly ? (member.designation || '--') : (
+                                            <input
+                                                type="text"
+                                                value={member.designation}
+                                                onChange={(e) => handleTeamMemberChange(index, 'designation', e.target.value)}
+                                                placeholder="Designation..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.member_type}
-                                            onChange={(e) => handleTeamMemberChange(index, 'member_type', e.target.value)}
-                                            placeholder="Type..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
-                                        />
+                                    <td className="border border-slate-800 p-2 text-slate-700">
+                                        {isReadOnly ? (member.member_type || '--') : (
+                                            <input
+                                                type="text"
+                                                value={member.member_type}
+                                                onChange={(e) => handleTeamMemberChange(index, 'member_type', e.target.value)}
+                                                placeholder="Type..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.roles}
-                                            onChange={(e) => handleTeamMemberChange(index, 'roles', e.target.value)}
-                                            placeholder="Roles..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
-                                        />
+                                    <td className="border border-slate-800 p-2 text-slate-700">
+                                        {isReadOnly ? (member.roles || '--') : (
+                                            <input
+                                                type="text"
+                                                value={member.roles}
+                                                onChange={(e) => handleTeamMemberChange(index, 'roles', e.target.value)}
+                                                placeholder="Roles..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1 text-center">
-                                        <button
-                                            onClick={() => removeTeamRow(index)}
-                                            className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all"
-                                            title="Delete row"
-                                        >
-                                            <DeleteOutlined />
-                                        </button>
-                                    </td>
+                                    {!isReadOnly && (
+                                        <td className="border border-slate-800 p-1 text-center">
+                                            <button
+                                                onClick={() => removeTeamRow(index)}
+                                                className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all"
+                                                title="Delete row"
+                                            >
+                                                <DeleteOutlined />
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
+
 
                 {/* 5. Table 1 (Review Team list) */}
                 <div className="mb-8">

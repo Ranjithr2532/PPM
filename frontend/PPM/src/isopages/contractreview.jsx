@@ -4,11 +4,16 @@ import {
     ReloadOutlined,
     FileWordOutlined,
     ArrowLeftOutlined,
-    CheckOutlined
+    CheckOutlined,
+    CloseOutlined
+
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
+import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
+
+
 
 const normalizeCentreDept = (centre) => {
     if (!centre) return '';
@@ -79,11 +84,14 @@ const REVIEW_ITEMS_TEMPLATES = [
     { sl_no: 15, checklist: "Any Other Requirements(Specify)", key_q: "q15_val", key_p: "p15_val", key_d: "d15_val" }
 ];
 
-export default function ContractReview() {
+export default function ContractReview({ proposalId: propProposalId, submissionId: propSubmissionId, onBack }) {
     const [proposals, setProposals] = useState([]);
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
-    const [selectedProposalId, setSelectedProposalId] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
+    const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
+    const [status, setStatus] = useState('DRAFT');
 
     // Details state
     const [quoteNo, setQuoteNo] = useState('');
@@ -97,11 +105,66 @@ export default function ContractReview() {
     const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('051'));
     const [docNo, setDocNo] = useState('');
     const [docDate, setDocDate] = useState(getTodayDateString());
-    const [preparedBy, setPreparedBy] = useState('');
+    const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
+
 
     // Checklist values (defaulting to completely empty as requested)
     const [reviewValues, setReviewValues] = useState({});
+
+    // Check props or URL parameters to load existing submission
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlId = propSubmissionId || searchParams.get('id') || searchParams.get('submission_id');
+        const urlPropId = propProposalId || searchParams.get('proposal_id');
+
+        if (urlPropId) {
+            setSelectedProposalId(String(urlPropId));
+        }
+
+        if (urlId) {
+            async function loadSubmission() {
+                try {
+                    const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
+                    if (res.data) {
+
+                        const sub = res.data;
+                        setSubmissionId(sub.id);
+                        setStatus(sub.status || 'DRAFT');
+                        setDocNo(sub.document_no || '');
+                        if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
+
+                        const hData = sub.header_data || {};
+                        if (hData.dateStr) setDocDate(hData.dateStr);
+                        if (hData.preparedName) setPreparedBy(hData.preparedName);
+                        if (hData.approvedName) setApprovedBy(hData.approvedName);
+
+                        const fData = sub.form_data || {};
+                        if (fData.po_number) setPoNumber(fData.po_number);
+                        if (fData.po_date) setPoDate(fData.po_date);
+                        if (fData.customer_name) setCustomerName(fData.customer_name);
+                        if (fData.quote_no) setQuoteNo(fData.quote_no);
+                        if (fData.quote_date) setQuoteDate(fData.quote_date);
+
+                        const rList = fData.review_points || [];
+                        const updatedValues = { ...reviewValues };
+                        rList.forEach((pt, idx) => {
+                            const template = REVIEW_ITEMS_TEMPLATES[idx];
+                            if (template) {
+                                updatedValues[template.key_q] = pt.yes_no_na || pt.response || '';
+                                updatedValues[template.key_p] = pt.details || '';
+                            }
+                        });
+                        setReviewValues(updatedValues);
+                    }
+                } catch (err) {
+                    console.error('Failed to load ISO Contract Review submission:', err);
+                }
+            }
+            loadSubmission();
+        }
+    }, []);
+
 
     // Fetch user details and load proposals
     const fetchProposals = useCallback(async () => {
@@ -288,8 +351,155 @@ export default function ContractReview() {
 
 
 
+    // Handle saving draft or submitting form to PostgreSQL database
+    const handleSaveSubmission = async (targetStatus = 'DRAFT') => {
+        setSubmitting(true);
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'CUSTOMER CONTRACT REVIEW CHECKLIST',
+                docNo: docNo || '051/001',
+                dateStr: docDate,
+                pageStr: '1 of 1',
+                centreDept: loggedCentreDept || 'SMPM',
+                isoSpec: 'ISO 9001-2015',
+                preparedName: preparedBy,
+                approvedName: approvedBy,
+                groupName: revisionCode,
+            };
+
+            const reviewPointsList = REVIEW_ITEMS_TEMPLATES.map(pt => ({
+                sl_no: pt.sl_no,
+                review_point: pt.checklist,
+                yes_no_na: reviewValues[pt.key_q] || '',
+                details: reviewValues[pt.key_p] || ''
+            }));
+
+            const formDataPayload = {
+                quote_no: quoteNo,
+                quote_date: quoteDate,
+                po_number: poNumber,
+                po_date: poDate,
+                customer_name: customerName,
+                select_type: selectType,
+                review_points: reviewPointsList,
+            };
+
+            const payload = {
+                doc_type: 'CONTRACT_REVIEW',
+                document_no: docNo || '051/001',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formDataPayload,
+                status: targetStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionId) {
+                response = await axios.put(`${API_BASE_URL}/iso-submissions/${submissionId}`, payload);
+            } else {
+                response = await axios.post(`${API_BASE_URL}/iso-submissions/`, payload);
+                if (response.data && response.data.id) {
+                    setSubmissionId(response.data.id);
+                }
+            }
+
+            setStatus(response.data.status || targetStatus);
+            alert(`ISO Contract Review Checklist ${targetStatus === 'SUBMITTED' ? 'Submitted for Approval' : 'Saved as Draft'} successfully!`);
+        } catch (err) {
+            console.error('Error saving submission:', err);
+            alert(err.response?.data?.detail || 'Failed to save submission.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Approval / Rejection handlers for CH / GH / Admin
+    const handleFormStatusUpdate = async (newStatus) => {
+        if (!submissionId) return;
+        let rejectComment = null;
+        if (newStatus === 'REJECTED') {
+            rejectComment = prompt('Please enter the reason for rejection:');
+            if (!rejectComment) return;
+        }
+
+        setSubmitting(true);
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const userId = rawUser ? JSON.parse(rawUser)?.id : null;
+            const currentApproverName = getLoggedUserName();
+
+            if (newStatus === 'APPROVED' && currentApproverName) {
+                setApprovedBy(currentApproverName);
+                await isoSubmissionService.updateSubmission(submissionId, {
+                    form_data: {
+                        quote_no: quoteNo,
+                        quote_date: quoteDate,
+                        po_number: poNumber,
+                        po_date: poDate,
+                        customer_name: customerName,
+                        select_type: selectType,
+                        prepared_by: preparedBy || getLoggedUserName(),
+                        approved_by: currentApproverName,
+                        review_values: reviewValues
+                    },
+                    header_data: {
+                        docNo: docNo,
+                        dateStr: docDate,
+                        centreDept: loggedCentreDept,
+                        preparedName: preparedBy || getLoggedUserName(),
+                        approvedName: currentApproverName
+                    }
+                });
+            }
+
+            await isoSubmissionService.updateStatus(submissionId, newStatus, rejectComment, userId);
+            setStatus(newStatus);
+            alert(`ISO Document marked as ${newStatus} successfully!`);
+        } catch (err) {
+            console.error('Status update error:', err);
+            alert('Failed to update status.');
+        } finally {
+            setSubmitting(false);
+        }
+
+    };
+
+    // Check user role
+    const currentUserRole = (() => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
+    const isApproved = status === 'APPROVED';
+    const isSubmitted = status === 'SUBMITTED';
+    // Approvers and Scientists viewing SUBMITTED or APPROVED docs are strictly READ-ONLY
+    const isReadOnly = isApproved || isSubmitted || isApprover;
+
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
+            {/* Status Alert Banner */}
+            {isApproved && (
+                <div className="w-full max-w-4xl bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
+                    <span>🔒 ISO Document APPROVED. This document is officially approved and locked against editing.</span>
+                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-mono uppercase">APPROVED</span>
+                </div>
+            )}
+            {!isApproved && isSubmitted && (
+                <div className="w-full max-w-4xl bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
+                    <span>{isApprover ? '📋 Review Mode: ISO Document Submitted by Scientist. Read-Only View for CH/GH.' : '⏳ ISO Document Submitted. Pending approval review by CH / GH.'}</span>
+                    <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded font-mono uppercase">SUBMITTED</span>
+                </div>
+            )}
+
             {/* Top Toolbar Control Bar */}
             <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto">
@@ -297,8 +507,8 @@ export default function ContractReview() {
                     <select
                         value={selectedProposalId}
                         onChange={handleProposalChange}
-                        disabled={proposalsLoading}
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium"
+                        disabled={proposalsLoading || isReadOnly}
+                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium disabled:opacity-60"
                     >
                         <option value="">-- Choose proposal to auto-fill --</option>
                         {proposals.map(p => (
@@ -307,31 +517,71 @@ export default function ContractReview() {
                             </option>
                         ))}
                     </select>
+
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                        'bg-amber-100 text-amber-800'
+                    }`}>
+                        {status}
+                    </span>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                    <input
-                        type="text"
-                        value={filename}
-                        onChange={(e) => setFilename(e.target.value)}
-                        placeholder="filename.docx"
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl p-2.5 w-44 font-medium"
-                    />
-                    <button
-                        onClick={handleReset}
-                        className="flex items-center justify-center gap-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all"
-                    >
-                        <ReloadOutlined /> Reset
-                    </button>
+                <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
+                    {/* Scientist Create / Edit Controls */}
+                    {!isReadOnly && !isApprover && (
+                        <>
+                            <button
+                                onClick={() => handleSaveSubmission('DRAFT')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
+                            >
+                                {submitting ? 'Saving...' : 'Save Draft'}
+                            </button>
+
+                            <button
+                                onClick={() => handleSaveSubmission('SUBMITTED')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                            >
+                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                            </button>
+                        </>
+                    )}
+
+                    {/* CH / GH Approver Review Controls */}
+                    {isApprover && isSubmitted && (
+                        <>
+                            <button
+                                onClick={() => handleFormStatusUpdate('APPROVED')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                            >
+                                <CheckOutlined /> Approve Document
+                            </button>
+
+                            <button
+                                onClick={() => handleFormStatusUpdate('REJECTED')}
+                                disabled={submitting}
+                                className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-rose-600/10"
+                            >
+                                <CloseOutlined /> Reject Document
+                            </button>
+                        </>
+                    )}
+
                     <button
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10"
+                        className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10"
                     >
-                        {generating ? 'Generating...' : <><DownloadOutlined /> Download Word Doc</>}
+                        {generating ? 'Generating...' : <><DownloadOutlined /> Download Word</>}
                     </button>
                 </div>
             </div>
+
+
 
             {/* Simulated Word A4 Document Canvas */}
             <div className="w-full max-w-[21cm] bg-white shadow-2xl border border-slate-200 p-[1.5cm] flex flex-col font-sans text-slate-800 text-xs leading-relaxed min-h-[29.7cm]">
@@ -353,13 +603,17 @@ export default function ContractReview() {
                         </tr>
                         <tr>
                             <td className="border border-slate-800 px-2 py-1 text-left text-[9px] font-semibold">
-                                Doc. No: <input
-                                    type="text"
-                                    value={docNo}
-                                    onChange={(e) => setDocNo(e.target.value)}
-                                    placeholder="--"
-                                    className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-28 px-1 py-0 text-[9px] font-normal text-slate-800"
-                                />
+                                Doc. No: {isReadOnly ? (
+                                    <span className="font-bold text-slate-900 px-1">{docNo || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={docNo}
+                                        onChange={(e) => setDocNo(e.target.value)}
+                                        placeholder="--"
+                                        className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-28 px-1 py-0 text-[9px] font-normal text-slate-800"
+                                    />
+                                )}
                             </td>
                         </tr>
                         <tr>
@@ -367,41 +621,44 @@ export default function ContractReview() {
                                 Customer Contract Review Checklist
                             </td>
                             <td className="border border-slate-800 px-2 py-1 text-left text-[9px] font-semibold">
-                                Date: <input
-                                    type="text"
-                                    value={docDate}
-                                    onChange={(e) => setDocDate(e.target.value)}
-                                    className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-20 px-1 py-0 text-[9px] font-normal text-slate-800"
-                                /><br />
+                                Date: {isReadOnly ? (
+                                    <span className="font-bold text-slate-900 px-1">{docDate || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={docDate}
+                                        onChange={(e) => setDocDate(e.target.value)}
+                                        className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-20 px-1 py-0 text-[9px] font-normal text-slate-800"
+                                    />
+                                )}<br />
                                 Page: <span className="font-normal text-slate-600">1 of 1</span>
                             </td>
                         </tr>
                     </tbody>
                 </table>
 
-                {/* 2. TOP DETAILS TABLE WITH TYPE SELECTION CLICK ACTION */}
                 <table className="w-full border-collapse border border-slate-800 text-xs mb-6 text-center">
                     <tbody>
                         <tr className="bg-slate-50 font-bold">
                             <td className="border border-slate-800 p-2 w-[22%] select-none">
                                 <div className="flex flex-col gap-0.5 justify-center items-center font-bold">
                                     <span
-                                        onClick={() => setSelectType('Quotation')}
-                                        className={`cursor-pointer hover:text-indigo-600 transition-all ${selectType === 'Quotation' ? 'text-slate-900 border-b border-indigo-500' : 'line-through opacity-30'}`}
+                                        onClick={() => !isReadOnly && setSelectType('Quotation')}
+                                        className={`${!isReadOnly ? 'cursor-pointer hover:text-indigo-600' : ''} transition-all ${selectType === 'Quotation' ? 'text-slate-900 border-b border-indigo-500' : 'line-through opacity-30'}`}
                                     >
                                         Quotation No
                                     </span>
                                     <span className="text-[10px] text-slate-400 font-normal">/</span>
                                     <span
-                                        onClick={() => setSelectType('Tender')}
-                                        className={`cursor-pointer hover:text-indigo-600 transition-all ${selectType === 'Tender' ? 'text-slate-900 border-b border-indigo-500' : 'line-through opacity-30'}`}
+                                        onClick={() => !isReadOnly && setSelectType('Tender')}
+                                        className={`${!isReadOnly ? 'cursor-pointer hover:text-indigo-600' : ''} transition-all ${selectType === 'Tender' ? 'text-slate-900 border-b border-indigo-500' : 'line-through opacity-30'}`}
                                     >
                                         Tender
                                     </span>
                                     <span className="text-[10px] text-slate-400 font-normal">/</span>
                                     <span
-                                        onClick={() => setSelectType('Proposal')}
-                                        className={`cursor-pointer hover:text-indigo-600 transition-all ${selectType === 'Proposal' ? 'text-slate-900 border-b border-indigo-500' : 'line-through opacity-30'}`}
+                                        onClick={() => !isReadOnly && setSelectType('Proposal')}
+                                        className={`${!isReadOnly ? 'cursor-pointer hover:text-indigo-600' : ''} transition-all ${selectType === 'Proposal' ? 'text-slate-900 border-b border-indigo-500' : 'line-through opacity-30'}`}
                                     >
                                         Proposal
                                     </span>
@@ -413,137 +670,162 @@ export default function ContractReview() {
                             <td className="border border-slate-800 p-2 w-[16%]">Customer Name</td>
                         </tr>
                         <tr>
-                            <td className="border border-slate-800 p-1">
-                                <input
-                                    type="text"
-                                    value={quoteNo}
-                                    onChange={(e) => setQuoteNo(e.target.value)}
-                                    placeholder="Enter reference..."
-                                    className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
-                                />
+                            <td className="border border-slate-800 p-2">
+                                {isReadOnly ? (
+                                    <span className="font-semibold text-slate-900">{quoteNo || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={quoteNo}
+                                        onChange={(e) => setQuoteNo(e.target.value)}
+                                        placeholder="Enter reference..."
+                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
+                                    />
+                                )}
                             </td>
-                            <td className="border border-slate-800 p-1">
-                                <input
-                                    type="text"
-                                    value={quoteDate}
-                                    onChange={(e) => setQuoteDate(e.target.value)}
-                                    placeholder="09.10.2024"
-                                    className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800"
-                                />
+                            <td className="border border-slate-800 p-2">
+                                {isReadOnly ? (
+                                    <span className="font-semibold text-slate-900">{quoteDate || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={quoteDate}
+                                        onChange={(e) => setQuoteDate(e.target.value)}
+                                        placeholder="Enter date..."
+                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
+                                    />
+                                )}
                             </td>
-                            <td className="border border-slate-800 p-1">
-                                <input
-                                    type="text"
-                                    value={poNumber}
-                                    onChange={(e) => setPoNumber(e.target.value)}
-                                    placeholder="GEMC-511..."
-                                    className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
-                                />
+                            <td className="border border-slate-800 p-2">
+                                {isReadOnly ? (
+                                    <span className="font-semibold text-slate-900">{poNumber || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={poNumber}
+                                        onChange={(e) => setPoNumber(e.target.value)}
+                                        placeholder="Enter PO No..."
+                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
+                                    />
+                                )}
                             </td>
-                            <td className="border border-slate-800 p-1">
-                                <input
-                                    type="text"
-                                    value={poDate}
-                                    onChange={(e) => setPoDate(e.target.value)}
-                                    placeholder="19-11-2024"
-                                    className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800"
-                                />
+                            <td className="border border-slate-800 p-2">
+                                {isReadOnly ? (
+                                    <span className="font-semibold text-slate-900">{poDate || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={poDate}
+                                        onChange={(e) => setPoDate(e.target.value)}
+                                        placeholder="Enter PO Date..."
+                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
+                                    />
+                                )}
                             </td>
-                            <td className="border border-slate-800 p-1">
-                                <input
-                                    type="text"
-                                    value={customerName}
-                                    onChange={(e) => setCustomerName(e.target.value)}
-                                    placeholder="Enter client name..."
-                                    className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800"
-                                />
+                            <td className="border border-slate-800 p-2">
+                                {isReadOnly ? (
+                                    <span className="font-semibold text-slate-900">{customerName || '--'}</span>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={customerName}
+                                        onChange={(e) => setCustomerName(e.target.value)}
+                                        placeholder="Enter customer..."
+                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded text-center border-0 text-slate-800 font-semibold"
+                                    />
+                                )}
                             </td>
                         </tr>
                     </tbody>
                 </table>
 
-                {/* Spacing Title */}
-                <div className="font-bold text-center text-[11px] mb-4 text-slate-900 tracking-wide uppercase">
-                    Customer Order Review Checklist
-                </div>
-
-                {/* 3. FEASIBILITY CHECKLIST ITEMS TABLE */}
-                <table className="w-full border-collapse border border-slate-800 text-xs mb-8">
+                <table className="w-full border-collapse border border-slate-800 text-xs mb-6">
                     <thead>
                         <tr className="bg-slate-900 text-white font-bold text-center">
-                            <th className="border border-slate-800 p-2.5 w-[7%]">Sl No</th>
-                            <th className="border border-slate-800 p-2.5 w-[25%]">Checklist</th>
-                            <th className="border border-slate-800 p-2.5 w-[30%]">As Per Quotation / Tender/Proposal</th>
-                            <th className="border border-slate-800 p-2.5 w-[30%]">As Per PO</th>
-                            <th className="border border-slate-800 p-2.5 w-[8%]">Decision</th>
+                            <th className="border border-slate-800 p-2.5 w-[6%]">Sl. No.</th>
+                            <th className="border border-slate-800 p-2.5 w-[42%]">Aspects to be Reviewed</th>
+                            <th className="border border-slate-800 p-2.5 w-[14%]">Quotation Ref / Clause</th>
+                            <th className="border border-slate-800 p-2.5 w-[14%]">PO Ref / Clause</th>
+                            <th className="border border-slate-800 p-2.5 w-[24%]">Deviations / Remarks</th>
                         </tr>
                     </thead>
                     <tbody>
                         {REVIEW_ITEMS_TEMPLATES.map((item) => (
+
                             <tr key={item.sl_no} className="hover:bg-slate-50/30 transition-colors">
-                                <td className="border border-slate-800 p-2.5 text-center font-semibold text-slate-600">{item.sl_no}.</td>
-                                <td className="border border-slate-800 p-2.5 text-left font-medium text-slate-700">{item.checklist}</td>
-                                <td className="border border-slate-800 p-1">
-                                    <textarea
-                                        value={reviewValues[item.key_q] || ''}
-                                        onChange={(e) => handleValueChange(item.key_q, e.target.value)}
-                                        placeholder="..."
-                                        rows={2}
-                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 resize-none text-slate-700 text-[11px] leading-relaxed"
-                                    />
+                                <td className="border border-slate-800 p-2 text-center font-semibold text-slate-600">{item.sl_no}.</td>
+                                <td className="border border-slate-800 p-2 text-left text-[11px] leading-relaxed text-slate-700">{item.checklist}</td>
+                                <td className="border border-slate-800 p-2 text-center">
+                                    {isReadOnly ? (
+                                        <span className="font-semibold text-slate-800">{reviewValues[item.key_q] || '--'}</span>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={reviewValues[item.key_q] || ''}
+                                            onChange={(e) => setReviewValues({ ...reviewValues, [item.key_q]: e.target.value })}
+                                            className="w-full bg-transparent outline-none text-center font-medium text-slate-800"
+                                        />
+                                    )}
                                 </td>
-                                <td className="border border-slate-800 p-1">
-                                    <textarea
-                                        value={reviewValues[item.key_p] || ''}
-                                        onChange={(e) => handleValueChange(item.key_p, e.target.value)}
-                                        placeholder="..."
-                                        rows={2}
-                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 resize-none text-slate-700 text-[11px] leading-relaxed"
-                                    />
+                                <td className="border border-slate-800 p-2 text-center">
+                                    {isReadOnly ? (
+                                        <span className="font-semibold text-slate-800">{reviewValues[item.key_p] || '--'}</span>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={reviewValues[item.key_p] || ''}
+                                            onChange={(e) => setReviewValues({ ...reviewValues, [item.key_p]: e.target.value })}
+                                            className="w-full bg-transparent outline-none text-center font-medium text-slate-800"
+                                        />
+                                    )}
                                 </td>
-                                <td className="border border-slate-800 p-1 align-middle">
-                                    <input
-                                        type="text"
-                                        value={reviewValues[item.key_d] || ''}
-                                        onChange={(e) => handleValueChange(item.key_d, e.target.value)}
-                                        placeholder=""
-                                        className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-center text-slate-800 font-bold"
-                                    />
+                                <td className="border border-slate-800 p-2">
+                                    {isReadOnly ? (
+                                        <span className="font-medium text-slate-800">{reviewValues[item.key_d] || '--'}</span>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={reviewValues[item.key_d] || ''}
+                                            onChange={(e) => setReviewValues({ ...reviewValues, [item.key_d]: e.target.value })}
+                                            className="w-full bg-transparent outline-none text-left font-medium text-slate-800"
+                                        />
+                                    )}
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
 
-                {/* 4. APPROVED SIGNATORY FOOTER TABLE */}
-                <table className="w-full border-collapse border border-slate-800 text-xs text-center mt-auto">
-                    <thead>
-                        <tr className="bg-slate-50 font-bold">
-                            <th className="border border-slate-800 p-2 w-[50%]">Prepared By</th>
-                            <th className="border border-slate-800 p-2 w-[50%]">Approved By</th>
-                        </tr>
-                    </thead>
+                <table className="w-full border-collapse border border-slate-800 text-xs mt-auto">
                     <tbody>
-                        <tr className="h-16">
-                            <td className="border border-slate-800 p-2 align-bottom">
-                                <div className="text-slate-400 text-[10px] italic mb-1">Click to sign / type name</div>
-                                <input
-                                    type="text"
-                                    placeholder="Name & Designation"
-                                    value={preparedBy}
-                                    onChange={(e) => setPreparedBy(e.target.value)}
-                                    className="w-full bg-transparent outline-none text-center font-medium border-0 border-b border-transparent focus:border-slate-300 text-slate-700"
-                                />
+                        <tr>
+                            <td className="border border-slate-800 p-3 w-[50%] align-top">
+                                <div className="font-bold mb-6">Prepared by:</div>
+                                {isReadOnly ? (
+                                    <div className="font-semibold text-slate-900">{preparedBy || '--'}</div>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={preparedBy}
+                                        onChange={(e) => setPreparedBy(e.target.value)}
+                                        placeholder="Type prepared by name..."
+                                        className="w-full bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none p-1 font-medium text-slate-800"
+                                    />
+                                )}
                             </td>
-                            <td className="border border-slate-800 p-2 align-bottom">
-                                <div className="text-slate-400 text-[10px] italic mb-1">Click to sign / type name</div>
-                                <input
-                                    type="text"
-                                    placeholder="Name & Designation"
-                                    value={approvedBy}
-                                    onChange={(e) => setApprovedBy(e.target.value)}
-                                    className="w-full bg-transparent outline-none text-center font-medium border-0 border-b border-transparent focus:border-slate-300 text-slate-700"
-                                />
+                            <td className="border border-slate-800 p-3 w-[50%] align-top">
+                                <div className="font-bold mb-6">Approved By:</div>
+                                {isReadOnly ? (
+                                    <div className="font-semibold text-slate-900">{approvedBy || '--'}</div>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={approvedBy}
+                                        onChange={(e) => setApprovedBy(e.target.value)}
+                                        placeholder="Type approved by name..."
+                                        className="w-full bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none p-1 font-medium text-slate-800"
+                                    />
+                                )}
                             </td>
                         </tr>
                     </tbody>
@@ -551,12 +833,16 @@ export default function ContractReview() {
 
                 <div className="text-[10px] text-slate-600 font-bold italic flex items-center gap-1.5 mt-3 self-start w-full">
                     <span className="whitespace-nowrap">Document Code:</span>
-                    <input
-                        type="text"
-                        value={revisionCode}
-                        onChange={(e) => setRevisionCode(e.target.value)}
-                        className="w-64 bg-slate-50 border border-slate-300 rounded px-2 py-1 text-[10px] font-bold text-slate-800 focus:bg-white outline-none"
-                    />
+                    {isReadOnly ? (
+                        <span className="font-bold text-slate-800 px-2 py-0.5 bg-slate-100 rounded">{revisionCode || '--'}</span>
+                    ) : (
+                        <input
+                            type="text"
+                            value={revisionCode}
+                            onChange={(e) => setRevisionCode(e.target.value)}
+                            className="w-64 bg-slate-50 border border-slate-300 rounded px-2 py-1 text-[10px] font-bold text-slate-800 focus:bg-white outline-none"
+                        />
+                    )}
                 </div>
 
             </div>

@@ -41,8 +41,10 @@ import dayjs from 'dayjs'
 import { ExcelRenderer } from 'react-excel-renderer'
 import mammoth from 'mammoth'
 import { NotConvertedDocumentsView } from '../utils/notconverteddocuments.jsx'
+import AllISODocuments from '../isopages/allisodocuments.jsx'
 
 const { Title, Text } = Typography
+
 const { TextArea } = Input
 const { Dragger } = Upload
 
@@ -167,7 +169,12 @@ function Projects() {
   const [allotmentData, setAllotmentData] = useState(null)
   const [loadingAllotment, setLoadingAllotment] = useState(false)
 
+  // ISO Documents Full Page View state
+  const [selectedIsoProject, setSelectedIsoProject] = useState(null)
+
+
   // Upload
+
   const [uploadModalVisible, setUploadModalVisible] = useState(false)
   const [selectedStageForUpload, setSelectedStageForUpload] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -2772,8 +2779,35 @@ function Projects() {
     )
   }
 
+  // Full page view for ISO Documents of selected project (just like View Details)
+  if (selectedIsoProject) {
+    return (
+      <div className="space-y-4">
+        {renderTopTabs()}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <Button
+              type="default"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => setSelectedIsoProject(null)}
+              className="font-medium text-slate-700 hover:text-blue-600 border-slate-300"
+            >
+              Back to Projects List
+            </Button>
+          </div>
+          <AllISODocuments
+            proposalId={selectedIsoProject.id}
+            proposalNumber={selectedIsoProject.project_number}
+            onClose={() => setSelectedIsoProject(null)}
+          />
+        </div>
+      </div>
+    )
+  }
+
   // Render project card
   const renderProjectCard = (project) => {
+
     const theme = getProjectTheme(project.project_number)
     return (
       <Card
@@ -2796,13 +2830,25 @@ function Projects() {
           {project.center && (
             <div><Text type="secondary">Centre:</Text> <Text>{formatValue(project.center)}</Text></div>
           )}
-          <Button type="primary" icon={<EyeOutlined />} onClick={() => handleViewProject(project)}>
-            View Details
-          </Button>
+          <div className="flex items-center gap-2 pt-1">
+            <Button type="primary" icon={<EyeOutlined />} onClick={() => handleViewProject(project)}>
+              View Details
+            </Button>
+            <Button
+              type="default"
+              icon={<FileTextOutlined className="text-blue-600" />}
+              onClick={() => setSelectedIsoProject(project)}
+              className="border-slate-300 hover:border-blue-500 font-medium"
+            >
+              ISO Documents
+            </Button>
+
+          </div>
         </Space>
       </Card>
     )
   }
+
 
   // Projects list view
   return (
@@ -2953,5 +2999,7 @@ function Projects() {
     </div>
   )
 }
+
+
 
 export default Projects

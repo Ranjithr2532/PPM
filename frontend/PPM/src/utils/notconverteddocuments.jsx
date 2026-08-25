@@ -35,8 +35,10 @@ import { formatDateTime } from '../config/date.js'
 import dayjs from 'dayjs'
 import { ExcelRenderer } from 'react-excel-renderer'
 import mammoth from 'mammoth'
+import AllISODocuments from '../isopages/allisodocuments.jsx'
 
 const { Title, Text } = Typography
+
 const { TextArea } = Input
 const { Dragger } = Upload
 
@@ -265,6 +267,11 @@ export const NotConvertedDocumentsView = () => {
   const [wordDocumentLoading, setWordDocumentLoading] = useState(false)
   const [wordDocumentError, setWordDocumentError] = useState(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // ISO Documents Full Page View state
+  const [selectedIsoProposal, setSelectedIsoProposal] = useState(null)
+
+
 
   // Upload modal states
   const [uploadModalVisible, setUploadModalVisible] = useState(false)
@@ -894,7 +901,31 @@ export const NotConvertedDocumentsView = () => {
     )
   }
 
+  // Full page view for ISO Documents of selected proposal
+  if (selectedIsoProposal) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="mb-4">
+          <Button
+            type="default"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => setSelectedIsoProposal(null)}
+            className="font-medium text-slate-700 hover:text-blue-600 border-slate-300"
+          >
+            Back to Not Converted Proposals List
+          </Button>
+        </div>
+        <AllISODocuments
+          proposalId={selectedIsoProposal.id}
+          proposalNumber={selectedIsoProposal.project_number || selectedIsoProposal.id}
+          onClose={() => setSelectedIsoProposal(null)}
+        />
+      </div>
+    )
+  }
+
   // Non-converted proposals list view
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="mb-6 flex flex-wrap gap-4 items-center justify-between">
@@ -962,8 +993,16 @@ export const NotConvertedDocumentsView = () => {
               hoverable
               className="border-l-4 border-l-red-500 rounded-xl shadow-sm"
               actions={[
-                <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewProposal(p)}>
-                  View Stage Documents
+                <Button key="stage-docs" type="link" icon={<EyeOutlined />} onClick={() => handleViewProposal(p)}>
+                  Stage Docs
+                </Button>,
+                <Button
+                  key="iso-docs"
+                  type="link"
+                  icon={<FileTextOutlined className="text-blue-600" />}
+                  onClick={() => setSelectedIsoProposal(p)}
+                >
+                  ISO Docs
                 </Button>,
               ]}
             >
@@ -986,6 +1025,7 @@ export const NotConvertedDocumentsView = () => {
           ))}
         </div>
       )}
+
     </div>
   )
 }
