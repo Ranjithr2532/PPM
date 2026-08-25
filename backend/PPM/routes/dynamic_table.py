@@ -552,30 +552,32 @@ def save_and_generate_word_document(
         )
 
     # ---- Grand Total banner ----
-    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
     grand_box = doc.add_table(rows=1, cols=1)
     grand_box.alignment = WD_TABLE_ALIGNMENT.CENTER
     c = grand_box.rows[0].cells[0]
     set_cell_border(c, top={"sz": 5, "color": DARK_HEX}, bottom={"sz": 5, "color": DARK_HEX})
     set_cell_background(c, LIGHT_HEX)
-    set_cell_padding(c, top=120, bottom=120, left=160, right=160)
+    set_cell_padding(c, top=45, bottom=45, left=100, right=100)
 
     p = c.paragraphs[0]
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after = Pt(0)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     formula_suffix = f" ({' + '.join(table_letters)})" if table_letters else ""
     r1 = p.add_run(f"Grand Total Estimated Cost{formula_suffix}:  ")
     r1.font.bold = True
-    run_size(r1, 10)
+    run_size(r1, 9.5)
     r1.font.name = FONT
     r1.font.color.rgb = INK
 
     r2 = p.add_run(f"₹ {format_indian_currency(grand_total)}")
     r2.font.bold = True
-    run_size(r2, 13)
+    run_size(r2, 10)
     r2.font.name = FONT
     r2.font.color.rgb = ACCENT
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+    doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
     # ---- Sign-off matrix ----
     sig_table = doc.add_table(rows=2, cols=3)
@@ -584,8 +586,8 @@ def save_and_generate_word_document(
 
     signatories = [
         ("Prepared By", payload.created_by or "Project Engineer"),
-        ("Reviewed By", "Head of Division"),
-        ("Approved By", "Director / General Manager"),
+        # ("Reviewed By", "Head of Division"),
+        # ("Approved By", "Director / General Manager"),
     ]
 
     for col_idx, (title, role) in enumerate(signatories):

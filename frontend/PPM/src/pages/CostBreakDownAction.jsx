@@ -544,46 +544,30 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 width: 200,
                 render: (_, record, index) => {
                     const isEditing = checkIsRowEditing(index, record);
-                    const formMark = (
-                        <button
-                            type="button"
-                            onClick={() => handleOpenEditDetails(index)}
-                            className="w-7 h-7 flex items-center justify-center text-purple-600 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 rounded-md transition-all cursor-pointer shrink-0"
-                            title="Edit row details"
-                        >
-                            <FormOutlined style={{ fontSize: 13 }} />
-                        </button>
-                    );
 
                     if (!isEditing) {
                         return (
-                            <div className="flex items-center gap-2.5">
-                                {formMark}
-                                <span className="font-semibold text-slate-800 text-[13.5px]">{record["Role"] || "—"}</span>
-                            </div>
+                            <span className="font-semibold text-slate-800 text-[13.5px]">{record["Role"] || "—"}</span>
                         );
                     }
                     return (
-                        <div className="flex items-center gap-2">
-                            {formMark}
-                            <AutoComplete
-                                id={`row-desc-${index}`}
-                                value={record["Role"] || ""}
-                                options={roleOptions}
-                                filterOption={(inputValue, option) =>
-                                    option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
-                                }
-                                onSelect={(value, option) => handleRoleSelectOrChange(index, value, option)}
-                                onChange={(value) => handleRoleSelectOrChange(index, value)}
-                                style={{ width: "100%" }}
-                            >
-                                <Input
-                                    placeholder="Enter role..."
-                                    className="text-[13.5px] font-medium"
-                                    style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
-                                />
-                            </AutoComplete>
-                        </div>
+                        <AutoComplete
+                            id={`row-desc-${index}`}
+                            value={record["Role"] || ""}
+                            options={roleOptions}
+                            filterOption={(inputValue, option) =>
+                                option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                            }
+                            onSelect={(value, option) => handleRoleSelectOrChange(index, value, option)}
+                            onChange={(value) => handleRoleSelectOrChange(index, value)}
+                            style={{ width: "100%" }}
+                        >
+                            <Input
+                                placeholder="Enter role..."
+                                className="text-[13.5px] font-medium"
+                                style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
+                            />
+                        </AutoComplete>
                     );
                 },
             },
@@ -857,39 +841,22 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                             );
                         }
 
-                        const formMark = (
-                            <button
-                                type="button"
-                                onClick={() => handleOpenEditDetails(index)}
-                                className="w-7 h-7 flex items-center justify-center text-purple-600 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 rounded-md transition-all cursor-pointer shrink-0"
-                                title="Edit row details"
-                            >
-                                <FormOutlined style={{ fontSize: 13 }} />
-                            </button>
-                        );
-
                         if (!isRowEditing) {
                             return (
-                                <div className="flex items-center gap-2.5">
-                                    {isFirstCol && formMark}
-                                    <span className="font-semibold text-slate-800 text-[13.5px]">{record[col] || "—"}</span>
-                                </div>
+                                <span className="font-semibold text-slate-800 text-[13.5px]">{record[col] || "—"}</span>
                             );
                         }
 
                         if (isFirstCol) {
                             return (
-                                <div className="flex items-center gap-2">
-                                    {formMark}
-                                    <Input
-                                        id={`row-desc-${index}`}
-                                        value={record[col] || ""}
-                                        onChange={(e) => updateRow(index, col, e.target.value)}
-                                        placeholder={`Enter ${col.toLowerCase()}...`}
-                                        className="text-[13.5px] font-medium"
-                                        style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
-                                    />
-                                </div>
+                                <Input
+                                    id={`row-desc-${index}`}
+                                    value={record[col] || ""}
+                                    onChange={(e) => updateRow(index, col, e.target.value)}
+                                    placeholder={`Enter ${col.toLowerCase()}...`}
+                                    className="text-[13.5px] font-medium"
+                                    style={{ color: "#1e293b", backgroundColor: "#ffffff" }}
+                                />
                             );
                         }
                         return <Input value={record[col]} className="text-[13.5px] font-medium" onChange={(e) => updateRow(index, col, e.target.value)} />;
@@ -1412,27 +1379,27 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                 </div>
             </Modal>
 
-            <Drawer
+            <Modal
                 title={
-                    <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-base border-b border-slate-100 pb-3 pr-6">
                         <InfoCircleOutlined className="text-blue-600" />
-                        <span>Official Manpower Rates Reference</span>
+                        <span>Manpower Rates Reference</span>
                     </div>
                 }
-                placement="right"
                 open={ratesModalOpen}
-                onClose={() => setRatesModalOpen(false)}
-                mask={false}
-                width={480}
+                onCancel={() => setRatesModalOpen(false)}
+                footer={null}
+                width={580}
+                zIndex={3000}
+                destroyOnClose
                 styles={{
-                    body: { padding: "16px" },
-                    header: { padding: "16px 20px" }
+                    content: { borderRadius: "14px", padding: "24px 28px 28px 28px" }
                 }}
             >
-                <div className="space-y-4">
+                <div className="space-y-4 font-sans pt-2">
                     <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs text-slate-700 flex items-center gap-2">
                         <InfoCircleOutlined className="text-blue-600 font-bold text-sm shrink-0" />
-                        <span>Click any rate cell in the table below to <strong>auto-fill</strong> it into your table!</span>
+                        <span>Click any rate cell in the table below to <strong>auto-fill</strong> it into your form!</span>
                     </div>
 
                     <Table
@@ -1461,7 +1428,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                         type="button"
                                         onClick={() => applyOfficialRateToTable(record.designation, val, "Other Activities")}
                                         className="w-full text-right px-2.5 py-1 bg-blue-50/80 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-lg border border-blue-200/80 transition-all cursor-pointer active:scale-95"
-                                        title="Click to insert into table"
+                                        title="Click to insert into form"
                                     >
                                         ₹{Number(val).toLocaleString("en-IN")}
                                     </button>
@@ -1477,7 +1444,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                                         type="button"
                                         onClick={() => applyOfficialRateToTable(record.designation, val, "Design & Dev")}
                                         className="w-full text-right px-2.5 py-1 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg border border-emerald-200/80 transition-all cursor-pointer active:scale-95"
-                                        title="Click to insert into table"
+                                        title="Click to insert into form"
                                     >
                                         ₹{Number(val).toLocaleString("en-IN")}
                                     </button>
@@ -1486,7 +1453,7 @@ function HeaderRowsEditor({ headerItem, onChange, onNewTable, onDeleteHeader }) 
                         ]}
                     />
                 </div>
-            </Drawer>
+            </Modal>
 
             <Modal
                 title={
