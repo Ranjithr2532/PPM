@@ -82,11 +82,7 @@ def update_iso_submission(
             detail=f"ISO Submission with ID {sub_id} not found",
         )
 
-    if rec.status == "APPROVED":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot modify an APPROVED ISO document. Approved documents are locked.",
-        )
+
 
     update_dict = payload.dict(exclude_unset=True)
     if "doc_type" in update_dict and update_dict["doc_type"]:
@@ -308,6 +304,53 @@ def export_submission_word(sub_id: int, db: Session = Depends(get_db)):
             approved_by=approved_by
         )
         filename = f"ISO_MOM_{doc_no.replace('/', '_')}.docx"
+
+    elif doc_type in ["PROJECT_PROPOSAL", "PROJECTPROPSASL"]:
+        from iso.projectpropsasl import create_project_proposal_document, BudgetItemRequest, EquipmentItemRequest, TimelineTaskRequest
+
+        raw_rec = f_data.get("recurring_budget", [])
+        rec_objs = [BudgetItemRequest(**i) if isinstance(i, dict) else i for i in raw_rec] if isinstance(raw_rec, list) else None
+
+        raw_non_rec = f_data.get("non_recurring_budget", [])
+        non_rec_objs = [BudgetItemRequest(**i) if isinstance(i, dict) else i for i in raw_non_rec] if isinstance(raw_non_rec, list) else None
+
+        raw_eq = f_data.get("equipment_details", [])
+        eq_objs = [EquipmentItemRequest(**i) if isinstance(i, dict) else i for i in raw_eq] if isinstance(raw_eq, list) else None
+
+        doc = create_project_proposal_document(
+            title_of_project=f_data.get("title_of_project") or "Digital Transformation of CMF",
+            project_no=f_data.get("project_no", ""),
+            project_category=f_data.get("project_category") or "DIP / GSP / ISP / GAP/ CLP/ ICP / AIP / LSP / ILP : ILP",
+            sponsoring_agency=f_data.get("sponsoring_agency", ""),
+            sanction_order=f_data.get("sanction_order", ""),
+            total_cost=f_data.get("total_cost") or "40.38800 Lakh",
+            project_leader=f_data.get("project_leader") or "Mr. T Narendra Reddy, Sct-D, GH-SMC, C-SMPM",
+            co_leaders=f_data.get("co_leaders") or "-",
+            core_st_members=f_data.get("core_st_members"),
+            dev_partners_name=f_data.get("dev_partners_name") or "NA",
+            dev_partners_roles=f_data.get("dev_partners_roles") or "NA",
+            commencement_date=f_data.get("commencement_date") or "15-10-2025",
+            completion_date=f_data.get("completion_date") or "15-04-2026",
+            proposed_objectives=f_data.get("proposed_objectives"),
+            current_status=f_data.get("current_status") or "NA – customized solution",
+            research_tasks=f_data.get("research_tasks"),
+            salient_achievements=f_data.get("salient_achievements", ""),
+            expected_trl=f_data.get("expected_trl") or "Software Tools/Product - >TRL7",
+            ipr_details=f_data.get("ipr_details") or "Research Publications - NA",
+            human_resources=f_data.get("human_resources"),
+            revenue_generated=f_data.get("revenue_generated") or "ILP",
+            recurring_budget=rec_objs,
+            non_recurring_budget=non_rec_objs,
+            equipment_details=eq_objs,
+            infrastructure_details=f_data.get("infrastructure_details") or "NA",
+            prepared_by=prepared_by,
+            approved_by=approved_by,
+            group_name=group_name,
+            centre_dept=centre_dept,
+            doc_no=doc_no,
+            doc_date=date_str
+        )
+        filename = f"ISO_ProjectProposal_{doc_no.replace('/', '_')}.docx"
 
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported document type {doc_type}")

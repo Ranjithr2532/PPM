@@ -6,6 +6,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   DownloadOutlined,
+  CheckOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -19,6 +20,7 @@ import {
   Col,
   Select,
   Table,
+  Tag,
   Tooltip,
   Typography,
   message,
@@ -111,7 +113,7 @@ function MasterProposals() {
       }
       const payload = await response.json()
       const normalized = Array.isArray(payload)
-        ? payload.map((item) => ({ ...item, key: item.id }))
+        ? payload.filter((item) => !item.draft).map((item) => ({ ...item, key: item.id }))
         : []
       setTableData(normalized)
       setFilteredData(normalized)
@@ -129,7 +131,7 @@ function MasterProposals() {
 
   // Filters
   useEffect(() => {
-    let filtered = [...tableData]
+    let filtered = tableData.filter((item) => !item.draft)
 
     if (searchText) {
       const s = searchText.trim().toLowerCase()
@@ -415,6 +417,25 @@ function MasterProposals() {
     [fetchProposals],
   )
 
+  const handleAcknowledge = useCallback(
+    async (record, isAck) => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/proposals/acknowledge/${record.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_acknowledged: isAck }),
+        })
+        if (!res.ok) throw new Error('Failed to update acknowledgement status')
+        message.success(isAck ? 'Proposal Accepted' : 'Proposal Rejected')
+        await fetchProposals()
+      } catch (err) {
+        console.error(err)
+        message.error('Unable to update proposal acknowledgement')
+      }
+    },
+    [fetchProposals],
+  )
+
   const columns = useMemo(
     () => [
       {
@@ -463,6 +484,31 @@ function MasterProposals() {
         width: 120,
         align: 'right',
         render: (value) => formatIndianNumber(value),
+      },
+      {
+        title: 'Status',
+        key: 'is_acknowledged',
+        width: 110,
+        align: 'center',
+        render: (_, record) => {
+          if (record.is_acknowledged === true || String(record.is_acknowledged).toLowerCase() === 'true') {
+            return <Tag color="green">Accepted</Tag>
+          }
+          if (record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false') {
+            return <Tag color="red">Rejected</Tag>
+          }
+          return (
+            <Button
+              size="small"
+              type="primary"
+              icon={<CheckOutlined />}
+              onClick={() => handleAcknowledge(record, true)}
+              className="bg-emerald-600 hover:bg-emerald-700 font-semibold border-none text-[11px] px-2"
+            >
+              Accept
+            </Button>
+          )
+        },
       },
       {
         title: 'Actions',

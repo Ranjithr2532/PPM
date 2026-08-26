@@ -23,6 +23,7 @@ class ProposalResponse(BaseModel):
     quote_date: Optional[Union[date, str]] = None
     quote_amount: Optional[str] = None
     proposal_status: Optional[str] = None
+    draft: Optional[bool] = False
 
     revised_negotiated: Optional[str] = Field(
         default=None, alias="revised/negotiated"

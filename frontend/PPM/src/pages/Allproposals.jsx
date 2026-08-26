@@ -17,6 +17,7 @@ import {
   CheckCircleOutlined,
   CheckCircleFilled,
   FileTextOutlined,
+  FileProtectOutlined,
   PaperClipOutlined,
 } from '@ant-design/icons'
 import {
@@ -62,6 +63,7 @@ import FloatingChatsWidget from '../components/FloatingChatsWidget'
 import TopChatNotificationBar from '../components/TopChatNotificationBar'
 import { encryptMessage, decryptMessage } from '../utils/crypto.js'
 import DocumentGenerate from './Document_genrate'
+import ProjectProposal from '../isopages/projectpropsal.jsx'
 
 dayjs.extend(isSameOrAfter)
 dayjs.extend(isSameOrBefore)
@@ -408,7 +410,9 @@ export default function Allproposals() {
   const isGhRole = userRole === 'gh'
 
   const [coordinatorModalOpen, setCoordinatorModalOpen] = useState(false)
-  const [proposalCreationMode, setProposalCreationMode] = useState('selection') // 'selection' | 'manual' | 'upload_review'
+  const [proposalCreationMode, setProposalCreationMode] = useState('selection') // 'selection' | 'manual' | 'upload_review' | 'iso_project_proposal' | 'draft'
+  const [draftQuoteDescription, setDraftQuoteDescription] = useState('')
+  const [convertingDraftRecord, setConvertingDraftRecord] = useState(null)
   const [docxUploading, setDocxUploading] = useState(false)
   const [uploadedDocName, setUploadedDocName] = useState('')
   const [uploadedDocxFile, setUploadedDocxFile] = useState(null)
@@ -1418,6 +1422,7 @@ export default function Allproposals() {
 
   // Open/Close Coordinator Add Modal
   const openCoordinatorAddModal = () => {
+    setConvertingDraftRecord(null)
     coordinatorForm.resetFields()
     setTenderFileList([])
     setProposalCreationMode('selection')
@@ -1436,8 +1441,29 @@ export default function Allproposals() {
     setCoordinatorModalOpen(true)
   }
 
+  const handleConvertDraftToProposal = (record) => {
+    setConvertingDraftRecord(record)
+    setUploadedDocName('')
+    setUploadedDocxFile(null)
+    setProposalAttachments([])
+    coordinatorForm.resetFields()
+    coordinatorForm.setFieldsValue({
+      id: record.id,
+      quote_description: record.quote_description || '',
+      customer_name: record.customer_name || '',
+      quotation_given_by_name: record.quotation_given_by_name || currentUserName || '',
+      quotation_given_by_department: record.quotation_given_by_department || (currentUserCenter ? currentUserCenter.toUpperCase() : ''),
+      center: record.center || currentUserCenter || '',
+      group: record.group || currentUserGroup || '',
+      proposal_status: ['Submitted'],
+    })
+    setProposalCreationMode('selection')
+    setCoordinatorModalOpen(true)
+  }
+
   const closeCoordinatorModal = () => {
     setCoordinatorModalOpen(false)
+    setConvertingDraftRecord(null)
     setTenderFileList([])
     setProposalCreationMode('selection')
     setUploadedDocName('')
@@ -1712,6 +1738,11 @@ export default function Allproposals() {
     payload.center = currentUserCenter || ''
     payload.group = currentUserGroup || ''
 
+    if (convertingDraftRecord && convertingDraftRecord.id) {
+      payload.id = convertingDraftRecord.id
+      payload.draft = false
+    }
+
     // Add complete user data
     const rawUser = window.localStorage.getItem('ppm_user')
     if (rawUser) {
@@ -1844,6 +1875,47 @@ export default function Allproposals() {
     }
   }
 
+  // Handle saving draft proposal with draft=true
+  const handleSaveDraftProposal = async (overrideDescription) => {
+    const descToSave = (overrideDescription !== undefined ? overrideDescription : draftQuoteDescription) || ''
+    if (!descToSave.trim()) {
+      message.error('Please enter a Quote Description to save a draft proposal.')
+      return
+    }
+    setCoordinatorSubmitLoading(true)
+    try {
+      const payload = {
+        quote_description: descToSave.trim(),
+        draft: true,
+        quotation_given_by_name: currentUserName || '',
+        quotation_given_by_department: currentUserCenter || '',
+        group: currentUserGroup || ''
+      }
+      const response = await fetch(`${API_BASE_URL}/proposals/`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody.detail || 'Failed to create draft proposal')
+      }
+      const result = await response.json()
+      message.success(`Draft Proposal #${result.id || ''} saved successfully!`)
+      setDraftQuoteDescription('')
+      closeCoordinatorModal()
+      await fetchProposals()
+    } catch (err) {
+      console.error('Draft creation error:', err)
+      message.error(err.message || 'Failed to save draft proposal')
+    } finally {
+      setCoordinatorSubmitLoading(false)
+    }
+  }
+
   // Proposals marked "No" that still need an "if_not_reason" filled in
   const notConvertedNoReasonList = useMemo(
     () => tableData.filter((item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason)),
@@ -1952,6 +2024,8 @@ export default function Allproposals() {
       (item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason),
     ).length
 
+    const draftProposalsCount = tableData.filter((item) => item.draft === true).length
+
     const PROJECT_PREFIXES = ['GSP', 'ISP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'SVP', 'TOT']
     const projectCodeBreakdown = {}
     tableData.forEach((item) => {
@@ -1977,6 +2051,7 @@ export default function Allproposals() {
       pendingProjects,
       onHoldProjects,
       convertedNo,
+      draftProposalsCount,
       projectCodeBreakdown,
     }
   }, [tableData])
@@ -2056,44 +2131,50 @@ export default function Allproposals() {
       })
     }
 
-    if (statusFilter && statusFilter !== 'totalProjects') {
-      if (statusFilter === 'proposals') {
-        filtered = filtered.filter((item) => !item.project_number || item.project_number.trim() === '')
-      } else if (statusFilter === 'technicallyCompleted') {
-        filtered = filtered.filter(
-          (item) =>
-            item.technical_completed_year &&
-            item.technical_completed_year.trim() !== '',
-        )
-      } else if (statusFilter === 'financiallyCompleted') {
-        filtered = filtered.filter(
-          (item) =>
-            item.technical_completed_year &&
-            item.technical_completed_year.trim() !== '' &&
-            item.financial_completed_year &&
-            item.financial_completed_year.trim() !== '',
-        )
-      } else if (statusFilter === 'financiallyNotCompleted') {
-        filtered = filtered.filter(
-          (item) =>
-            item.technical_completed_year &&
-            item.technical_completed_year.trim() !== '' &&
-            (!item.financial_completed_year || item.financial_completed_year.trim() === ''),
-        )
-      } else if (statusFilter === 'pendingProjects') {
-        filtered = filtered.filter(
-          (item) => item.status === 'Ongoing' || item.status === 'On Hold',
-        )
-      } else if (statusFilter === 'convertedNo') {
-        filtered = filtered.filter((item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason))
-      } else {
-        filtered = filtered.filter((item) => {
-          const status = (item.status || '').toString().trim()
-          return status === statusFilter
-        })
+    if (statusFilter === 'draftProposals') {
+      filtered = filtered.filter((item) => item.draft === true || item.draft === 'true' || item.draft === 1)
+    } else {
+      filtered = filtered.filter((item) => !item.draft || item.draft === 'false' || item.draft === 0)
+
+      if (statusFilter && statusFilter !== 'totalProjects') {
+        if (statusFilter === 'proposals') {
+          filtered = filtered.filter((item) => !item.project_number || item.project_number.trim() === '')
+        } else if (statusFilter === 'technicallyCompleted') {
+          filtered = filtered.filter(
+            (item) =>
+              item.technical_completed_year &&
+              item.technical_completed_year.trim() !== '',
+          )
+        } else if (statusFilter === 'financiallyCompleted') {
+          filtered = filtered.filter(
+            (item) =>
+              item.technical_completed_year &&
+              item.technical_completed_year.trim() !== '' &&
+              item.financial_completed_year &&
+              item.financial_completed_year.trim() !== '',
+          )
+        } else if (statusFilter === 'financiallyNotCompleted') {
+          filtered = filtered.filter(
+            (item) =>
+              item.technical_completed_year &&
+              item.technical_completed_year.trim() !== '' &&
+              (!item.financial_completed_year || item.financial_completed_year.trim() === ''),
+          )
+        } else if (statusFilter === 'pendingProjects') {
+          filtered = filtered.filter(
+            (item) => item.status === 'Ongoing' || item.status === 'On Hold',
+          )
+        } else if (statusFilter === 'convertedNo') {
+          filtered = filtered.filter((item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason))
+        } else {
+          filtered = filtered.filter((item) => {
+            const status = (item.status || '').toString().trim()
+            return status === statusFilter
+          })
+        }
+      } else if (statusFilter === 'totalProjects') {
+        filtered = filtered.filter((item) => item.project_number && item.project_number.trim() !== '')
       }
-    } else if (statusFilter === 'totalProjects') {
-      filtered = filtered.filter((item) => item.project_number && item.project_number.trim() !== '')
     }
 
     if (projectCodePrefix) {
@@ -2384,44 +2465,64 @@ export default function Allproposals() {
     defaultCols.push({
       key: 'actions',
       title: 'Actions',
-      width: 120,
-      render: (_, record) => (
-        <Space size="small">
-          <Button
-            size="small"
-            type="link"
-            icon={<InfoCircleOutlined />}
-            onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
-            title="More Details"
-          />
-          {userRole === 'scientist' && (
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: 'costEstimation',
-                    label: 'Cost Estimation Generator',
-                    onClick: (e) => {
-                      e.domEvent.stopPropagation()
-                      setSelectedProposalForCostEstimation(record)
-                      setCostEstimationModalOpen(true)
-                    },
-                  },
-                ],
-              }}
-              trigger={['click']}
-            >
+      width: 150,
+      render: (_, record) => {
+        const isDraft = record.draft === true || statusFilter === 'draftProposals'
+        return (
+          <Space size="small">
+            {isDraft ? (
               <Button
                 size="small"
-                type="link"
-                icon={<FileOutlined />}
-                onClick={(e) => e.stopPropagation()}
-                title="Generate/Estimate Cost"
-              />
-            </Dropdown>
-          )}
-        </Space>
-      ),
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleConvertDraftToProposal(record)
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold border-none text-xs rounded-lg px-2.5 py-1 shadow flex items-center gap-1"
+              >
+                Add to Proposals
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<InfoCircleOutlined />}
+                  onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
+                  title="More Details"
+                />
+                {userRole === 'scientist' && (
+                  <Dropdown
+                    menu={{
+                      items: [
+                        {
+                          key: 'costEstimation',
+                          label: 'Cost Estimation Generator',
+                          onClick: (e) => {
+                            e.domEvent.stopPropagation()
+                            setSelectedProposalForCostEstimation(record)
+                            setCostEstimationModalOpen(true)
+                          },
+                        },
+                      ],
+                    }}
+                    trigger={['click']}
+                  >
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<FileOutlined />}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Generate/Estimate Cost"
+                    />
+                  </Dropdown>
+                )}
+              </>
+            )}
+          </Space>
+        )
+      },
     })
 
     return defaultCols
@@ -2708,6 +2809,20 @@ export default function Allproposals() {
                           Reason Required ({statistics.convertedNo})
                         </Button>
                       )}
+                      <Button
+                        type={statusFilter === 'draftProposals' ? 'primary' : 'default'}
+                        size="large"
+                        onClick={() => setStatusFilter(statusFilter === 'draftProposals' ? null : 'draftProposals')}
+                        className={
+                          statusFilter === 'draftProposals'
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white font-bold border-none shadow-md'
+                            : 'border-amber-400 text-amber-700 hover:bg-amber-50 font-semibold'
+                        }
+                        icon={<EditOutlined />}
+                      >
+                        Draft Proposals {statistics.draftProposalsCount > 0 ? `(${statistics.draftProposalsCount})` : ''}
+                      </Button>
+
                       {userRole === 'scientist' && (
                         <Dropdown
                           menu={{
@@ -2727,6 +2842,15 @@ export default function Allproposals() {
                                   setProposalCreationMode('create_document')
                                 },
                               },
+                              {
+                                key: 'draftProposal',
+                                icon: <EditOutlined />,
+                                label: 'Draft Proposal',
+                                onClick: () => {
+                                  openCoordinatorAddModal()
+                                  setProposalCreationMode('draft')
+                                },
+                              },
                             ],
                           }}
                           trigger={['click']}
@@ -2743,6 +2867,22 @@ export default function Allproposals() {
                       )}
                     </div>
                   </div>
+
+                  {statusFilter === 'draftProposals' && (
+                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <EditOutlined className="text-amber-600 text-xl" />
+                        <div>
+                          <span className="font-bold text-amber-900 text-sm">Draft Proposals Table</span>
+                          <p className="text-xs text-amber-700 mt-0.5">Showing saved draft proposals containing Quote Description & ID. Click <strong>Edit</strong> on any row to fill missing details and finalize the proposal.</p>
+                        </div>
+                      </div>
+                      <Button size="small" onClick={() => setStatusFilter(null)} className="text-xs border-amber-300 text-amber-800 hover:bg-amber-100">
+                        View All Proposals
+                      </Button>
+                    </div>
+                  )}
+
                   <Table
                     className="role-proposals-table"
                     rowKey="id"
@@ -3351,12 +3491,18 @@ export default function Allproposals() {
           <div className="flex items-center justify-between pr-6">
             <span className="text-lg font-bold text-slate-900">
               {proposalCreationMode === 'selection'
-                ? 'Add Proposal'
-                : proposalCreationMode === 'create_document'
-                  ? 'Create Document'
-                  : proposalCreationMode === 'upload_review'
-                    ? 'Add Proposal - Review Extracted Document'
-                    : 'Add Proposal (Manual Entry)'}
+                ? convertingDraftRecord
+                  ? `Add Draft Proposal #${convertingDraftRecord.id} to Proposals`
+                  : 'Add Proposal'
+                : proposalCreationMode === 'draft'
+                  ? 'Create Draft Proposal'
+                  : proposalCreationMode === 'create_document'
+                    ? 'Create Document'
+                    : proposalCreationMode === 'iso_project_proposal'
+                      ? 'ISO Project Proposal (CMTI-QMS-009)'
+                      : proposalCreationMode === 'upload_review'
+                        ? 'Add Proposal - Review Extracted Document'
+                        : 'Add Proposal (Manual Entry)'}
             </span>
             {proposalCreationMode !== 'selection' && (
               <Button
@@ -3372,16 +3518,16 @@ export default function Allproposals() {
         }
         open={coordinatorModalOpen}
         onCancel={closeCoordinatorModal}
-        width={proposalCreationMode === 'create_document' ? 1300 : 1100}
+        width={proposalCreationMode === 'create_document' || proposalCreationMode === 'iso_project_proposal' ? 1300 : proposalCreationMode === 'draft' ? 750 : 1100}
         maskClosable={false}
         footer={
-          proposalCreationMode === 'selection'
+          proposalCreationMode === 'selection' || proposalCreationMode === 'draft'
             ? [
               <Button key="cancel" onClick={closeCoordinatorModal}>
                 Cancel
               </Button>,
             ]
-            : proposalCreationMode === 'create_document'
+            : proposalCreationMode === 'create_document' || proposalCreationMode === 'iso_project_proposal'
               ? [
                 <Button
                   key="back"
@@ -3417,69 +3563,83 @@ export default function Allproposals() {
       >
         {proposalCreationMode === 'selection' ? (
           <div className="py-6 px-2 space-y-6">
-            <div className="text-center max-w-lg mx-auto mb-6">
-              <h3 className="text-xl font-bold text-slate-800">
-                Choose Proposal Creation Method
-              </h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Select how you would like to create this new proposal:
-              </p>
-            </div>
+            {convertingDraftRecord ? (
+              <div className="text-center max-w-lg mx-auto mb-6">
+                <span className="inline-block bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full mb-2 border border-amber-300">
+                  Draft Proposal #{convertingDraftRecord.id}
+                </span>
+                <h3 className="text-xl font-bold text-slate-800">
+                  Choose Method to Complete & Add to Proposals
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Select how you would like to complete draft: "{convertingDraftRecord.quote_description || 'Draft'}"
+                </p>
+              </div>
+            ) : (
+              <div className="text-center max-w-lg mx-auto mb-6">
+                <h3 className="text-xl font-bold text-slate-800">
+                  Choose Proposal Creation Method
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Select how you would like to create this new proposal:
+                </p>
+              </div>
+            )}
 
-            <Row gutter={[20, 20]} justify="center">
+            <Row gutter={[16, 16]} justify="center">
               {/* Option 1: Manual Entry */}
-              <Col xs={24} sm={12} md={10}>
+              <Col xs={24} sm={12} md={convertingDraftRecord ? 8 : 6}>
                 <Card
                   hoverable
                   onClick={() => setProposalCreationMode('manual')}
                   className="h-full border-2 border-slate-200 hover:border-blue-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md cursor-pointer"
-                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
+                  styles={{ body: { padding: '20px', textAlign: 'center' } }}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                    <FormOutlined className="text-2xl" />
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                    <FormOutlined className="text-xl" />
                   </div>
-                  <h4 className="text-base font-bold text-slate-800 mb-2">
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">
                     Manual Entry
                   </h4>
-                  <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-                    Fill in all proposal details manually from scratch using standard form inputs.
+                  <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
+                    Fill in all proposal details manually using standard inputs.
                   </p>
                   <Button
                     type="primary"
                     block
-                    size="middle"
+                    size="small"
                     onClick={(e) => {
                       e.stopPropagation()
                       setProposalCreationMode('manual')
                     }}
                     className="rounded-xl font-semibold bg-blue-600 hover:bg-blue-700"
                   >
-                    Create Manually
+                    {convertingDraftRecord ? 'Complete Manually' : 'Create Manually'}
                   </Button>
                 </Card>
               </Col>
 
               {/* Option 2: Create Document */}
-              <Col xs={24} sm={12} md={10}>
+              <Col xs={24} sm={12} md={convertingDraftRecord ? 8 : 6}>
                 <Card
                   hoverable
                   onClick={() => setProposalCreationMode('create_document')}
                   className="h-full border-2 border-slate-200 hover:border-purple-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md cursor-pointer"
-                  styles={{ body: { padding: '24px', textAlign: 'center' } }}
+                  styles={{ body: { padding: '20px', textAlign: 'center' } }}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                    <FileTextOutlined className="text-2xl" />
+                  <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                    <FileTextOutlined className="text-xl" />
                   </div>
-                  <h4 className="text-base font-bold text-slate-800 mb-2">
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">
                     Create Document
                   </h4>
-                  <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-                    Generate and build official proposal documents (.docx) with live preview.
+                  <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
+                    Generate proposal document (.docx) with live preview & auto extraction.
                   </p>
                   <Button
                     type="primary"
                     block
-                    size="middle"
+                    size="small"
                     onClick={(e) => {
                       e.stopPropagation()
                       setProposalCreationMode('create_document')
@@ -3490,7 +3650,112 @@ export default function Allproposals() {
                   </Button>
                 </Card>
               </Col>
+
+              {/* Option 3: ISO Project Proposal */}
+              <Col xs={24} sm={12} md={convertingDraftRecord ? 8 : 6}>
+                <Card
+                  hoverable
+                  onClick={() => setProposalCreationMode('iso_project_proposal')}
+                  className="h-full border-2 border-slate-200 hover:border-emerald-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md cursor-pointer"
+                  styles={{ body: { padding: '20px', textAlign: 'center' } }}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                    <FileProtectOutlined className="text-xl" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">
+                    ISO Project Proposal
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
+                    Fill official ISO CMTI Project Proposal format (CMTI-QMS-009) with Gantt.
+                  </p>
+                  <Button
+                    type="primary"
+                    block
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProposalCreationMode('iso_project_proposal')
+                    }}
+                    className="rounded-xl font-semibold bg-emerald-600 hover:bg-emerald-700 border-none"
+                  >
+                    ISO Proposal Form
+                  </Button>
+                </Card>
+              </Col>
+
+              {/* Option 4: Draft Proposal (only when NOT converting existing draft) */}
+              {!convertingDraftRecord && (
+                <Col xs={24} sm={12} md={6}>
+                  <Card
+                    hoverable
+                    onClick={() => setProposalCreationMode('draft')}
+                    className="h-full border-2 border-slate-200 hover:border-amber-500 rounded-2xl transition-all duration-200 group shadow-sm hover:shadow-md cursor-pointer"
+                    styles={{ body: { padding: '20px', textAlign: 'center' } }}
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                      <EditOutlined className="text-xl" />
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-800 mb-1">
+                      Draft Proposal
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
+                      Quickly save a draft proposal with only quote description. Sets draft = true.
+                    </p>
+                    <Button
+                      type="primary"
+                      block
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setProposalCreationMode('draft')
+                      }}
+                      className="rounded-xl font-semibold bg-amber-600 hover:bg-amber-700 border-none"
+                    >
+                      Create Draft
+                    </Button>
+                  </Card>
+                </Col>
+              )}
             </Row>
+          </div>
+        ) : proposalCreationMode === 'draft' ? (
+          <div className="py-4 px-2 space-y-5 max-w-xl mx-auto">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+              <EditOutlined className="text-amber-600 text-xl mt-0.5" />
+              <div>
+                <h4 className="font-bold text-amber-900 text-sm">Draft Proposal Mode</h4>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Enter only the <strong>Quote Description</strong> to save a draft proposal. The system will auto-assign a Proposal ID and mark <code>draft = true</code>.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-slate-800">
+                Quote Description <span className="text-red-500">*</span>
+              </label>
+              <Input.TextArea
+                rows={5}
+                value={draftQuoteDescription}
+                onChange={(e) => setDraftQuoteDescription(e.target.value)}
+                placeholder="Enter quotation description or brief details..."
+                className="rounded-xl p-3 text-sm border-slate-300 focus:border-amber-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button onClick={() => setProposalCreationMode('selection')} className="rounded-xl">
+                ← Back
+              </Button>
+              <Button
+                type="primary"
+                loading={coordinatorSubmitLoading}
+                onClick={() => handleSaveDraftProposal()}
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 border-none font-semibold px-6"
+              >
+                Save Draft Proposal
+              </Button>
+            </div>
           </div>
         ) : proposalCreationMode === 'create_document' ? (
           <div className="py-2">
@@ -3556,6 +3821,21 @@ export default function Allproposals() {
 
                 coordinatorForm.setFieldsValue(updatedValues)
                 setProposalCreationMode('upload_review')
+              }}
+            />
+          </div>
+        ) : proposalCreationMode === 'iso_project_proposal' ? (
+          <div className="py-2">
+            <ProjectProposal
+              proposalId={convertingDraftRecord ? convertingDraftRecord.id : null}
+              existingRecord={convertingDraftRecord}
+              onBack={() => {
+                fetchProposals()
+                closeCoordinatorModal()
+              }}
+              onSuccess={() => {
+                fetchProposals()
+                closeCoordinatorModal()
               }}
             />
           </div>

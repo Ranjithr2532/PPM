@@ -18,6 +18,7 @@ import Fesability from './fesability.jsx';
 import ContractReview from './contractreview.jsx';
 import ProjectTeam from './projectteam.jsx';
 import Mom from './mom.jsx';
+import ProjectProposal from './projectpropsal.jsx';
 
 const getDocTypeKey = (doc) => {
     const name = (doc.name || '').toUpperCase();
@@ -27,6 +28,7 @@ const getDocTypeKey = (doc) => {
     if (docNo === '051' || name.includes('CONTRACT')) return 'CONTRACT_REVIEW';
     if (docNo === '045' || name.includes('TEAM')) return 'PROJECT_TEAM';
     if (docNo === '037' || name.includes('MINUTES') || name.includes('MOM')) return 'MOM';
+    if (docNo === '009' || name.includes('PROPOSAL')) return 'PROJECT_PROPOSAL';
     return name.replace(/\s+/g, '_');
 };
 
@@ -68,6 +70,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
     const [activeFormState, setActiveFormState] = useState(null); // null | { docTypeKey, id }
 
     const userRole = getUserRole();
+    const isAdmin = userRole === 'admin' || userRole === 'director';
     const isApprover = userRole === 'ch' || userRole === 'admin' || userRole === 'gh';
 
     const fetchData = useCallback(async () => {
@@ -204,6 +207,16 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                         }}
                     />
                 )}
+                {activeFormState.docTypeKey === 'PROJECT_PROPOSAL' && (
+                    <ProjectProposal
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                )}
 
             </div>
         );
@@ -285,20 +298,19 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                             {/* View / Edit Form */}
                                             <Button
                                                 size="small"
-                                                icon={sub.status === 'APPROVED' ? <FileTextOutlined /> : <EditOutlined />}
+                                                icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
                                                 onClick={() => handleEditForm(docTypeKey, sub.id)}
-                                                className={`text-xs font-medium ${sub.status === 'APPROVED'
-                                                        ? 'bg-slate-100 text-slate-700 border-slate-300'
-                                                        : 'border-slate-300 text-slate-800'
-                                                    }`}
+                                                className="text-xs font-medium border-slate-300 text-slate-800"
                                             >
-                                                {sub.status === 'APPROVED'
-                                                    ? 'View Form '
-                                                    : sub.status === 'SUBMITTED'
-                                                        ? isApprover
-                                                            ? 'Review Form'
-                                                            : 'View Form (Pending)'
-                                                        : 'Edit Form'}
+                                                {isAdmin
+                                                    ? 'Edit Form'
+                                                    : sub.status === 'APPROVED'
+                                                        ? 'View Form'
+                                                        : sub.status === 'SUBMITTED'
+                                                            ? isApprover
+                                                                ? 'Review Form'
+                                                                : 'View Form (Pending)'
+                                                            : 'Edit Form'}
                                             </Button>
 
                                             {/* Download Word (.docx) */}

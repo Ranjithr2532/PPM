@@ -136,7 +136,7 @@ def create_proposal(payload: ProposalCreate, db: Session = Depends(get_db)) -> P
     except AttributeError:
         data = payload.model_dump(exclude_unset=True, by_alias=False)
 
-    data["is_acknowledged"] = True
+    data["is_acknowledged"] = None
 
     # Check if project_number already exists
     if data.get("project_number"):
@@ -477,7 +477,11 @@ def get_proposals_by_name(
                     group_match,
                     and_(no_group, assigned_to_member),
                 ),
-                Proposal.is_acknowledged == True,
+                or_(
+                    Proposal.is_acknowledged == True,
+                    Proposal.is_acknowledged.is_(None),
+                    Proposal.draft == True,
+                ),
             )
             .distinct(Proposal.id)
             .all()
@@ -535,7 +539,11 @@ def get_proposals_by_name(
                     norm_quotation.contains(clean_search),
                     norm_coordinator.contains(clean_search),
                 ),
-                Proposal.is_acknowledged == True
+                or_(
+                    Proposal.is_acknowledged == True,
+                    Proposal.is_acknowledged.is_(None),
+                    Proposal.draft == True,
+                ),
             )
             .distinct(Proposal.id)
             .all()
@@ -544,7 +552,13 @@ def get_proposals_by_name(
         # Director and admin-equivalent users can see all proposals.
         proposals_query = (
             db.query(Proposal)
-            .filter(Proposal.is_acknowledged == True)
+            .filter(
+                or_(
+                    Proposal.is_acknowledged == True,
+                    Proposal.is_acknowledged.is_(None),
+                    Proposal.draft == True,
+                )
+            )
             .distinct(Proposal.id)
             .all()
         )
@@ -569,7 +583,11 @@ def get_proposals_by_name(
                     func.lower(Proposal.quotation_given_by_name).in_(names_to_search),
                     func.lower(Proposal.project_co_ordinator).in_(names_to_search),
                 ),
-                Proposal.is_acknowledged == True,
+                or_(
+                    Proposal.is_acknowledged == True,
+                    Proposal.is_acknowledged.is_(None),
+                    Proposal.draft == True,
+                ),
             )
             .distinct(Proposal.id)
             .all()
@@ -666,7 +684,11 @@ def get_proposals_by_group(
                 group_match,
                 and_(no_group, assigned_to_member),
             ),
-            Proposal.is_acknowledged == True,
+            or_(
+                Proposal.is_acknowledged == True,
+                Proposal.is_acknowledged.is_(None),
+                Proposal.draft == True,
+            ),
         )
         .distinct(Proposal.id)
         .all()
@@ -1430,7 +1452,7 @@ def bulk_create_proposals(
             data["status"] = str(status_value).strip() if status_value else None
             
         # Set acknowledged flag for bulk imports
-        data["is_acknowledged"] = True
+        data["is_acknowledged"] = None
         
         # Check if project_number already exists
         if data.get("project_number"):
@@ -1489,7 +1511,11 @@ def get_proposals_by_centre(centre: str, db: Session = Depends(get_db)):
                 center_match,
                 assigned_to_member,
             ),
-            Proposal.is_acknowledged == True,
+            or_(
+                Proposal.is_acknowledged == True,
+                Proposal.is_acknowledged.is_(None),
+                Proposal.draft == True,
+            ),
         )
         .distinct(Proposal.id)
         .all()
@@ -1666,11 +1692,31 @@ async def add_proposal_coordinator(
     valid_keys = {c.key for c in sa_inspect(Proposal).mapper.column_attrs}
     filtered_data = {k: v for k, v in data.items() if k in valid_keys and v is not None}
 
-    # Create Proposal record in database
-    proposal = Proposal(**filtered_data)
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
+    # Check if existing draft proposal id was passed
+    proposal_id_val = data.get("id") or data.get("proposal_id")
+    proposal = None
+    if proposal_id_val:
+        try:
+            proposal = db.query(Proposal).filter(Proposal.id == int(proposal_id_val)).first()
+        except Exception:
+            proposal = None
+
+    if proposal:
+        for k, v in filtered_data.items():
+            if k != "id":
+                setattr(proposal, k, v)
+        if "draft" in filtered_data:
+            proposal.draft = filtered_data["draft"]
+        else:
+            proposal.draft = False
+        db.commit()
+        db.refresh(proposal)
+    else:
+        # Create new Proposal record in database
+        proposal = Proposal(**filtered_data)
+        db.add(proposal)
+        db.commit()
+        db.refresh(proposal)
 
     create_notification(
         db=db,

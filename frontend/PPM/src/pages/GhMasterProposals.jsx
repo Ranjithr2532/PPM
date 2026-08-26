@@ -134,6 +134,7 @@ function GhMasterProposals() {
     const normalized = Array.isArray(payload)
       ? payload
           .filter((item) => {
+            if (item.draft) return false
             const indentorName = (item.indentor || '').trim().toLowerCase()
             return indentorName.includes(userName)
           })
