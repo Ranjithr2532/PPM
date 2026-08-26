@@ -15,6 +15,7 @@ import {
     AutoComplete,
     Select,
     Tooltip,
+    Popover,
 } from "antd";
 import {
     PlusOutlined,
@@ -135,7 +136,7 @@ const formatDate = (isoString) => {
    No row locking. Every cell is directly clickable and typeable.
    ============================================================ */
 
-function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates = [], onCellFocused }) {
+function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates = [], onCellFocused, activeCell, setActiveCell }) {
     const { header_name: headerName, columns = [], rows = [] } = headerItem;
     const [addingColumn, setAddingColumn] = useState(false);
     const [newColumnName, setNewColumnName] = useState("");
@@ -164,11 +165,30 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
         return rate * (cb.hours ?? 0) * (cb.days ?? 0) * quantity;
     }, []);
 
+    useEffect(() => {
+        if (rows.length === 0) {
+            const timeoutId = setTimeout(() => {
+                onChange({ ...headerItem, rows: [emptyRow(columns, headerName)] });
+            }, 0);
+            return () => clearTimeout(timeoutId);
+        }
+    }, [rows.length, headerItem, onChange, columns, headerName]);
+
     const updateRow = useCallback((index, key, value) => {
         const next = [...rows];
         next[index] = { ...next[index], [key]: value };
+        if (index === rows.length - 1 && value !== "") {
+            next.push(emptyRow(columns, headerName));
+        }
         onChange({ ...headerItem, rows: next });
-    }, [rows, headerItem, onChange]);
+
+        setActiveCell(prev => {
+            if (prev.section === headerName && prev.rowIdx === index && prev.colKey === key) {
+                return { ...prev, value: String(value) };
+            }
+            return prev;
+        });
+    }, [rows, headerItem, onChange, columns, headerName, setActiveCell]);
 
     const updateManpowerField = useCallback((index, key, val) => {
         const next = [...rows];
@@ -186,8 +206,18 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
         }
         const newAmount = computeRowAmount(updatedCb);
         next[index] = { ...next[index], "Cost Breakup": updatedCb, "Total Amount": newAmount };
+        if (index === rows.length - 1) {
+            next.push(emptyRow(columns, headerName));
+        }
         onChange({ ...headerItem, rows: next });
-    }, [rows, headerItem, onChange, computeRowAmount]);
+
+        setActiveCell(prev => {
+            if (prev.section === headerName && prev.rowIdx === index && prev.colKey === key) {
+                return { ...prev, value: String(val ?? 0) };
+            }
+            return prev;
+        });
+    }, [rows, headerItem, onChange, computeRowAmount, columns, headerName, setActiveCell]);
 
     const manpowerSubtotal = useMemo(() => {
         if (headerName === MANPOWER_HEADER) {
@@ -222,7 +252,8 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
 
     const removeRow = useCallback((index) => {
         onChange({ ...headerItem, rows: rows.filter((_, i) => i !== index) });
-    }, [rows, headerItem, onChange]);
+        setActiveCell({ section: null, rowIdx: null, colKey: null, value: "" });
+    }, [rows, headerItem, onChange, setActiveCell]);
 
     const handleKeyDown = useCallback((rowIdx, colKey, e) => {
         if (e.key !== "Tab" && e.key !== "Enter") return;
@@ -300,16 +331,36 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
 
         const updatedCb = { ...currentCb, rate: newRate };
         next[rowIdx] = { ...next[rowIdx], "Role": value, "Cost Breakup": updatedCb, "Total Amount": computeRowAmount(updatedCb) };
+        if (rowIdx === rows.length - 1 && value !== "") {
+            next.push(emptyRow(columns, headerName));
+        }
         onChange({ ...headerItem, rows: next });
-    }, [rows, headerItem, onChange, computeRowAmount]);
+
+        setActiveCell(prev => {
+            if (prev.section === headerName && prev.rowIdx === rowIdx && prev.colKey === "role") {
+                return { ...prev, value: String(value) };
+            }
+            return prev;
+        });
+    }, [rows, headerItem, onChange, computeRowAmount, columns, headerName, setActiveCell]);
 
     const handleRoleChange = useCallback((rowIdx, value) => {
         const matched = roleOptions.find(r => r.value.toLowerCase() === value.trim().toLowerCase());
         if (!matched) setRateToggleRow(prev => { const n = { ...prev }; delete n[rowIdx]; return n; });
         const next = [...rows];
         next[rowIdx] = { ...next[rowIdx], "Role": value };
+        if (rowIdx === rows.length - 1 && value !== "") {
+            next.push(emptyRow(columns, headerName));
+        }
         onChange({ ...headerItem, rows: next });
-    }, [rows, roleOptions, headerItem, onChange]);
+
+        setActiveCell(prev => {
+            if (prev.section === headerName && prev.rowIdx === rowIdx && prev.colKey === "role") {
+                return { ...prev, value: String(value) };
+            }
+            return prev;
+        });
+    }, [rows, roleOptions, headerItem, onChange, columns, headerName, setActiveCell]);
 
     const applyRateToggle = useCallback((rowIdx, rateType) => {
         const record = rows[rowIdx];
@@ -386,26 +437,34 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                 key: "Role",
                 width: 185,
                 render: (_, record, index) => {
+                    const isRoleActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === "role";
                     return (
-                        <AutoComplete
-                            value={record["Role"] || ""}
-                            options={roleOptions}
-                            filterOption={(inputValue, option) =>
-                                option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
-                            }
-                            onSelect={(val, opt) => handleRoleSelect(index, val, opt)}
-                            onChange={(val) => handleRoleChange(index, val)}
-                            style={{ width: "100%" }}
+                        <div
+                            id={`cell-${headerName}-${index}-role`}
+                            className={`cell-wrapper ${isRoleActive ? "active-cell z-10" : ""}`}
                         >
-                            <Input
-                                id={`cell-${headerName}-${index}-role`}
-                                placeholder="Role / Designation..."
-                                className="text-[13px] font-medium"
-                                style={{ color: "#1e293b" }}
-                                onKeyDown={(e) => handleKeyDown(index, "role", e)}
-                                onFocus={() => onCellFocused && onCellFocused(index)}
-                            />
-                        </AutoComplete>
+                            <AutoComplete
+                                value={record["Role"] || ""}
+                                options={roleOptions}
+                                filterOption={(inputValue, option) =>
+                                    option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                }
+                                onSelect={(val, opt) => handleRoleSelect(index, val, opt)}
+                                onChange={(val) => handleRoleChange(index, val)}
+                                style={{ width: "100%" }}
+                            >
+                                <Input
+                                    placeholder="Role / Designation..."
+                                    className="text-[13px] font-medium"
+                                    style={{ color: "#1e293b" }}
+                                    onKeyDown={(e) => handleKeyDown(index, "role", e)}
+                                    onFocus={() => onCellFocused && onCellFocused(index, "role", record["Role"])}
+                                />
+                            </AutoComplete>
+                            {isRoleActive && (
+                                <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                            )}
+                        </div>
                     );
                 },
             },
@@ -415,44 +474,25 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                 width: 165,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
-                    const showToggle = rateToggleRow[index] !== undefined;
-                    const activeToggle = rateToggleRow[index] || "other";
+                    const isRateActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === "rate";
                     return (
-                        <div className="flex items-center gap-1.5">
-                            <div id={`cell-${headerName}-${index}-rate`} style={{ flex: 1 }}>
-                                <InputNumber
-                                    min={0}
-                                    controls={false}
-                                    value={cb.rate === 0 ? undefined : cb.rate}
-                                    onChange={(v) => updateManpowerField(index, "rate", v)}
-                                    placeholder="₹ Rate"
-                                    style={{ width: "100%" }}
-                                    className="text-[13px] font-medium"
-                                    onKeyDown={(e) => handleKeyDown(index, "rate", e)}
-                                    onFocus={() => onCellFocused && onCellFocused(index)}
-                                />
-                            </div>
-                            {showToggle && (
-                                <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0 shadow-xs">
-                                    <Tooltip title="Other Activities rate">
-                                        <button
-                                            type="button"
-                                            onClick={() => applyRateToggle(index, "other")}
-                                            className={`px-2 py-1 text-[10px] font-bold cursor-pointer transition-colors ${activeToggle === "other" ? "bg-blue-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}
-                                        >
-                                            Oth
-                                        </button>
-                                    </Tooltip>
-                                    <Tooltip title="Design & Developmental Activities rate">
-                                        <button
-                                            type="button"
-                                            onClick={() => applyRateToggle(index, "dev")}
-                                            className={`px-2 py-1 text-[10px] font-bold cursor-pointer transition-colors border-l border-slate-200 ${activeToggle === "dev" ? "bg-blue-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}
-                                        >
-                                            D&D
-                                        </button>
-                                    </Tooltip>
-                                </div>
+                        <div
+                            id={`cell-${headerName}-${index}-rate`}
+                            className={`cell-wrapper w-full ${isRateActive ? "active-cell z-10" : ""}`}
+                        >
+                            <InputNumber
+                                min={0}
+                                controls={false}
+                                value={cb.rate === 0 ? undefined : cb.rate}
+                                onChange={(v) => updateManpowerField(index, "rate", v)}
+                                placeholder="₹ Rate"
+                                style={{ width: "100%" }}
+                                className="text-[13px] font-medium"
+                                onKeyDown={(e) => handleKeyDown(index, "rate", e)}
+                                onFocus={() => onCellFocused && onCellFocused(index, "rate", cb.rate)}
+                            />
+                            {isRateActive && (
+                                <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
                             )}
                         </div>
                     );
@@ -465,8 +505,12 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
                     const type = cb.type ?? "hourly";
+                    const isTypeActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === "type";
                     return (
-                        <div id={`cell-${headerName}-${index}-type`}>
+                        <div
+                            id={`cell-${headerName}-${index}-type`}
+                            className={`cell-wrapper ${isTypeActive ? "active-cell z-10" : ""}`}
+                        >
                             <Select
                                 value={type}
                                 onChange={(v) => updateManpowerField(index, "type", v)}
@@ -477,8 +521,11 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                                 style={{ width: "100%" }}
                                 className="text-[13px]"
                                 onKeyDown={(e) => handleKeyDown(index, "type", e)}
-                                onFocus={() => onCellFocused && onCellFocused(index)}
+                                onFocus={() => onCellFocused && onCellFocused(index, "type", type)}
                             />
+                            {isTypeActive && (
+                                <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                            )}
                         </div>
                     );
                 },
@@ -491,8 +538,12 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                     const cb = record["Cost Breakup"] || {};
                     const isMonthly = (cb.type ?? "hourly") === "monthly";
                     const val = isMonthly ? cb.months : cb.hours;
+                    const isHrsActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === "hrs";
                     return (
-                        <div id={`cell-${headerName}-${index}-hrs`}>
+                        <div
+                            id={`cell-${headerName}-${index}-hrs`}
+                            className={`cell-wrapper ${isHrsActive ? "active-cell z-10" : ""}`}
+                        >
                             <InputNumber
                                 min={0}
                                 controls={false}
@@ -502,8 +553,11 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                                 style={{ width: "100%" }}
                                 className="text-[13px] font-medium"
                                 onKeyDown={(e) => handleKeyDown(index, "hrs", e)}
-                                onFocus={() => onCellFocused && onCellFocused(index)}
+                                onFocus={() => onCellFocused && onCellFocused(index, "hrs", val)}
                             />
+                            {isHrsActive && (
+                                <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                            )}
                         </div>
                     );
                 },
@@ -518,8 +572,12 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                     if (isMonthly) return (
                         <span style={{ color: "#cbd5e1", display: "block", textAlign: "center", lineHeight: "32px" }}>—</span>
                     );
+                    const isDaysActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === "days";
                     return (
-                        <div id={`cell-${headerName}-${index}-days`}>
+                        <div
+                            id={`cell-${headerName}-${index}-days`}
+                            className={`cell-wrapper ${isDaysActive ? "active-cell z-10" : ""}`}
+                        >
                             <InputNumber
                                 min={0}
                                 controls={false}
@@ -529,8 +587,11 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                                 style={{ width: "100%" }}
                                 className="text-[13px] font-medium"
                                 onKeyDown={(e) => handleKeyDown(index, "days", e)}
-                                onFocus={() => onCellFocused && onCellFocused(index)}
+                                onFocus={() => onCellFocused && onCellFocused(index, "days", cb.days)}
                             />
+                            {isDaysActive && (
+                                <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                            )}
                         </div>
                     );
                 },
@@ -541,8 +602,12 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                 width: 88,
                 render: (_, record, index) => {
                     const cb = record["Cost Breakup"] || {};
+                    const isPeopleActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === "people";
                     return (
-                        <div id={`cell-${headerName}-${index}-people`}>
+                        <div
+                            id={`cell-${headerName}-${index}-people`}
+                            className={`cell-wrapper ${isPeopleActive ? "active-cell z-10" : ""}`}
+                        >
                             <InputNumber
                                 min={1}
                                 controls={false}
@@ -552,8 +617,11 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                                 style={{ width: "100%" }}
                                 className="text-[13px] font-medium"
                                 onKeyDown={(e) => handleKeyDown(index, "people", e)}
-                                onFocus={() => onCellFocused && onCellFocused(index)}
+                                onFocus={() => onCellFocused && onCellFocused(index, "people", cb.quantity)}
                             />
+                            {isPeopleActive && (
+                                <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                            )}
                         </div>
                     );
                 },
@@ -614,9 +682,13 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                     key: col,
                     align: isTotalAmount ? "right" : "left",
                     render: (_, record, index) => {
+                        const isCellActive = activeCell && activeCell.section === headerName && activeCell.rowIdx === index && activeCell.colKey === col;
                         if (isTotalAmount) {
                             return (
-                                <div id={`cell-${headerName}-${index}-${col}`}>
+                                <div
+                                    id={`cell-${headerName}-${index}-${col}`}
+                                    className={`cell-wrapper ${isCellActive ? "active-cell z-10" : ""}`}
+                                >
                                     <InputNumber
                                         min={0}
                                         controls={false}
@@ -625,13 +697,19 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                                         className="text-[13px] font-semibold"
                                         style={{ width: "100%" }}
                                         onKeyDown={(e) => handleKeyDown(index, col, e)}
-                                        onFocus={() => onCellFocused && onCellFocused(index)}
+                                        onFocus={() => onCellFocused && onCellFocused(index, col, record[col])}
                                     />
+                                    {isCellActive && (
+                                        <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                                    )}
                                 </div>
                             );
                         }
                         return (
-                            <div id={`cell-${headerName}-${index}-${col}`}>
+                            <div
+                                id={`cell-${headerName}-${index}-${col}`}
+                                className={`cell-wrapper ${isCellActive ? "active-cell z-10" : ""}`}
+                            >
                                 <Input
                                     value={record[col] || ""}
                                     onChange={(e) => updateRow(index, col, e.target.value)}
@@ -639,8 +717,11 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                                     className="text-[13px] font-medium"
                                     style={{ color: "#1e293b" }}
                                     onKeyDown={(e) => handleKeyDown(index, col, e)}
-                                    onFocus={() => onCellFocused && onCellFocused(index)}
+                                    onFocus={() => onCellFocused && onCellFocused(index, col, record[col])}
                                 />
+                                {isCellActive && (
+                                    <div className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-black border border-white translate-x-[3px] translate-y-[3px] cursor-crosshair z-20" />
+                                )}
                             </div>
                         );
                     },
@@ -650,7 +731,38 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
     }
 
     tableColumns.push({
-        title: "",
+        title: headerName !== MANPOWER_HEADER ? (
+            <Popover
+                content={
+                    <div className="flex items-center gap-2">
+                        <Input
+                            autoFocus
+                            size="small"
+                            placeholder="Column name"
+                            value={newColumnName}
+                            onChange={(e) => setNewColumnName(e.target.value)}
+                            onPressEnter={confirmAddColumn}
+                            style={{ width: 140 }}
+                        />
+                        <Button size="small" type="primary" onClick={confirmAddColumn}>Add</Button>
+                    </div>
+                }
+                title="Add New Column"
+                trigger="click"
+                open={addingColumn}
+                onOpenChange={setAddingColumn}
+                placement="bottomRight"
+            >
+                <Tooltip title="Add Column">
+                    <button
+                        type="button"
+                        className="w-full h-full flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                    >
+                        <PlusOutlined style={{ fontSize: 13, fontWeight: 'bold' }} />
+                    </button>
+                </Tooltip>
+            </Popover>
+        ) : "",
         key: "_delete",
         width: 36,
         render: (_, record, index) => (
@@ -668,37 +780,6 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
 
     return (
         <div className="space-y-3">
-            {/* Add column toolbar — custom sections only */}
-            {headerName !== MANPOWER_HEADER && (
-                <div className="flex items-center justify-end gap-2">
-                    {addingColumn ? (
-                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 flex-1">
-                            <span className="text-xs text-slate-500 font-medium shrink-0">New column:</span>
-                            <Input
-                                autoFocus
-                                size="small"
-                                placeholder="Name (comma-separate for multiple)"
-                                value={newColumnName}
-                                onChange={(e) => setNewColumnName(e.target.value)}
-                                onPressEnter={confirmAddColumn}
-                                className="flex-1"
-                                style={{ border: "none", boxShadow: "none", background: "transparent" }}
-                            />
-                            <Button size="small" type="primary" onClick={confirmAddColumn} className="bg-blue-600 shrink-0">Add</Button>
-                            <Button size="small" onClick={() => { setAddingColumn(false); setNewColumnName(""); }}>Cancel</Button>
-                        </div>
-                    ) : (
-                        <button
-                            type="button"
-                            onClick={() => setAddingColumn(true)}
-                            className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                        >
-                            <PlusOutlined style={{ fontSize: 9 }} /> Add Column
-                        </button>
-                    )}
-                </div>
-            )}
-
             {/* Spreadsheet Table with aligned summary row */}
             <Table
                 rowKey={(_, index) => `${headerName}-row-${index}`}
@@ -766,15 +847,13 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
                     <kbd className="px-1 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-mono">Tab</kbd>
                     {" "}in any cell to add a new row
                 </span>
-                <Button
-                    type="dashed"
-                    size="small"
-                    icon={<PlusOutlined />}
+                <button
+                    type="button"
                     onClick={addRow}
-                    className="text-blue-600 border-blue-300 hover:border-blue-400 hover:text-blue-700 font-semibold"
+                    className="text-blue-600 hover:text-blue-700 font-semibold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none"
                 >
-                    Add Row
-                </Button>
+                    <PlusOutlined style={{ fontSize: 10 }} /> Add Row
+                </button>
             </div>
         </div>
     );
@@ -972,9 +1051,31 @@ export function convertHeadersToDocumentTables(headers) {
             };
         } else {
             const cols = h.columns || ["Description", "Total Amount"];
+            let totalAmt = 0;
+            const hasTotalAmount = cols.includes("Total Amount");
+
             const rows = (h.rows || []).map((r) => {
-                return cols.map((col) => String(r[col] ?? ""));
+                if (hasTotalAmount) {
+                    totalAmt += Number(r["Total Amount"] || 0);
+                }
+                return cols.map((col) => {
+                    const val = r[col];
+                    if (col === "Total Amount") {
+                        return formatIndianCurrency(Number(val) || 0, true);
+                    }
+                    return String(val ?? "");
+                });
             });
+
+            if (hasTotalAmount && rows.length > 0) {
+                const totalRow = cols.map((col, idx) => {
+                    if (idx === 0) return "Total";
+                    if (col === "Total Amount") return formatIndianCurrency(totalAmt, true);
+                    return "";
+                });
+                rows.push(totalRow);
+            }
+
             return {
                 title: h.header_name,
                 headers: cols,
@@ -982,6 +1083,198 @@ export function convertHeadersToDocumentTables(headers) {
             };
         }
     });
+}
+
+function DocxPreview({ headers, title, createdBy }) {
+    const docTables = useMemo(() => convertHeadersToDocumentTables(headers), [headers]);
+
+    const sectionTotals = useMemo(() => {
+        return headers.map((h, idx) => {
+            const letter = String.fromCharCode(65 + idx);
+            let subtotal = 0;
+            if (h.header_name === MANPOWER_HEADER) {
+                subtotal = (h.rows || []).reduce((sum, r) => {
+                    const cb = r["Cost Breakup"] || {};
+                    if ((cb.type ?? "hourly") === "monthly") return sum + (cb.rate || 0) * (cb.months || 0) * (cb.quantity || 1);
+                    return sum + (cb.rate || 0) * (cb.hours || 0) * (cb.days || 0) * (cb.quantity || 1);
+                }, 0);
+            } else if ((h.columns || []).includes("Total Amount")) {
+                subtotal = (h.rows || []).reduce((sum, r) => sum + (Number(r["Total Amount"]) || 0), 0);
+            }
+            return {
+                letter,
+                name: h.header_name,
+                subtotal
+            };
+        });
+    }, [headers]);
+
+    const grandTotal = useMemo(() => {
+        return sectionTotals.reduce((acc, s) => acc + s.subtotal, 0);
+    }, [sectionTotals]);
+
+    const tableLetters = useMemo(() => {
+        return sectionTotals.map(s => s.letter).join(" + ");
+    }, [sectionTotals]);
+
+    const formattedDate = useMemo(() => {
+        const d = new Date();
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+    }, []);
+
+    return (
+        <div
+            style={{
+                width: 680,
+                borderLeft: "1px solid #cbd5e1",
+                overflowY: "auto",
+                flexShrink: 0,
+                background: "#f1f5f9",
+                padding: "16px",
+            }}
+        >
+            <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2.5 select-none">
+                Word Document Preview (.docx)
+            </div>
+
+            {/* Simulated Word Page */}
+            <div className="bg-white shadow-lg border border-slate-300 p-6 min-h-[842px] text-[9.5px] text-[#222222] leading-relaxed font-serif" style={{ fontFamily: "Calibri, sans-serif" }}>
+
+                {/* Title */}
+                <h1 className="font-bold text-[12.5px] text-[#222222] mb-2 uppercase" style={{ margin: 0 }}>
+                    {title || "Industry 4.0 Pilot Project"}
+                </h1>
+
+                {/* Metadata Table */}
+                <table className="w-full mb-4 border-collapse text-[8.5px]" style={{ margin: "8px 0" }}>
+                    <tbody>
+                        <tr style={{ borderBottom: "1px solid #CFCFCF" }}>
+                            <td className="py-1 px-0 font-bold text-[#666666] w-20">Project Name</td>
+                            <td className="py-1 px-2 text-[#222222] font-semibold">{title || "Industry 4.0 Pilot Project"}</td>
+                        </tr>
+                        <tr style={{ borderBottom: "1px solid #CFCFCF" }}>
+                            <td className="py-1 px-0 font-bold text-[#666666]">Prepared By</td>
+                            <td className="py-1 px-2 text-[#222222]">{createdBy || "Project Management Team"}</td>
+                        </tr>
+                        <tr style={{ borderBottom: "1px solid #CFCFCF" }}>
+                            <td className="py-1 px-0 font-bold text-[#666666]">Date Created</td>
+                            <td className="py-1 px-2 text-[#222222]">{formattedDate}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                {/* 1. Cost Summary */}
+                <h2 className="font-bold text-[9.5px] text-[#222222] mt-4 mb-1.5" style={{ borderBottom: "1.5px solid #7A2E2E", paddingBottom: 2 }}>
+                    1. Cost Summary
+                </h2>
+                <table className="w-full border-collapse text-[8.5px] mb-4">
+                    <thead>
+                        <tr className="bg-[#F7F7F7]">
+                            <th className="border-b-2 border-[#222222] px-2 py-1 text-left font-bold text-[#222222] w-16">Ref</th>
+                            <th className="border-b-2 border-[#222222] px-2 py-1 text-left font-bold text-[#222222]">Cost Section Category</th>
+                            <th className="border-b-2 border-[#222222] px-2 py-1 text-right font-bold text-[#222222] w-28">Subtotal (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sectionTotals.map((s, idx) => (
+                            <tr key={idx}>
+                                <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">Section {s.letter}</td>
+                                <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">{s.name}</td>
+                                <td className="border-b border-[#CFCFCF] px-2 py-1 text-right font-medium">
+                                    {formatIndianCurrency(s.subtotal, true)}
+                                </td>
+                            </tr>
+                        ))}
+                        <tr className="bg-[#F7F7F7] font-bold">
+                            <td className="border-t border-b-2 border-[#222222] px-2 py-1 text-left"></td>
+                            <td className="border-t border-b-2 border-[#222222] px-2 py-1 text-left font-bold">Grand Total</td>
+                            <td className="border-t border-b-2 border-[#222222] px-2 py-1 text-right font-bold">
+                                {formatIndianCurrency(grandTotal, true)}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                {/* 2. Detailed Cost Breakdown */}
+                <h2 className="font-bold text-[9.5px] text-[#222222] mt-4 mb-1.5" style={{ borderBottom: "1.5px solid #7A2E2E", paddingBottom: 2 }}>
+                    2. Detailed Cost Breakdown
+                </h2>
+
+                {docTables.length === 0 ? (
+                    <div className="text-slate-400 text-center py-4 italic">No sections configured</div>
+                ) : docTables.map((t, idx) => {
+                    const letter = String.fromCharCode(65 + idx);
+                    return (
+                        <div key={idx} className="mb-4">
+                            <h3 className="font-bold text-[9px] text-[#7A2E2E] mt-2.5 mb-1.5">
+                                Section {letter} — {t.title}
+                            </h3>
+                            <table className="w-full border-collapse text-[8px] mb-1">
+                                <thead>
+                                    <tr className="bg-[#F7F7F7]">
+                                        {t.headers.map((h, hi) => {
+                                            const h_str = h.trim();
+                                            let align = "text-left";
+                                            if (h_str === "Basis" || h_str === "People") align = "text-center";
+                                            else if (h_str.includes("Total") || h_str.includes("Amount") || hi === t.headers.length - 1) align = "text-right";
+
+                                            return (
+                                                <th key={hi} className={`border-b-2 border-[#222222] px-2 py-1 font-bold text-[#222222] uppercase ${align}`}>
+                                                    {h}
+                                                </th>
+                                            );
+                                        })}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {t.rows.map((row, ri) => {
+                                        const isTotalRow = ri === t.rows.length - 1 && (t.title === "Manpower" || t.headers.includes("Total Amount"));
+                                        return (
+                                            <tr key={ri} className={isTotalRow ? "font-bold bg-[#F7F7F7]" : ""}>
+                                                {row.map((cell, ci) => {
+                                                    const h_str = t.headers[ci].trim();
+                                                    let align = "text-left";
+                                                    if (h_str === "Basis" || h_str === "People") align = "text-center";
+                                                    else if (h_str.includes("Total") || h_str.includes("Amount") || ci === t.headers.length - 1) align = "text-right";
+
+                                                    return (
+                                                        <td key={ci} className={`border-b border-[#CFCFCF] px-2 py-1 text-[#222222] ${isTotalRow ? "border-t border-b-2 border-[#222222]" : ""} ${align}`}>
+                                                            {cell}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                })}
+
+                {/* Grand Total banner */}
+                <div className="mt-5 mb-5 p-2 bg-[#F7F7F7]" style={{ borderTop: "1px solid #222222", borderBottom: "1px solid #222222" }}>
+                    <span className="font-bold text-[8px] text-[#222222]">
+                        Grand Total Estimated Cost{tableLetters ? ` (${tableLetters})` : ""}:
+                    </span>
+                    <span className="font-bold text-[9px] text-[#7A2E2E] ml-2 font-mono">
+                        ₹ {formatIndianCurrency(grandTotal, true)}
+                    </span>
+                </div>
+
+                {/* Sign-off matrix */}
+                <div className="mt-5 flex justify-between text-[8px]">
+                    <div style={{ borderTop: "1px solid #CFCFCF", width: "120px", paddingTop: "6px" }}>
+                        <div className="font-bold text-[#222222]">Prepared By</div>
+                        <div className="text-[#666666]">{createdBy || "Project Engineer"}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 /* ============================================================
@@ -1005,13 +1298,65 @@ export function CostEstimationModal({
     const [currentVersion, setCurrentVersion] = useState(null);
     const [collapsedSections, setCollapsedSections] = useState(new Set());
     const [ratesPanelOpen, setRatesPanelOpen] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
     const [addSectionExpanded, setAddSectionExpanded] = useState(false);
     const [addSectionName, setAddSectionName] = useState("");
     const [officialRates, setOfficialRates] = useState([]);
     const [loadingRates, setLoadingRates] = useState(false);
     const [focusedRow, setFocusedRow] = useState(null);
+    const [activeCell, setActiveCell] = useState({ section: null, rowIdx: null, colKey: null, value: "" });
 
     const loadNonceRef = useRef(0);
+
+    const calculateManpowerRowAmount = (cb) => {
+        if (!cb) return 0;
+        const rate = cb.rate ?? 0;
+        const quantity = cb.quantity ?? 1;
+        if ((cb.type ?? "hourly") === "monthly") {
+            return rate * (cb.months ?? 0) * quantity;
+        }
+        return rate * (cb.hours ?? 0) * (cb.days ?? 0) * quantity;
+    };
+
+    const handleFormulaBarChange = (newValue) => {
+        if (!activeCell.section || activeCell.rowIdx === null || !activeCell.colKey) return;
+
+        let cleanValue = newValue;
+        if (cleanValue.startsWith("=")) {
+            cleanValue = cleanValue.substring(1);
+        }
+
+        setActiveCell(prev => ({ ...prev, value: newValue }));
+
+        setHeaders(prev => prev.map(h => {
+            if (h.header_name !== activeCell.section) return h;
+            const nextRows = [...(h.rows || [])];
+            const rowIdx = activeCell.rowIdx;
+            const colKey = activeCell.colKey;
+
+            if (activeCell.section === MANPOWER_HEADER) {
+                if (colKey === "role") {
+                    nextRows[rowIdx] = { ...nextRows[rowIdx], "Role": cleanValue };
+                } else {
+                    const currentCb = nextRows[rowIdx]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+                    let fieldKey = colKey;
+                    if (colKey === "rate") fieldKey = "rate";
+                    else if (colKey === "hrs") fieldKey = currentCb.type === "monthly" ? "months" : "hours";
+                    else if (colKey === "days") fieldKey = "days";
+                    else if (colKey === "people") fieldKey = "quantity";
+
+                    const valNum = Number(cleanValue) || 0;
+                    let updatedCb = { ...currentCb, [fieldKey]: valNum };
+                    const newAmount = calculateManpowerRowAmount(updatedCb);
+                    nextRows[rowIdx] = { ...nextRows[rowIdx], "Cost Breakup": updatedCb, "Total Amount": newAmount };
+                }
+            } else {
+                const isTotalAmount = colKey === "Total Amount";
+                nextRows[rowIdx] = { ...nextRows[rowIdx], [colKey]: isTotalAmount ? (Number(cleanValue) || 0) : cleanValue };
+            }
+            return { ...h, rows: nextRows };
+        }));
+    };
 
     useEffect(() => {
         if (!open) return;
@@ -1119,16 +1464,25 @@ export function CostEstimationModal({
     };
 
     // Apply a rate from the rates panel.
-    // • If a Manpower row is focused → update its rate (+ optionally its role name).
-    // • If no row is focused OR the table is empty → add a new row pre-filled with designation + rate.
+    // • If a Manpower row is focused OR a blank row exists → update its rate and designation.
+    // • Otherwise → add a new row pre-filled with designation + rate.
     const applyRateFromPanel = (rate, designation = "") => {
         const numRate = Number(rate);
         setHeaders(prev => prev.map(h => {
             if (h.header_name !== MANPOWER_HEADER) return h;
             const nextRows = [...(h.rows || [])];
 
-            if (focusedRow !== null && nextRows[focusedRow]) {
-                const cb = nextRows[focusedRow]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
+            let targetIdx = focusedRow;
+            if (targetIdx === null) {
+                // If no row is focused, look for the first blank row (where Role is empty/blank)
+                const firstEmptyIdx = nextRows.findIndex(r => !String(r["Role"] || "").trim());
+                if (firstEmptyIdx !== -1) {
+                    targetIdx = firstEmptyIdx;
+                }
+            }
+
+            if (targetIdx !== null && nextRows[targetIdx]) {
+                const cb = nextRows[targetIdx]["Cost Breakup"] || { type: "hourly", rate: 0, hours: 0, days: 0, months: 0, quantity: 1 };
                 const updatedCb = { ...cb, rate: numRate };
                 const newAmount = (() => {
                     const r2 = updatedCb.rate ?? 0;
@@ -1136,10 +1490,10 @@ export function CostEstimationModal({
                     if ((updatedCb.type ?? "hourly") === "monthly") return r2 * (updatedCb.months ?? 0) * q;
                     return r2 * (updatedCb.hours ?? 0) * (updatedCb.days ?? 0) * q;
                 })();
-                const updatedRow = { ...nextRows[focusedRow], "Cost Breakup": updatedCb, "Total Amount": newAmount };
-                if (designation && !updatedRow["Role"]) updatedRow["Role"] = designation;
-                nextRows[focusedRow] = updatedRow;
-                message.success(`₹${numRate.toLocaleString("en-IN")} applied to row ${focusedRow + 1}`);
+                const updatedRow = { ...nextRows[targetIdx], "Cost Breakup": updatedCb, "Total Amount": newAmount };
+                if (designation) updatedRow["Role"] = designation;
+                nextRows[targetIdx] = updatedRow;
+                message.success(`₹${numRate.toLocaleString("en-IN")} applied to row ${targetIdx + 1}`);
             } else {
                 const newCb = { type: "hourly", rate: numRate, hours: 0, days: 0, months: 0, quantity: 1 };
                 nextRows.push({
@@ -1189,10 +1543,11 @@ export function CostEstimationModal({
             <Modal
                 open={open}
                 onCancel={closeModal}
-                width={1380}
+                width={previewOpen ? 1680 : 1380}
                 style={{ top: 15 }}
                 destroyOnClose
                 footer={null}
+                wrapClassName="cost-estimation-modal-wrap"
                 styles={{
                     content: {
                         borderRadius: "20px",
@@ -1202,11 +1557,78 @@ export function CostEstimationModal({
                     }
                 }}
             >
+                <style dangerouslySetInnerHTML={{
+                    __html: `
+                    .cost-estimation-modal-wrap .ant-table {
+                        border-radius: 8px !important;
+                        border: 1px solid #cbd5e1 !important;
+                        overflow: hidden !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-table-thead > tr > th {
+                        background-color: #f1f5f9 !important;
+                        color: #1e293b !important;
+                        font-weight: 850 !important;
+                        font-size: 11px !important;
+                        text-transform: uppercase !important;
+                        letter-spacing: 0.05em !important;
+                        padding: 10px 14px !important;
+                        border-bottom: 2px solid #cbd5e1 !important;
+                        border-right: 1px solid #cbd5e1 !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-table-thead > tr > th:last-child {
+                        border-right: none !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-table-tbody > tr > td {
+                        padding: 0 !important;
+                        height: 38px !important;
+                        border-bottom: 1px solid #e2e8f0 !important;
+                        border-right: 1px solid #cbd5e1 !important;
+                        background: #ffffff !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-table-tbody > tr > td:last-child {
+                        border-right: none !important;
+                    }
+                    .cost-estimation-modal-wrap .cell-wrapper {
+                        position: relative;
+                        width: 100%;
+                        height: 100%;
+                        display: flex;
+                        align-items: center;
+                        border: 2px solid transparent;
+                        box-sizing: border-box;
+                    }
+                    .cost-estimation-modal-wrap .cell-wrapper.active-cell {
+                        border: 2px solid #000000 !important;
+                        background: #ffffff !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-input,
+                    .cost-estimation-modal-wrap .ant-input-number,
+                    .cost-estimation-modal-wrap .ant-select-selector {
+                        border: none !important;
+                        box-shadow: none !important;
+                        background: transparent !important;
+                        font-size: 13px !important;
+                        width: 100% !important;
+                        height: 100% !important;
+                        padding: 4px 10px !important;
+                        border-radius: 0 !important;
+                        color: #1e293b !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-select-selector {
+                        display: flex !important;
+                        align-items: center !important;
+                        border-radius: 0 !important;
+                    }
+                    .cost-estimation-modal-wrap .ant-input-number-input-wrap,
+                    .cost-estimation-modal-wrap .ant-input-number-input {
+                        height: 100% !important;
+                    }
+                `}} />
                 <div style={{ display: "flex", flexDirection: "column", height: "88vh" }}>
 
                     {/* ── Top Header Bar ── */}
                     <div
-                        className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-8 pt-7 pb-4 border-b border-slate-200/80 bg-[#f8fafc] shrink-0"
+                        className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-8 pt-7 pb-4 border-b border-slate-200 bg-[#f8fafc] shrink-0"
                     >
                         <div>
                             <span className="inline-block px-3 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 rounded-full tracking-wider uppercase">
@@ -1228,23 +1650,24 @@ export function CostEstimationModal({
                         <div className="flex items-center gap-2.5 shrink-0">
                             <button
                                 onClick={handleResetWorkspace}
-                                className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
                             >
                                 <ReloadOutlined /> Reset
                             </button>
                             <button
                                 onClick={() => setHistoryOpen(true)}
                                 disabled={!projectId}
-                                className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
                             >
                                 <HistoryOutlined /> History
                             </button>
-                            {/* Rates reference panel toggle */}
+
+                            {/* Preview Panel toggle */}
                             <button
-                                onClick={() => setRatesPanelOpen(p => !p)}
-                                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${ratesPanelOpen ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
+                                onClick={() => setPreviewOpen(p => !p)}
+                                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${previewOpen ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20" : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50"}`}
                             >
-                                <InfoCircleOutlined /> Rates {ratesPanelOpen ? "✕" : "▸"}
+                                <FileWordOutlined /> Preview {previewOpen ? "✕" : "▸"}
                             </button>
                             {onApply || hideGenerateWord ? (
                                 <button
@@ -1265,6 +1688,8 @@ export function CostEstimationModal({
                         </div>
                     </div>
 
+
+
                     {/* ── Body: sidebar + scroll area + rates panel ── */}
                     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
@@ -1273,7 +1698,7 @@ export function CostEstimationModal({
                             <div
                                 style={{
                                     width: 158,
-                                    borderRight: "1px solid #e2e8f0",
+                                    borderRight: "1px solid #cbd5e1",
                                     overflowY: "auto",
                                     flexShrink: 0,
                                     background: "#f8fafc",
@@ -1294,7 +1719,7 @@ export function CostEstimationModal({
                                             title={h.header_name}
                                         >
                                             <div className="truncate font-bold">{h.header_name}</div>
-                                            <div className="text-[10px] text-slate-400 tabular-nums mt-0.5">
+                                            <div className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
                                                 ₹{subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                             </div>
                                         </button>
@@ -1319,15 +1744,15 @@ export function CostEstimationModal({
                                         <div
                                             key={h.header_name}
                                             id={`section-${h.header_name}`}
-                                            className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden"
+                                            className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden"
                                         >
                                             {/* Section heading bar */}
-                                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80 bg-white">
+                                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-100">
                                                 <div className="flex items-center gap-3 flex-wrap">
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleCollapse(h.header_name)}
-                                                        className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-100 transition-all cursor-pointer shrink-0"
+                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-md hover:bg-slate-200 transition-all cursor-pointer shrink-0"
                                                     >
                                                         {isCollapsed
                                                             ? <RightOutlined style={{ fontSize: 11 }} />
@@ -1335,16 +1760,25 @@ export function CostEstimationModal({
                                                         }
                                                     </button>
                                                     <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">
-                                                        {h.header_name}
+                                                        {h.header_name}: ₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </h3>
-                                                    <span className="px-2.5 py-0.5 text-[11px] font-black text-blue-700 bg-blue-50 border border-blue-200/60 rounded-full tabular-nums">
-                                                        ₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </span>
                                                     <span className="text-[11px] text-slate-400 font-medium">
                                                         {rowCount} {rowCount === 1 ? "row" : "rows"}
                                                     </span>
                                                 </div>
-                                                {!isManpower && (
+                                                {isManpower ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setRatesPanelOpen((p) => !p)}
+                                                        className={`px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border rounded-lg shrink-0 ${
+                                                            ratesPanelOpen
+                                                                ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                                                                : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600"
+                                                        }`}
+                                                    >
+                                                        <InfoCircleOutlined style={{ fontSize: 10 }} /> Rates Reference
+                                                    </button>
+                                                ) : (
                                                     <Popconfirm
                                                         title={`Delete section "${h.header_name}"?`}
                                                         description="This will permanently delete this section and all its rows."
@@ -1355,7 +1789,7 @@ export function CostEstimationModal({
                                                     >
                                                         <button
                                                             type="button"
-                                                            className="px-2.5 py-1 text-xs font-bold text-rose-500 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200/80 hover:border-rose-600 rounded-lg transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                                                            className="px-2.5 py-1 text-xs font-bold text-rose-500 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-lg transition-all flex items-center gap-1 cursor-pointer shrink-0"
                                                         >
                                                             <DeleteOutlined style={{ fontSize: 10 }} /> Delete
                                                         </button>
@@ -1371,7 +1805,12 @@ export function CostEstimationModal({
                                                         onChange={(updated) => handleHeaderChange(idx, updated)}
                                                         onDeleteHeader={handleRemoveHeader}
                                                         officialRates={officialRates}
-                                                        onCellFocused={(rowIndex) => setFocusedRow(rowIndex)}
+                                                        onCellFocused={(rowIndex, colKey, val) => {
+                                                            setFocusedRow(rowIndex);
+                                                            setActiveCell({ section: h.header_name, rowIdx: rowIndex, colKey, value: val !== undefined && val !== null ? String(val) : "" });
+                                                        }}
+                                                        activeCell={activeCell}
+                                                        setActiveCell={setActiveCell}
                                                     />
                                                 </div>
                                             )}
@@ -1421,7 +1860,7 @@ export function CostEstimationModal({
                             <div
                                 style={{
                                     width: 300,
-                                    borderLeft: "1px solid #e2e8f0",
+                                    borderLeft: "1px solid #cbd5e1",
                                     overflowY: "auto",
                                     flexShrink: 0,
                                     background: "#ffffff",
@@ -1486,6 +1925,10 @@ export function CostEstimationModal({
                                 )}
                             </div>
                         )}
+                        {/* ── Word Preview Panel ── */}
+                        {previewOpen && (
+                            <DocxPreview headers={headers} title={title} createdBy={createdBy} />
+                        )}
                     </div>
 
                     {/* ── Sticky Grand Total bar (pinned to bottom) ── */}
@@ -1498,12 +1941,9 @@ export function CostEstimationModal({
                         </div>
                         <div className="flex items-center gap-3">
                             <span className="text-sm font-bold text-slate-600">Grand Total Estimated Cost:</span>
-                            <span className="text-xl font-black text-slate-900 bg-blue-50 px-5 py-1.5 rounded-2xl border border-blue-200/80 tabular-nums">
+                            <span className="text-xl font-black text-slate-900 bg-slate-100 px-5 py-1.5 rounded-xl border border-slate-300 tabular-nums">
                                 ₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
-                            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-                                <RiseOutlined style={{ fontSize: 16 }} />
-                            </div>
                         </div>
                     </div>
                 </div>
