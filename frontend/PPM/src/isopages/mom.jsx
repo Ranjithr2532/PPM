@@ -313,10 +313,12 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
             return '';
         }
     })();
+    const isAdmin = ['admin', 'director'].includes(currentUserRole);
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    const isReadOnly = isApproved || isSubmitted || isApprover;
+    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
+    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
 
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">

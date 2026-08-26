@@ -44,6 +44,7 @@ from iso.contractreview import router as iso_contractreview_router
 from iso.projectteam import router as iso_projectteam_router
 from iso.mom import router as iso_mom_router
 from iso.quation_reader import router as iso_quotation_reader_router
+from iso.projectpropsasl import router as iso_projectpropsasl_router
 # from ai_routes.ai import router as ai_router
 
 
@@ -96,6 +97,7 @@ app.include_router(iso_mom_router)
 app.include_router(iso_submission_router)
 app.include_router(iso_document_list_router)
 app.include_router(iso_quotation_reader_router)
+app.include_router(iso_projectpropsasl_router)
 
 
 

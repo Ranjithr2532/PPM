@@ -64,6 +64,7 @@ class ProposalBase(BaseModel):
     tender_images: Optional[str] = None
     if_not_reason: Optional[str] = None
     mutually_agreed: Optional[bool] = Field(default=None, alias="Mutually_Agreed")
+    draft: Optional[bool] = False
 
     class Config:
         populate_by_name = True

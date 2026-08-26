@@ -15,7 +15,7 @@ router = APIRouter(prefix="/iso-document-list", tags=["ISO Document List Managem
 
 @router.get("/", response_model=List[ISODocumentListResponse])
 def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
-    # Auto-seed standard ISO document templates if table is empty or missing doc 037
+    # Auto-seed standard ISO document templates if missing doc 037 or 009
     existing_037 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "037").first()
     if not existing_037:
         mom_doc = ISODocumentList(
@@ -26,6 +26,18 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
             is_active=True,
         )
         db.add(mom_doc)
+        db.commit()
+
+    existing_009 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "009").first()
+    if not existing_009:
+        pp_doc = ISODocumentList(
+            name="PROJECT PROPOSAL",
+            initial="PP",
+            code="CMTI-QMS-SMPM-009/Rev00",
+            document_no="009",
+            is_active=True,
+        )
+        db.add(pp_doc)
         db.commit()
 
     query = db.query(ISODocumentList)

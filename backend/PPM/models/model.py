@@ -28,6 +28,7 @@ class Proposal(Base):
     quote_date = Column(Date, nullable=True)
     quote_amount = Column(String, nullable=True)
     proposal_status = Column(String, nullable=True)
+    draft = Column(Boolean, default=False, nullable=True)
 
     revised_negotiated = Column("revised/negotiated", String, nullable=True)
     revised_negotiated_quote_date = Column("revised/negotiated_quote_date", Date, nullable=True)
@@ -421,8 +422,8 @@ class ISOSubmission(Base):
     document_no = Column(String(100), nullable=False, index=True)
     proposal_id = Column(BigInteger, ForeignKey("proposals.id", ondelete="SET NULL"), nullable=True, index=True)
     
-    header_data = Column(JSONB, nullable=False, default=dict)
-    form_data = Column(JSONB, nullable=False, default=dict)
+    header_data = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    form_data = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
     
     status = Column(String(30), nullable=False, default="DRAFT", server_default="DRAFT", index=True) # DRAFT, SUBMITTED, APPROVED, REJECTED
     rejection_comment = Column(Text, nullable=True)

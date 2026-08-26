@@ -8,17 +8,18 @@ import {
 import Fesability from '../isopages/fesability.jsx';
 import ContractReview from '../isopages/contractreview.jsx';
 import ProjectTeam from '../isopages/projectteam.jsx';
+import ProjectProposal from '../isopages/projectpropsal.jsx';
 
 export default function Isogenration() {
-    const [activeForm, setActiveForm] = useState(null); // null | 'feasibility' | 'contractreview' | 'projectteam'
+    const [activeForm, setActiveForm] = useState(null); // null | 'feasibility' | 'contractreview' | 'projectteam' | 'projectproposal'
 
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const formParam = searchParams.get('form') || searchParams.get('doc_type');
         if (formParam) {
             const normalized = formParam.toLowerCase().replace('_', '');
-            if (['feasibility', 'contractreview', 'projectteam'].includes(normalized)) {
-                setActiveForm(normalized);
+            if (['feasibility', 'contractreview', 'projectteam', 'projectproposal', 'projectpropsal'].includes(normalized)) {
+                setActiveForm(normalized.includes('propsal') || normalized.includes('proposal') ? 'projectproposal' : normalized);
             }
         }
     }, []);
@@ -69,6 +70,22 @@ export default function Isogenration() {
                     </button>
                 </div>
                 <ProjectTeam />
+            </div>
+        );
+    }
+
+    if (activeForm === 'projectproposal') {
+        return (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-h-screen">
+                <div className="mb-4">
+                    <button 
+                        onClick={() => setActiveForm(null)}
+                        className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-semibold transition-colors text-xs bg-slate-50 hover:bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200"
+                    >
+                        <ArrowLeftOutlined /> Back to ISO Documents List
+                    </button>
+                </div>
+                <ProjectProposal onBack={() => setActiveForm(null)} />
             </div>
         );
     }
@@ -162,6 +179,32 @@ export default function Isogenration() {
                     <button 
                         onClick={() => setActiveForm('projectteam')}
                         className="w-full bg-slate-900 hover:bg-cyan-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 mt-4"
+                    >
+                        <span>Open Form</span>
+                    </button>
+                </div>
+
+                {/* 4. Project Proposal Form Card */}
+                <div className="bg-white border border-slate-200/60 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between h-[230px]">
+                    <div className="flex-1">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-3 bg-violet-50 text-violet-600 rounded-xl">
+                                <FileTextOutlined className="text-xl" />
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 bg-violet-50 px-2.5 py-1 rounded-full border border-violet-100">
+                                ISO 9001-2015
+                            </span>
+                        </div>
+                        <h4 className="text-base font-bold text-slate-800 mb-2">
+                            Project Proposal Form
+                        </h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                            Formulate comprehensive project proposal with headwise budget, gantt timeline, equipment details and TRL outputs.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => setActiveForm('projectproposal')}
+                        className="w-full bg-slate-900 hover:bg-violet-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 mt-4"
                     >
                         <span>Open Form</span>
                     </button>
