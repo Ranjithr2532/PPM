@@ -35,6 +35,7 @@ import {
     PrinterOutlined,
     CalculatorOutlined,
     EyeOutlined,
+    EyeInvisibleOutlined,
     CompressOutlined,
     ExpandOutlined,
     ApartmentOutlined,
@@ -124,6 +125,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
     const [addToProposalsLoading, setAddToProposalsLoading] = useState(false);
     const [actionType, setActionType] = useState('download'); // 'download' | 'addToProposals'
     const [previewZoom, setPreviewZoom] = useState(100);
+    const [previewVisible, setPreviewVisible] = useState(false);
 
     // Dynamic state for Scope Bullet Points & Attachments
     const [scopeItems, setScopeItems] = useState([]);
@@ -751,62 +753,84 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
         <div className="w-full min-h-screen bg-[#F8FAFC] py-6 px-4 sm:px-6 lg:px-10 font-sans antialiased text-[#0F172A]">
 
             {/* Enterprise Header Area */}
-            <div className="max-w-7xl mx-auto mb-8 space-y-4">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <FileWordOutlined className="text-blue-600" />
-                    <span>Document Studio</span>
-                    <span>/</span>
-                    <span className="text-slate-700">Proposal Generator</span>
-                </div>
-
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/90 shadow-sm">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight m-0">
+            <div className="max-w-7xl mx-auto mb-8 bg-white p-5 border border-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-5 text-slate-900 select-none">
+                {/* Left side: Studio Info & Readiness */}
+                <div className="flex flex-col md:flex-row md:items-center gap-6 flex-1">
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+                            DOCUMENT STUDIO / PROPOSAL GENERATOR
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight m-0">
                                 Official Document Studio
                             </h1>
-                            <Tag className="bg-blue-50 text-blue-700 border-blue-200 font-bold rounded-full px-3 py-0.5 text-xs">
+                            <span className="bg-blue-50 text-blue-700 border border-blue-200 font-bold rounded-full px-2.5 py-0.5 text-[9px] uppercase tracking-wider font-mono">
                                 PRO DOCUMENT V2.0
-                            </Tag>
+                            </span>
                         </div>
-                        <p className="text-slate-500 text-sm m-0">
+                        <p className="text-slate-500 text-xs m-0 leading-normal max-w-xl">
                             Build, format, and stream enterprise proposal documents with real-time A4 preview and instant proposal extraction.
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                        {/* Live Completion Progress Widget */}
-                        <div className="hidden sm:flex flex-col items-end gap-1 px-4 py-2 bg-slate-50 rounded-xl border border-slate-200/80">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                Document Readiness: <strong className="text-blue-600">{progressPercent}%</strong>
-                            </span>
-                            <Progress
-                                percent={progressPercent}
-                                size="small"
-                                showInfo={false}
-                                strokeColor={{ '0%': '#2563EB', '100%': '#16A34A' }}
-                                className="w-36 m-0"
-                            />
-                        </div>
+                    <div className="h-10 w-px bg-slate-200 hidden md:block" />
 
-                        <Button
-                            type="primary"
-                            size="large"
-                            icon={<DownloadOutlined />}
-                            loading={loading && !addToProposalsLoading}
-                            onClick={() => {
-                                setActionType('download');
-                                form.submit();
-                            }}
-                            className="bg-[#2563EB] hover:bg-[#1E40AF] border-none rounded-xl h-11 px-6 font-semibold shadow-md hover:shadow-lg transition-all duration-200"
-                        >
-                            Export DOCX
-                        </Button>
+                    {/* Document Readiness */}
+                    <div className="min-w-[130px]">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+                            DOCUMENT READINESS:
+                        </div>
+                        <div className="text-sm font-extrabold text-blue-600 mb-1 font-mono">
+                            {progressPercent}%
+                        </div>
+                        <Progress
+                            percent={progressPercent}
+                            size="small"
+                            showInfo={false}
+                            strokeColor={{ '0%': '#2563EB', '100%': '#16A34A' }}
+                            className="m-0 w-32"
+                        />
                     </div>
+                </div>
+
+                {/* Right side: Modern Buttons */}
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    <Button
+                        icon={previewVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                        onClick={() => setPreviewVisible(!previewVisible)}
+                        className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                        {previewVisible ? 'Hide Preview' : 'Show Preview'}
+                    </Button>
+
+                    <Button
+                        icon={<DownloadOutlined />}
+                        loading={loading && !addToProposalsLoading}
+                        onClick={() => {
+                            setActionType('download');
+                            form.submit();
+                        }}
+                        className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                        Export DOCX
+                    </Button>
+
+                    <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        loading={addToProposalsLoading}
+                        onClick={() => {
+                            setActionType('addToProposals');
+                            form.submit();
+                        }}
+                        className="rounded-none border border-slate-900 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                        Add to Proposals
+                    </Button>
                 </div>
             </div>
 
-            {/* Main Studio Workspace Grid: Left Column Editor | Right Column Live Preview */}
+            {/* Main Studio Workspace Grid */}
             <div className="max-w-7xl mx-auto">
                 <Form
                     form={form}
@@ -827,931 +851,747 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                     className="w-full"
                 >
                     <Row gutter={[24, 24]}>
-                        {/* Left Column: Input Form Studio (15 Cols on desktop) */}
-                        <Col xs={24} lg={15} xl={15} className="space-y-6">
+                        {/* Left Column: Input Form Studio */}
+                        <Col xs={24} lg={previewVisible ? 15 : 24} xl={previewVisible ? 15 : 24} className="space-y-6">
 
-                            {/* Card 1: Basic Metadata & Template Settings */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
-                                                <FileWordOutlined className="text-lg" />
-                                            </div>
-                                            <span>1. Document Metadata & Header Settings</span>
-                                        </Space>
-                                        <Tag className="bg-slate-100 text-slate-600 border-slate-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
-                                            SECTION 01
-                                        </Tag>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                <p className="text-slate-500 text-xs mb-5 block m-0">
-                                    Specify document header attributes including issue date, department center code, and target export filename.
-                                </p>
+                            {/* Section 1: Document Metadata & Header Settings */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
+                                    1. Document Metadata & Header Settings
+                                </div>
+                                <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
+                                    Specify document header attributes including issue date, department code, and target export filename.
+                                </div>
+                                <table className="w-full border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/4">PROPOSAL DATE</th>
+                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/4">DEPT / DIVISION</th>
+                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/4">SAVE FILENAME</th>
+                                            <th className="p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/4">SAC CODE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td className="border-r border-slate-900 p-1">
+                                                <Form.Item name="date" noStyle rules={[{ required: true, message: 'Date is required' }]}>
+                                                    <Input prefix={<CalendarOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" />
+                                                </Form.Item>
+                                            </td>
+                                            <td className="border-r border-slate-900 p-1">
+                                                <Form.Item name="dept" noStyle>
+                                                    <Input 
+                                                        prefix={<ApartmentOutlined className="text-slate-450 mr-1" />} 
+                                                        variant="borderless" 
+                                                        className="p-1 text-xs font-semibold"
+                                                        suffix={
+                                                            <ReloadOutlined 
+                                                                className="cursor-pointer text-blue-600 hover:text-blue-800 text-[10px]" 
+                                                                title="Reload department from profile"
+                                                                onClick={() => {
+                                                                    const c = getUserCenter();
+                                                                    if (c) {
+                                                                        form.setFieldsValue({ dept: c });
+                                                                        message.info(`Updated department to ${c}`);
+                                                                    } else {
+                                                                        message.warning('No user center found');
+                                                                    }
+                                                                }}
+                                                            />
+                                                        }
+                                                    />
+                                                </Form.Item>
+                                            </td>
+                                            <td className="border-r border-slate-900 p-1">
+                                                <Form.Item name="filename" noStyle>
+                                                    <Input variant="borderless" className="p-1 text-xs" placeholder="Proposal_Name.docx" />
+                                                </Form.Item>
+                                            </td>
+                                            <td className="p-1">
+                                                <Form.Item name="sac_code" noStyle>
+                                                    <Input variant="borderless" className="p-1 text-xs" placeholder="e.g. 998313" />
+                                                </Form.Item>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
 
-                                <Row gutter={[16, 16]}>
-                                    <Col xs={24} sm={12} md={6}>
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Proposal Date <span className="text-red-500">*</span></span>}
-                                            name="date"
-                                            rules={[{ required: true, message: 'Date is required' }]}
-                                        >
-                                            <Input
-                                                prefix={<CalendarOutlined className="text-slate-400" />}
-                                                placeholder="DD/MM/YYYY"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-
-                                    <Col xs={24} sm={12} md={6}>
-                                        <Form.Item
-                                            label={
-                                                <Space size={4}>
-                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Dept / Division</span>
-                                                    <Tooltip title="Auto-fetched from logged-in account user center. Click reload to refresh.">
-                                                        <InfoCircleOutlined className="text-slate-400 text-xs" />
-                                                    </Tooltip>
-                                                </Space>
-                                            }
-                                            name="dept"
-                                        >
-                                            <Input
-                                                prefix={<ApartmentOutlined className="text-slate-400" />}
-                                                placeholder="e.g. C-SMPM"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                                suffix={
-                                                    <Tooltip title="Re-sync with logged-in user center">
-                                                        <ReloadOutlined
-                                                            className="cursor-pointer text-blue-600 hover:text-blue-800 transition-colors"
-                                                            onClick={() => {
-                                                                const c = getUserCenter();
-                                                                if (c) {
-                                                                    form.setFieldsValue({ dept: c });
-                                                                    message.info(`Updated department code to ${c}`);
-                                                                } else {
-                                                                    message.warning('No user center found in current account');
-                                                                }
-                                                            }}
-                                                        />
-                                                    </Tooltip>
-                                                }
-                                            />
-                                        </Form.Item>
-                                    </Col>
-
-                                    <Col xs={24} sm={12} md={6}>
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Save Filename</span>}
-                                            name="filename"
-                                        >
-                                            <Input
-                                                placeholder="Proposal_Name.docx"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-
-                                    <Col xs={24} sm={12} md={6}>
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">SAC Code</span>}
-                                            name="sac_code"
-                                        >
-                                            <Input
-                                                placeholder="e.g. 998313"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-                            </Card>
-
-                            {/* Card 2: Email & Distribution List */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 shadow-2xs">
-                                                <MailOutlined className="text-lg" />
-                                            </div>
-                                            <span>2. Distribution & Email List</span>
-                                        </Space>
-                                        <Tag className="bg-indigo-50 text-indigo-700 border-indigo-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
-                                            SECTION 02
-                                        </Tag>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                <p className="text-slate-500 text-xs mb-5 block m-0">
+                            {/* Section 2: Distribution & Email List */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
+                                    2. Distribution & Email List
+                                </div>
+                                <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
                                     Primary and copy email addresses to embed into the official Proposal header metadata block.
-                                </p>
+                                </div>
+                                <table className="w-full border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/2">EMAIL - TO (COMMA SEPARATED)</th>
+                                            <th className="p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/2">EMAIL - CC (COMMA SEPARATED)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td className="border-r border-slate-900 p-1">
+                                                <Form.Item name="email_to" noStyle>
+                                                    <Input prefix={<MailOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="client@company.com, purchase@company.com" />
+                                                </Form.Item>
+                                            </td>
+                                            <td className="p-1">
+                                                <Form.Item name="email_cc" noStyle>
+                                                    <Input prefix={<MailOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="head@cmti.res.in, accounts@cmti.res.in" />
+                                                </Form.Item>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
 
-                                <Row gutter={[16, 16]}>
-                                    <Col xs={24} md={12}>
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Email - To (Comma separated)</span>}
-                                            name="email_to"
-                                        >
-                                            <Input
-                                                prefix={<MailOutlined className="text-slate-400" />}
-                                                placeholder="client@company.com, purchase@company.com"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-
-                                    <Col xs={24} md={12}>
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Email - Cc (Comma separated)</span>}
-                                            name="email_cc"
-                                        >
-                                            <Input
-                                                prefix={<MailOutlined className="text-slate-400" />}
-                                                placeholder="head@cmti.res.in, accounts@cmti.res.in"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-                            </Card>
-
-                            {/* Card 3: Customer Information & Subject */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
-                                                <BankOutlined className="text-lg" />
-                                            </div>
-                                            <span>3. Customer & Proposal Context</span>
-                                        </Space>
-                                        <Tag className="bg-emerald-50 text-emerald-700 border-emerald-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
-                                            SECTION 03
-                                        </Tag>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                <Row gutter={[16, 16]}>
-                                    <Col xs={24} md={12}>
-                                        <div className="mb-3 space-y-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/90">
-                                            <div>
-                                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center gap-1">
-                                                    <BankOutlined className="text-emerald-600" /> Customer Name (Search Database)
-                                                </span>
+                            {/* Section 3: Customer & Proposal Context */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
+                                    Customer & Proposal Context
+                                </div>
+                                <table className="w-full border-collapse text-xs">
+                                    <tbody>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td className="border-r border-slate-900 p-2 font-bold uppercase tracking-wider text-slate-700 w-1/2 text-left">CUSTOMER NAME - CUSTOMER NAME (SEARCH DATABASE)</td>
+                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 w-1/2 text-left">KIND ATTENTION</td>
+                                        </tr>
+                                        <tr className="border-b border-slate-900">
+                                            <td className="border-r border-slate-900 p-1">
                                                 <AutoComplete
                                                     options={customerOptions}
                                                     onSearch={handleCustomerSearch}
                                                     onSelect={handleCustomerSelect}
-                                                    placeholder="Search existing customers..."
                                                     style={{ width: '100%' }}
                                                 >
-                                                    <Input
-                                                        placeholder="Search customer name..."
-                                                        size="large"
-                                                        className="rounded-xl border-slate-200 hover:border-emerald-500 focus:border-emerald-500 h-10 text-xs font-medium"
-                                                        allowClear
-                                                    />
+                                                    <Input placeholder="Search existing name..." variant="borderless" className="p-1 text-xs font-semibold" />
                                                 </AutoComplete>
-                                            </div>
-
-                                            {addressOptions.length > 0 && (
-                                                <div>
-                                                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center gap-1">
-                                                        <BankOutlined className="text-blue-600" /> Address Options
-                                                    </span>
-                                                    <AutoComplete
-                                                        options={addressOptions}
-                                                        onSelect={handleAddressSelect}
-                                                        placeholder="Type or select address..."
-                                                        style={{ width: '100%' }}
-                                                    >
-                                                        <Input
-                                                            placeholder="Select address..."
-                                                            size="large"
-                                                            className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-10 text-xs font-medium"
-                                                            allowClear
-                                                        />
-                                                    </AutoComplete>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <Form.Item
-                                            label={
-                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                                                    Customer Name & Address <span className="text-red-500">*</span>
-                                                </span>
-                                            }
-                                            name="customer_raw"
-                                            rules={[{ required: true, message: 'Customer details are required' }]}
-                                            tooltip="Line 1: Company / Client Name. Following lines: Street address & Pincode."
-                                        >
-                                            <TextArea
-                                                rows={4}
-                                                placeholder="M/s. ABC Industries Ltd.&#10;Plot No. 45, Industrial Area&#10;Bengaluru - 560058"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 text-sm font-medium p-3"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-
-                                    <Col xs={24} md={12}>
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Kind Attention</span>}
-                                            name="kind_attention"
-                                        >
-                                            <Input
-                                                placeholder="e.g. Mr. Rajesh Sharma (General Manager)"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-
-                                        <Form.Item
-                                            label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Reference</span>}
-                                            name="reference"
-                                        >
-                                            <Input
-                                                placeholder="e.g. Email enquiry dated 12/07/2026"
-                                                size="large"
-                                                className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-
-                                <Form.Item
-                                    label={
-                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                                            Proposal Subject <span className="text-red-500">*</span>
-                                        </span>
-                                    }
-                                    name="subject"
-                                    rules={[{ required: true, message: 'Subject line is required' }]}
-                                    tooltip="Wrap text with **double asterisks** to emphasize figures or key text in bold."
-                                >
-                                    <Input
-                                        prefix={<FileTextOutlined className="text-slate-400" />}
-                                        placeholder="Proposal for Design, Fabrication & Testing of..."
-                                        size="large"
-                                        className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-semibold text-slate-900"
-                                    />
-                                </Form.Item>
-                            </Card>
+                                            </td>
+                                            <td className="p-1">
+                                                <Form.Item name="kind_attention" noStyle>
+                                                    <Input variant="borderless" className="p-1 text-xs font-medium" placeholder="e.g. Mr. Rajesh Sharma (General Manager)" />
+                                                </Form.Item>
+                                            </td>
+                                        </tr>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td className="border-r border-slate-900 p-2 font-bold uppercase tracking-wider text-slate-700 text-left">CUSTOMER ADDRESS</td>
+                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">REFERENCE</td>
+                                        </tr>
+                                        <tr className="border-b border-slate-900">
+                                            <td className="border-r border-slate-900 p-2 align-top">
+                                                {addressOptions.length > 0 && (
+                                                    <div className="mb-2 pb-2 border-b border-slate-200">
+                                                        <span className="text-[10px] font-bold text-slate-400 block mb-1">Address Option:</span>
+                                                        <AutoComplete
+                                                            options={addressOptions}
+                                                            onSelect={handleAddressSelect}
+                                                            style={{ width: '100%' }}
+                                                        >
+                                                            <Input placeholder="Click to choose address option..." size="small" className="text-xs" />
+                                                        </AutoComplete>
+                                                    </div>
+                                                )}
+                                                <Form.Item name="customer_raw" noStyle rules={[{ required: true, message: 'Customer name & address is required' }]}>
+                                                    <TextArea variant="borderless" rows={3} className="p-1 text-xs font-medium" placeholder="e.g. Mr. customer Address" />
+                                                </Form.Item>
+                                            </td>
+                                            <td className="p-2 align-top">
+                                                <Form.Item name="reference" noStyle>
+                                                    <Input variant="borderless" className="p-1 text-xs font-medium" placeholder="e.g. Email enquiry dated 12/07/2026" />
+                                                </Form.Item>
+                                            </td>
+                                        </tr>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td colSpan={2} className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">PROPOSAL SUBJECT</td>
+                                        </tr>
+                                        <tr>
+                                            <td colSpan={2} className="p-1.5">
+                                                <Form.Item name="subject" noStyle rules={[{ required: true, message: 'Subject line is required' }]}>
+                                                    <Input variant="borderless" className="p-1 text-xs font-bold text-slate-900" placeholder="Proposal for Design, Fabrication & Testing of..." />
+                                                </Form.Item>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
 
                             {/* Card 4: Scope of Work */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center border border-cyan-100 shadow-2xs">
-                                                <FileTextOutlined className="text-lg" />
-                                            </div>
-                                            <span>4. Scope of Work</span>
-                                        </Space>
-                                        <Tag className="bg-cyan-50 text-cyan-700 border-cyan-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
-                                            {scopeItems.length} POINTS
-                                        </Tag>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                <Form.Item
-                                    label={<span className="text-xs font-bold uppercase tracking-wider text-slate-700">Introductory Paragraph (Optional)</span>}
-                                    name="scope_intro"
-                                >
-                                    <TextArea
-                                        rows={2}
-                                        placeholder="With reference to your enquiry, we are pleased to submit our formal technical & financial Proposal..."
-                                        className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 text-sm font-medium p-3"
-                                    />
-                                </Form.Item>
-
-                                <Divider orientation="left" style={{ margin: '20px 0 14px 0', fontSize: '12px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    Scope Bullet Points List
-                                </Divider>
-
-                                {scopeItems.length === 0 ? (
-                                    <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-4">
-                                        No scope points added yet. Type a point below and click <strong>Add Point</strong>.
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2.5 mb-4">
-                                        {scopeItems.map((item, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="flex items-start justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/90 hover:bg-slate-100/70 transition-colors"
-                                            >
-                                                <Text className="text-slate-800 text-sm leading-relaxed flex-1 mr-3 font-medium">
-                                                    <span className="font-bold text-blue-600 mr-2.5">•</span>
-                                                    {item}
-                                                </Text>
-                                                <Button
-                                                    type="text"
-                                                    danger
-                                                    size="small"
-                                                    icon={<DeleteOutlined />}
-                                                    onClick={() => handleRemoveScopeItem(idx)}
-                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <Row gutter={8}>
-                                    <Col flex="auto">
-                                        <Input
-                                            placeholder="Enter scope item point (use **text** for bold)"
-                                            value={newScopeInput}
-                                            onChange={(e) => setNewScopeInput(e.target.value)}
-                                            onPressEnter={(e) => {
-                                                e.preventDefault();
-                                                handleAddScopeItem();
-                                            }}
-                                            size="large"
-                                            className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                        />
-                                    </Col>
-                                    <Col flex="none">
-                                        <Button
-                                            type="primary"
-                                            ghost
-                                            icon={<PlusOutlined />}
-                                            onClick={handleAddScopeItem}
-                                            size="large"
-                                            className="rounded-xl font-semibold border-blue-500 text-blue-600 h-11 px-5"
-                                        >
-                                            Add Point
-                                        </Button>
-                                    </Col>
-                                </Row>
-
-                                {/* Scope Attachments Section */}
-                                <Divider orientation="left" style={{ margin: '24px 0 14px 0', fontSize: '12px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    Scope Attachments & Documents
-                                </Divider>
-
-                                <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-4.5 space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <Space className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                            <PaperClipOutlined className="text-blue-500 text-sm" />
-                                            <span>Attach Proposal Documents / Annexures</span>
-                                        </Space>
-
-                                        <Upload
-                                            beforeUpload={(file) => {
-                                                setScopeAttachments((prev) => [...prev, file]);
-                                                return false;
-                                            }}
-                                            showUploadList={false}
-                                            multiple
-                                        >
-                                            <Button
-                                                size="small"
-                                                type="primary"
-                                                ghost
-                                                icon={<UploadOutlined />}
-                                                className="rounded-lg text-xs border-blue-500 text-blue-600 font-semibold"
-                                            >
-                                                Attach Files
-                                            </Button>
-                                        </Upload>
-                                    </div>
-
-                                    <Text className="text-slate-500 text-[11px] block">
-                                        Upload technical specs, drawings, or annexures to consider as Proposal document attachments.
-                                    </Text>
-
-                                    {scopeAttachments.length > 0 && (
-                                        <div className="pt-2 border-t border-slate-200/80">
-                                            <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold text-slate-600">
-                                                <PaperClipOutlined className="text-slate-500 text-sm" />
-                                                <span>Attached Documents ({scopeAttachments.length})</span>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {scopeAttachments.map((file, idx) => (
-                                                    <div
-                                                        key={`${file.name}-${idx}`}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold shadow-2xs text-blue-600"
-                                                    >
-                                                        <PaperClipOutlined className="text-slate-400 text-xs" />
-                                                        <span className="max-w-[200px] truncate" title={file.name}>
-                                                            {file.name}
-                                                        </span>
-                                                        <span
-                                                            onClick={() => setScopeAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                                                            className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
-                                                        >
-                                                            ✕
-                                                        </span>
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>4. Scope of Work</span>
+                                    <span className="bg-slate-800 text-slate-200 border border-slate-700 rounded-full font-mono text-[10px] font-bold px-2 py-0.5">
+                                        {scopeItems.length} POINTS
+                                    </span>
+                                </div>
+                                <table className="w-full border-collapse text-xs">
+                                    <tbody>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">INTRODUCTORY PARAGRAPH (OPTIONAL)</td>
+                                        </tr>
+                                        <tr className="border-b border-slate-900">
+                                            <td className="p-1.5">
+                                                <Form.Item name="scope_intro" noStyle>
+                                                    <TextArea variant="borderless" rows={2} className="p-1 text-xs font-medium" placeholder="With reference to your enquiry, we are pleased to submit our formal proposal..." />
+                                                </Form.Item>
+                                            </td>
+                                        </tr>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">SCOPE BULLET POINTS LIST</td>
+                                        </tr>
+                                        <tr className="border-b border-slate-900">
+                                            <td className="p-3 bg-slate-50/50">
+                                                {scopeItems.length === 0 ? (
+                                                    <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-3">
+                                                        No scope points added yet. Type a point below and press Enter or click Add Point.
                                                     </div>
-                                                ))}
-                                            </div>
+                                                ) : (
+                                                    <div className="space-y-2 mb-3">
+                                                        {scopeItems.map((item, idx) => (
+                                                            <div key={idx} className="flex items-start justify-between p-2.5 bg-white border border-slate-250 rounded-xl hover:bg-slate-50/50 transition-colors shadow-3xs">
+                                                                <Text className="text-slate-800 text-xs leading-relaxed flex-1 mr-3 font-semibold">
+                                                                    <span className="font-bold text-blue-600 mr-2">•</span>
+                                                                    {item}
+                                                                </Text>
+                                                                <Button
+                                                                    type="text"
+                                                                    danger
+                                                                    size="small"
+                                                                    icon={<DeleteOutlined className="text-[10px]" />}
+                                                                    onClick={() => handleRemoveScopeItem(idx)}
+                                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="Enter scope item point (press Enter or click Add)"
+                                                        value={newScopeInput}
+                                                        onChange={(e) => setNewScopeInput(e.target.value)}
+                                                        onPressEnter={(e) => {
+                                                            e.preventDefault();
+                                                            handleAddScopeItem();
+                                                        }}
+                                                        className="rounded-xl border-slate-200 h-10 text-xs font-semibold"
+                                                    />
+                                                    <Button
+                                                        type="primary"
+                                                        ghost
+                                                        icon={<PlusOutlined />}
+                                                        onClick={handleAddScopeItem}
+                                                        className="rounded-xl font-bold border-blue-500 text-blue-600 h-10 px-4 text-xs"
+                                                    >
+                                                        Add Point
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">SCOPE ATTACHMENTS & DOCUMENTS</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-[10px] text-slate-500 block leading-tight">
+                                                        Upload technical specs, drawings, or annexures to consider as Proposal document attachments.
+                                                    </span>
+                                                    <Upload
+                                                        beforeUpload={(file) => {
+                                                            setScopeAttachments((prev) => [...prev, file]);
+                                                            return false;
+                                                        }}
+                                                        showUploadList={false}
+                                                        multiple
+                                                    >
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            ghost
+                                                            icon={<UploadOutlined />}
+                                                            className="rounded-xl text-xs border-blue-500 text-blue-600 font-bold"
+                                                        >
+                                                            Attach Files
+                                                        </Button>
+                                                    </Upload>
+                                                </div>
+                                                {scopeAttachments.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                                                        {scopeAttachments.map((file, idx) => (
+                                                            <div key={`${file.name}-${idx}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-blue-600">
+                                                                <PaperClipOutlined className="text-slate-400 text-xs" />
+                                                                <span className="max-w-[200px] truncate">{file.name}</span>
+                                                                <span
+                                                                    onClick={() => setScopeAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                                                                    className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold"
+                                                                >
+                                                                    ✕
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Card 5: Payment Terms and Conditions */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>5. Payment Terms and Conditions</span>
+                                    <span className="bg-slate-800 text-slate-200 border border-slate-700 rounded-full font-mono text-[10px] font-bold px-2 py-0.5">
+                                        {termsItems.length} CLAUSES
+                                    </span>
+                                </div>
+                                <table className="w-full border-collapse text-xs">
+                                    <tbody>
+                                        <tr className="bg-slate-50 border-b border-slate-900">
+                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">TERMS & CONDITIONS (NUMBERED LIST)</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-3 bg-slate-50/50">
+                                                {termsItems.length === 0 ? (
+                                                    <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-3">
+                                                        No terms & conditions added yet. Type a term below and click Add Clause.
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2 mb-3">
+                                                        {termsItems.map((item, idx) => (
+                                                            <div key={idx} className="flex items-start justify-between p-2.5 bg-white border border-slate-250 rounded-xl hover:bg-slate-50/50 transition-colors shadow-3xs">
+                                                                <Text className="text-slate-800 text-xs leading-relaxed flex-1 mr-3 font-semibold">
+                                                                    <span className="font-bold text-amber-600 mr-2">{idx + 1}.</span>
+                                                                    {item}
+                                                                </Text>
+                                                                <Button
+                                                                    type="text"
+                                                                    danger
+                                                                    size="small"
+                                                                    icon={<DeleteOutlined className="text-[10px]" />}
+                                                                    onClick={() => handleRemoveTermItem(idx)}
+                                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="Enter commercial or delivery clause"
+                                                        value={newTermInput}
+                                                        onChange={(e) => setNewTermInput(e.target.value)}
+                                                        onPressEnter={(e) => {
+                                                            e.preventDefault();
+                                                            handleAddTermItem();
+                                                        }}
+                                                        className="rounded-xl border-slate-200 h-10 text-xs font-semibold"
+                                                    />
+                                                    <Button
+                                                        type="primary"
+                                                        ghost
+                                                        icon={<PlusOutlined />}
+                                                        onClick={handleAddTermItem}
+                                                        className="rounded-xl font-bold border-amber-500 text-amber-600 h-10 px-4 text-xs"
+                                                    >
+                                                        Add Clause
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Card 6: Pricing & Cost Break-Up Tables */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>6. Pricing & Cost Break-Up Tables</span>
+                                    <Button
+                                        type="primary"
+                                        size="small"
+                                        icon={<PlusOutlined className="text-[10px]" />}
+                                        onClick={handleAddTable}
+                                        className="rounded-lg font-bold bg-slate-800 hover:bg-slate-700 border-none text-[10px] h-7 px-2.5 text-white"
+                                    >
+                                        Add Table
+                                    </Button>
+                                </div>
+                                <div className="p-3">
+                                    {tables.length === 0 ? (
+                                        <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/30">
+                                            No breakdown tables attached. Click <strong>Add Table</strong> to insert a cost summary table.
                                         </div>
+                                    ) : (
+                                        tables.map((tbl, tIdx) => (
+                                            <div key={tIdx} className="mb-6 p-4 border border-slate-300 bg-slate-50/50 rounded-xl space-y-4">
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <Input
+                                                        prefix={<Text className="font-extrabold text-slate-550 text-xs uppercase mr-1">Table Title:</Text>}
+                                                        value={tbl.title}
+                                                        onChange={(e) => handleTableTitleChange(tIdx, e.target.value)}
+                                                        placeholder="e.g. Cost Break-Up Summary"
+                                                        className="font-bold text-slate-800 rounded-lg border-slate-200 h-9 text-xs"
+                                                    />
+                                                    <Popconfirm
+                                                        title="Delete Table"
+                                                        description="Are you sure you want to remove this pricing table?"
+                                                        onConfirm={() => handleRemoveTable(tIdx)}
+                                                        okText="Yes"
+                                                        cancelText="No"
+                                                    >
+                                                        <Button danger type="text" size="small" icon={<DeleteOutlined />} className="rounded-lg text-xs hover:bg-red-50">
+                                                            Remove
+                                                        </Button>
+                                                    </Popconfirm>
+                                                </div>
+
+                                                {/* Column Headers setup */}
+                                                <div className="space-y-1.5">
+                                                    <Text className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                                        Column Headers ({tbl.headers.length})
+                                                    </Text>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        {tbl.headers.map((h, hIdx) => (
+                                                            <div key={hIdx} className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-3xs">
+                                                                <Input
+                                                                    variant="borderless"
+                                                                    size="small"
+                                                                    value={h}
+                                                                    onChange={(e) => handleHeaderChange(tIdx, hIdx, e.target.value)}
+                                                                    className="w-24 text-[11px] font-bold text-slate-800 p-0"
+                                                                />
+                                                                <Button
+                                                                    type="text"
+                                                                    size="small"
+                                                                    danger
+                                                                    icon={<DeleteOutlined style={{ fontSize: '9px' }} />}
+                                                                    onClick={() => handleRemoveHeaderColumn(tIdx, hIdx)}
+                                                                    className="p-0.5 flex items-center justify-center"
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                        <Button
+                                                            type="dashed"
+                                                            size="small"
+                                                            icon={<PlusOutlined />}
+                                                            onClick={() => handleAddHeaderColumn(tIdx)}
+                                                            className="rounded-lg text-[10px] font-bold h-6"
+                                                        >
+                                                            Add Col
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Rows Data Matrix */}
+                                                <div className="space-y-1.5 overflow-x-auto">
+                                                    <Text className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                                        Row Data Items ({tbl.rows.length})
+                                                    </Text>
+                                                    <table className="w-full border-collapse bg-white rounded-xl overflow-hidden border border-slate-200 text-xs">
+                                                        <thead>
+                                                            <tr className="bg-slate-100 border-b border-slate-250">
+                                                                {tbl.headers.map((h, hIdx) => (
+                                                                    <th key={hIdx} className="p-2 text-left font-bold text-slate-700">
+                                                                        {h || `Col ${hIdx + 1}`}
+                                                                    </th>
+                                                                ))}
+                                                                <th className="p-2 text-center w-10 font-bold text-slate-700">Action</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {tbl.rows.map((row, rIdx) => (
+                                                                <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                                                    {row.map((cell, cIdx) => (
+                                                                        <td key={cIdx} className="p-1">
+                                                                            <Input
+                                                                                size="small"
+                                                                                value={cell}
+                                                                                onChange={(e) => handleCellChange(tIdx, rIdx, cIdx, e.target.value)}
+                                                                                className="rounded-lg text-[11px] font-semibold border-slate-200"
+                                                                            />
+                                                                        </td>
+                                                                    ))}
+                                                                    <td className="p-1 text-center">
+                                                                        <Button
+                                                                            type="text"
+                                                                            danger
+                                                                            size="small"
+                                                                            icon={<DeleteOutlined />}
+                                                                            onClick={() => handleRemoveTableRow(tIdx, rIdx)}
+                                                                        />
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                    <Button
+                                                        type="dashed"
+                                                        block
+                                                        icon={<PlusOutlined />}
+                                                        onClick={() => handleAddTableRow(tIdx)}
+                                                        className="mt-2 rounded-xl text-[11px] font-bold h-8"
+                                                    >
+                                                        Add Row to {tbl.title || 'Table'}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))
                                     )}
                                 </div>
-                            </Card>
+                            </div>
 
-                            {/* Card 5: Terms & Conditions */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shadow-2xs">
-                                                <CheckCircleOutlined className="text-lg" />
-                                            </div>
-                                            <span>5.Payment Terms and Conditions</span>
-                                        </Space>
-                                        <Tag className="bg-amber-50 text-amber-700 border-amber-200 rounded-full font-mono text-[11px] font-bold px-3 py-0.5">
-                                            {termsItems.length} CLAUSES
-                                        </Tag>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                {termsItems.length === 0 ? (
-                                    <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-4">
-                                        No terms & conditions added yet. Type a term below and click <strong>Add Clause</strong>.
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2.5 mb-4">
-                                        {termsItems.map((item, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="flex items-start justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/90 hover:bg-slate-100/70 transition-colors"
+                            {/* Card 7: Internal Cost Estimation */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>7. Internal Cost Estimation</span>
+                                    <Button
+                                        type="primary"
+                                        icon={<EditOutlined className="text-[10px]" />}
+                                        onClick={() => setCostModalOpen(true)}
+                                        className="rounded-lg font-bold bg-slate-800 hover:bg-slate-700 border-none text-[10px] h-7 px-2.5 text-white"
+                                    >
+                                        {internalCostTables.length === 0 ? "Add Cost ↗" : "Edit Cost ↗"}
+                                    </Button>
+                                </div>
+                                <div className="p-3">
+                                    <CostEstimationModal
+                                        open={costModalOpen}
+                                        onClose={() => setCostModalOpen(false)}
+                                        projectId={projectId || null}
+                                        hideGenerateWord={true}
+                                        initialHeaders={rawStudioHeaders}
+                                        onApply={(studioHeaders) => {
+                                            setRawStudioHeaders(studioHeaders);
+                                            const formattedTables = convertHeadersToDocumentTables(studioHeaders);
+                                            if (formattedTables && formattedTables.length > 0) {
+                                                setInternalCostTables(formattedTables);
+                                            }
+                                        }}
+                                        title={formValues.subject || "Internal Cost Estimation"}
+                                    />
+
+                                    {internalCostTables.length === 0 ? (
+                                        <div className="p-5 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200 space-y-2">
+                                            <Text className="text-xs text-slate-500 block">No internal cost breakdown attached to this proposal.</Text>
+                                            <Button
+                                                type="primary"
+                                                size="small"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => setCostModalOpen(true)}
+                                                className="rounded-xl font-bold bg-purple-600 hover:bg-purple-700 text-[11px] shadow-xs text-white"
                                             >
-                                                <Text className="text-slate-800 text-sm leading-relaxed flex-1 mr-3 font-medium">
-                                                    <span className="font-bold text-amber-600 mr-2.5">{idx + 1}.</span>
-                                                    {item}
+                                                Add Cost Breakdown ↗
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <Text className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                                    Cost Summary ({internalCostTables.length} {internalCostTables.length === 1 ? 'Section' : 'Sections'})
                                                 </Text>
-                                                <Button
-                                                    type="text"
-                                                    danger
-                                                    size="small"
-                                                    icon={<DeleteOutlined />}
-                                                    onClick={() => handleRemoveTermItem(idx)}
-                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <Row gutter={8}>
-                                    <Col flex="auto">
-                                        <Input
-                                            placeholder="Enter commercial or delivery clause"
-                                            value={newTermInput}
-                                            onChange={(e) => setNewTermInput(e.target.value)}
-                                            onPressEnter={(e) => {
-                                                e.preventDefault();
-                                                handleAddTermItem();
-                                            }}
-                                            size="large"
-                                            className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-medium"
-                                        />
-                                    </Col>
-                                    <Col flex="none">
-                                        <Button
-                                            type="primary"
-                                            ghost
-                                            icon={<PlusOutlined />}
-                                            onClick={handleAddTermItem}
-                                            size="large"
-                                            className="rounded-xl font-semibold border-amber-500 text-amber-600 h-11 px-5"
-                                        >
-                                            Add Clause
-                                        </Button>
-                                    </Col>
-                                </Row>
-                            </Card>
-
-                            {/* Card 6: Dynamic Tables Studio */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shadow-2xs">
-                                                <PrinterOutlined className="text-lg" />
-                                            </div>
-                                            <span>6. Pricing & Cost Break-Up Tables</span>
-                                        </Space>
-                                        <Button
-                                            type="primary"
-                                            size="small"
-                                            icon={<PlusOutlined />}
-                                            onClick={handleAddTable}
-                                            className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 h-8 px-3 text-xs shadow-xs"
-                                        >
-                                            Add Table
-                                        </Button>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                {tables.length === 0 ? (
-                                    <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                                        No breakdown tables attached. Click <strong>Add Table</strong> to insert a cost summary table.
-                                    </div>
-                                ) : (
-                                    tables.map((tbl, tIdx) => (
-                                        <div
-                                            key={tIdx}
-                                            className="p-5 mb-6 bg-slate-50/70 rounded-2xl border border-slate-200/90 space-y-4 shadow-2xs"
-                                        >
-                                            <div className="flex items-center justify-between gap-4">
-                                                <Input
-                                                    prefix={<Text className="font-bold text-slate-500 text-xs uppercase mr-1">Table Title:</Text>}
-                                                    value={tbl.title}
-                                                    onChange={(e) => handleTableTitleChange(tIdx, e.target.value)}
-                                                    placeholder="e.g. Cost Break-Up Summary"
-                                                    className="font-bold text-slate-800 rounded-xl border-slate-200 h-11 text-sm"
-                                                    size="large"
-                                                />
                                                 <Popconfirm
-                                                    title="Delete Table"
-                                                    description="Are you sure you want to remove this pricing table?"
-                                                    onConfirm={() => handleRemoveTable(tIdx)}
-                                                    okText="Yes"
-                                                    cancelText="No"
+                                                    title="Clear Internal Cost Breakdown?"
+                                                    description="This will remove all internal cost tables attached to this proposal draft."
+                                                    onConfirm={() => {
+                                                        setInternalCostTables([]);
+                                                        setRawStudioHeaders([]);
+                                                    }}
+                                                    okText="Clear"
+                                                    cancelText="Cancel"
+                                                    okButtonProps={{ danger: true, size: "small" }}
                                                 >
-                                                    <Button danger type="text" icon={<DeleteOutlined />} className="rounded-lg">
-                                                        Remove
+                                                    <Button danger type="text" size="small" icon={<DeleteOutlined style={{ fontSize: 10 }} />} className="text-xs font-semibold">
+                                                        Clear
                                                     </Button>
                                                 </Popconfirm>
                                             </div>
 
-                                            {/* Column Headers setup */}
-                                            <div className="space-y-2">
-                                                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                                                    Column Headers ({tbl.headers.length})
-                                                </Text>
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    {tbl.headers.map((h, hIdx) => (
-                                                        <div
-                                                            key={hIdx}
-                                                            className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-2xs"
-                                                        >
-                                                            <Input
-                                                                variant="borderless"
-                                                                size="small"
-                                                                value={h}
-                                                                onChange={(e) => handleHeaderChange(tIdx, hIdx, e.target.value)}
-                                                                className="w-28 text-xs font-bold text-slate-800"
-                                                            />
-                                                            <Button
-                                                                type="text"
-                                                                size="small"
-                                                                danger
-                                                                icon={<DeleteOutlined style={{ fontSize: '10px' }} />}
-                                                                onClick={() => handleRemoveHeaderColumn(tIdx, hIdx)}
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                    <Button
-                                                        type="dashed"
-                                                        size="small"
-                                                        icon={<PlusOutlined />}
-                                                        onClick={() => handleAddHeaderColumn(tIdx)}
-                                                        className="rounded-xl text-xs font-semibold"
-                                                    >
-                                                        Add Column
-                                                    </Button>
-                                                </div>
-                                            </div>
-
-                                            {/* Rows Data Matrix */}
-                                            <div className="space-y-2 overflow-x-auto">
-                                                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                                                    Row Data Items ({tbl.rows.length})
-                                                </Text>
-                                                <table className="w-full border-collapse bg-white rounded-xl overflow-hidden border border-slate-200 text-sm shadow-2xs">
-                                                    <thead>
-                                                        <tr className="bg-slate-100/90 border-b border-slate-200">
-                                                            {tbl.headers.map((h, hIdx) => (
-                                                                <th key={hIdx} className="p-3 text-left text-xs font-bold text-slate-700">
-                                                                    {h || `Col ${hIdx + 1}`}
-                                                                </th>
-                                                            ))}
-                                                            <th className="p-3 text-center w-12 text-xs font-bold text-slate-700">
-                                                                Action
-                                                            </th>
+                                            <div className="overflow-hidden border border-slate-200/90 rounded-xl bg-white shadow-3xs">
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                                        <tr>
+                                                            <th className="py-2 px-3 font-bold text-slate-600">Ref</th>
+                                                            <th className="py-2 px-3 font-bold text-slate-600">Cost Section Category</th>
+                                                            <th className="py-2 px-3 font-bold text-slate-600 text-center">Items</th>
+                                                            <th className="py-2 px-3 font-bold text-slate-600 text-right">Subtotal (₹)</th>
+                                                            <th className="py-2 px-3 font-bold text-slate-600 text-center w-16">Action</th>
                                                         </tr>
                                                     </thead>
-                                                    <tbody>
-                                                        {tbl.rows.map((row, rIdx) => (
-                                                            <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
-                                                                {row.map((cell, cIdx) => (
-                                                                    <td key={cIdx} className="p-2">
-                                                                        <Input
-                                                                            size="small"
-                                                                            value={cell}
-                                                                            onChange={(e) =>
-                                                                                handleCellChange(tIdx, rIdx, cIdx, e.target.value)
-                                                                            }
-                                                                            className="rounded-lg text-xs font-medium border-slate-200"
-                                                                        />
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {internalCostTables.map((tbl, idx) => {
+                                                            const letter = String.fromCharCode(65 + idx);
+                                                            const subtotal = getTableSubtotal(tbl);
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-slate-50/50">
+                                                                    <td className="py-2 px-3 font-bold text-purple-700">Section {letter}</td>
+                                                                    <td className="py-2 px-3 font-semibold text-slate-800">{tbl.title || `Section ${letter}`}</td>
+                                                                    <td className="py-2 px-3 text-center font-medium text-slate-500">{tbl.rows?.length || 0}</td>
+                                                                    <td className="py-2 px-3 text-right font-bold text-slate-900">
+                                                                        ₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                     </td>
-                                                                ))}
-                                                                <td className="p-1 text-center">
-                                                                    <Button
-                                                                        type="text"
-                                                                        danger
-                                                                        size="small"
-                                                                        icon={<DeleteOutlined />}
-                                                                        onClick={() => handleRemoveTableRow(tIdx, rIdx)}
-                                                                    />
-                                                                </td>
-                                                            </tr>
-                                                        ))}
+                                                                    <td className="py-2 px-3 text-center">
+                                                                        <Button
+                                                                            type="link"
+                                                                            size="small"
+                                                                            icon={<EditOutlined style={{ fontSize: 10 }} />}
+                                                                            onClick={() => setCostModalOpen(true)}
+                                                                            className="text-purple-600 hover:text-purple-800 p-0 text-xs font-bold"
+                                                                        >
+                                                                            Edit
+                                                                        </Button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
                                                     </tbody>
+                                                    <tfoot className="bg-slate-50 border-t border-slate-200">
+                                                        <tr>
+                                                            <td colSpan={3} className="py-2 px-3 font-bold text-slate-700 text-right">
+                                                                Grand Total Estimated Cost:
+                                                            </td>
+                                                            <td className="py-2 px-3 text-right font-extrabold text-purple-700 text-[13px]">
+                                                                ₹ {grandInternalTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            </td>
+                                                            <td />
+                                                        </tr>
+                                                    </tfoot>
                                                 </table>
-                                                <Button
-                                                    type="dashed"
-                                                    block
-                                                    icon={<PlusOutlined />}
-                                                    onClick={() => handleAddTableRow(tIdx)}
-                                                    className="mt-2 rounded-xl text-xs font-semibold h-9"
-                                                >
-                                                    Add Row to {tbl.title || 'Table'}
-                                                </Button>
                                             </div>
                                         </div>
-                                    ))
-                                )}
-                            </Card>
-
-                            {/* Card 7: Internal Cost Estimation */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shadow-2xs">
-                                                <CalculatorOutlined className="text-lg" />
-                                            </div>
-                                            <span>7. Internal Cost Estimation</span>
-                                        </Space>
-                                        <Button
-                                            type="primary"
-                                            icon={<EditOutlined />}
-                                            onClick={() => setCostModalOpen(true)}
-                                            className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 h-8 px-3 text-xs shadow-xs"
-                                        >
-                                            {internalCostTables.length === 0 ? "Add Cost Breakdown ↗" : "Edit Cost Breakdown ↗"}
-                                        </Button>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                <CostEstimationModal
-                                    open={costModalOpen}
-                                    onClose={() => setCostModalOpen(false)}
-                                    projectId={projectId || null}
-                                    hideGenerateWord={true}
-                                    initialHeaders={rawStudioHeaders}
-                                    onApply={(studioHeaders) => {
-                                        setRawStudioHeaders(studioHeaders);
-                                        const formattedTables = convertHeadersToDocumentTables(studioHeaders);
-                                        if (formattedTables && formattedTables.length > 0) {
-                                            setInternalCostTables(formattedTables);
-                                        }
-                                    }}
-                                    title={formValues.subject || "Internal Cost Estimation"}
-                                />
-
-                                {internalCostTables.length === 0 ? (
-                                    <div className="p-6 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 space-y-2">
-                                        <Text className="text-xs text-slate-500 block">No internal cost breakdown attached to this proposal.</Text>
-                                        <Button
-                                            type="primary"
-                                            size="small"
-                                            icon={<PlusOutlined />}
-                                            onClick={() => setCostModalOpen(true)}
-                                            className="rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-xs shadow-2xs"
-                                        >
-                                            Add Cost Breakdown ↗
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <Text className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                                                Cost Summary ({internalCostTables.length} {internalCostTables.length === 1 ? 'Section' : 'Sections'})
-                                            </Text>
-                                            <Popconfirm
-                                                title="Clear Internal Cost Breakdown?"
-                                                description="This will remove all internal cost tables attached to this proposal draft."
-                                                onConfirm={() => {
-                                                    setInternalCostTables([]);
-                                                    setRawStudioHeaders([]);
-                                                }}
-                                                okText="Clear"
-                                                cancelText="Cancel"
-                                                okButtonProps={{ danger: true, size: "small" }}
-                                            >
-                                                <Button danger type="text" size="small" icon={<DeleteOutlined style={{ fontSize: 11 }} />} className="text-xs">
-                                                    Clear
-                                                </Button>
-                                            </Popconfirm>
-                                        </div>
-
-                                        <div className="overflow-hidden border border-slate-200/90 rounded-xl bg-white shadow-2xs">
-                                            <table className="w-full text-left text-xs">
-                                                <thead className="bg-slate-50 border-b border-slate-200">
-                                                    <tr>
-                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600">Ref</th>
-                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600">Cost Section Category</th>
-                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600 text-center">Items</th>
-                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600 text-right">Subtotal (₹)</th>
-                                                        <th className="py-2.5 px-3.5 font-bold text-slate-600 text-center w-16">Action</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {internalCostTables.map((tbl, idx) => {
-                                                        const letter = String.fromCharCode(65 + idx);
-                                                        const subtotal = getTableSubtotal(tbl);
-                                                        return (
-                                                            <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                                                                <td className="py-2.5 px-3.5 font-bold text-purple-700">Section {letter}</td>
-                                                                <td className="py-2.5 px-3.5 font-semibold text-slate-800">{tbl.title || `Section ${letter}`}</td>
-                                                                <td className="py-2.5 px-3.5 text-center font-medium text-slate-500">{tbl.rows?.length || 0}</td>
-                                                                <td className="py-2.5 px-3.5 text-right font-bold text-slate-900">
-                                                                    ₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                </td>
-                                                                <td className="py-2.5 px-3.5 text-center">
-                                                                    <Button
-                                                                        type="link"
-                                                                        size="small"
-                                                                        icon={<EditOutlined style={{ fontSize: 11 }} />}
-                                                                        onClick={() => setCostModalOpen(true)}
-                                                                        className="text-purple-600 hover:text-purple-800 p-0 text-xs font-semibold"
-                                                                    >
-                                                                        Edit
-                                                                    </Button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                                <tfoot className="bg-slate-50/90 border-t border-slate-200">
-                                                    <tr>
-                                                        <td colSpan={3} className="py-2.5 px-3.5 font-bold text-slate-700 text-right">
-                                                            Grand Total Estimated Cost:
-                                                        </td>
-                                                        <td className="py-2.5 px-3.5 text-right font-extrabold text-purple-700 text-sm">
-                                                            ₹ {grandInternalTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </td>
-                                                        <td />
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </Card>
-
-                            {/* Card 8: Signatories & Approval Blocks */}
-                            <Card
-                                title={
-                                    <div className="flex items-center justify-between py-1">
-                                        <Space className="text-slate-900 font-bold text-base sm:text-lg">
-                                            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
-                                                <UserOutlined className="text-lg" />
-                                            </div>
-                                            <span>8. Signatory & Approval Blocks</span>
-                                        </Space>
-                                        <Button
-                                            type="primary"
-                                            ghost
-                                            icon={<PlusOutlined />}
-                                            onClick={handleAddSignatory}
-                                            size="small"
-                                            className="rounded-xl font-semibold border-blue-500 text-blue-600"
-                                        >
-                                            + Add Signatory
-                                        </Button>
-                                    </div>
-                                }
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                styles={{ body: { padding: '24px' } }}
-                            >
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {signatories.map((sig, sIdx) => (
-                                        <div
-                                            key={sIdx}
-                                            className="p-4.5 bg-slate-50/70 rounded-2xl border border-slate-200/90 space-y-3 relative shadow-2xs"
-                                        >
-                                            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                                                <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
-                                                    Signatory #{sIdx + 1}
-                                                </span>
-                                                <Space>
-                                                    <Button
-                                                        type="link"
-                                                        size="small"
-                                                        icon={<ReloadOutlined />}
-                                                        onClick={() => {
-                                                            try {
-                                                                const rawUser = window.localStorage.getItem('ppm_user');
-                                                                if (rawUser) {
-                                                                    const parsedUser = JSON.parse(rawUser);
-                                                                    const desig = getUserDesignation();
-                                                                    const center = getUserCenter();
-                                                                    const lines = [desig, center, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
-                                                                    const updated = [...signatories];
-                                                                    updated[sIdx] = {
-                                                                        name: parsedUser.name || updated[sIdx].name,
-                                                                        lines_raw: lines,
-                                                                    };
-                                                                    setSignatories(updated);
-                                                                    message.info('Populated signatory details from logged-in account');
-                                                                }
-                                                            } catch (e) {
-                                                                message.warning('Could not read user account details');
-                                                            }
-                                                        }}
-                                                        className="p-0 text-xs font-bold text-blue-600 hover:text-blue-800"
-                                                    >
-                                                        Fill My Profile
-                                                    </Button>
-                                                    {signatories.length > 1 && (
-                                                        <Button
-                                                            type="text"
-                                                            danger
-                                                            size="small"
-                                                            icon={<DeleteOutlined />}
-                                                            onClick={() => handleRemoveSignatory(sIdx)}
-                                                        />
-                                                    )}
-                                                </Space>
-                                            </div>
-
-                                            <div>
-                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 block">
-                                                    Signatory Name
-                                                </span>
-                                                <Input
-                                                    placeholder="e.g. Dr. Rajesh Kumar"
-                                                    value={sig.name}
-                                                    onChange={(e) =>
-                                                        handleSignatoryChange(sIdx, 'name', e.target.value)
-                                                    }
-                                                    size="large"
-                                                    className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 h-11 text-sm font-semibold"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 block">
-                                                    Designation Line(s) (One per line)
-                                                </span>
-                                                <TextArea
-                                                    rows={3}
-                                                    placeholder="Scientist-D&#10;C-SMPM&#10;CMTI, Bengaluru"
-                                                    value={sig.lines_raw}
-                                                    onChange={(e) =>
-                                                        handleSignatoryChange(sIdx, 'lines_raw', e.target.value)
-                                                    }
-                                                    className="rounded-xl border-slate-200 hover:border-blue-500 focus:border-blue-500 text-sm font-medium p-3"
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                                    )}
                                 </div>
+                            </div>
 
-                                <div className="mt-4 flex justify-start">
+                            {/* Card 8: Signatories & Approvals */}
+                            <div className="border border-slate-900 bg-white mb-6">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>8. Signatories & Approvals</span>
                                     <Button
-                                        type="dashed"
-                                        icon={<PlusOutlined />}
+                                        type="primary"
+                                        size="small"
+                                        icon={<PlusOutlined className="text-[10px]" />}
                                         onClick={handleAddSignatory}
-                                        size="large"
-                                        className="rounded-xl border-blue-500 text-blue-600 font-semibold h-11 px-5"
+                                        className="rounded-lg font-bold bg-slate-800 hover:bg-slate-700 border-none text-[10px] h-7 px-2.5 text-white"
                                     >
-                                        Add Another Signatory
+                                        Add Signatory
                                     </Button>
                                 </div>
-                            </Card>
+                                <div className="p-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {signatories.map((sig, sIdx) => (
+                                            <div key={sIdx} className="p-4 bg-slate-50/50 rounded-xl border border-slate-200 space-y-3 shadow-3xs">
+                                                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                                                    <span className="font-extrabold text-slate-700 text-[10px] uppercase tracking-wider">
+                                                        Signatory #{sIdx + 1}
+                                                    </span>
+                                                    <Space size="small">
+                                                        <Button
+                                                            type="link"
+                                                            size="small"
+                                                            icon={<ReloadOutlined style={{ fontSize: 10 }} />}
+                                                            onClick={() => {
+                                                                try {
+                                                                    const rawUser = window.localStorage.getItem('ppm_user');
+                                                                    if (rawUser) {
+                                                                        const parsedUser = JSON.parse(rawUser);
+                                                                        const desig = getUserDesignation();
+                                                                        const center = getUserCenter();
+                                                                        const lines = [desig, center, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
+                                                                        const updated = [...signatories];
+                                                                        updated[sIdx] = {
+                                                                            name: parsedUser.name || updated[sIdx].name,
+                                                                            lines_raw: lines,
+                                                                        };
+                                                                        setSignatories(updated);
+                                                                        message.info('Populated signatory details from logged-in account');
+                                                                    }
+                                                                } catch (e) {
+                                                                    message.warning('Could not read user account details');
+                                                                }
+                                                            }}
+                                                            className="p-0 text-[11px] font-bold text-blue-600 hover:text-blue-800"
+                                                        >
+                                                            Fill My Profile
+                                                        </Button>
+                                                        {signatories.length > 1 && (
+                                                            <Button
+                                                                type="text"
+                                                                danger
+                                                                size="small"
+                                                                icon={<DeleteOutlined className="text-[10px]" />}
+                                                                onClick={() => handleRemoveSignatory(sIdx)}
+                                                                className="hover:bg-red-50 rounded-lg"
+                                                            />
+                                                        )}
+                                                    </Space>
+                                                </div>
+
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">
+                                                        Signatory Name
+                                                    </span>
+                                                    <Input
+                                                        placeholder="e.g. Dr. Rajesh Kumar"
+                                                        value={sig.name}
+                                                        onChange={(e) => handleSignatoryChange(sIdx, 'name', e.target.value)}
+                                                        className="rounded-lg border-slate-200 h-9 text-xs font-semibold"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">
+                                                        Designation Line(s) (One per line)
+                                                    </span>
+                                                    <TextArea
+                                                        rows={2}
+                                                        placeholder="Scientist-D&#10;C-SMPM&#10;CMTI, Bengaluru"
+                                                        value={sig.lines_raw}
+                                                        onChange={(e) => handleSignatoryChange(sIdx, 'lines_raw', e.target.value)}
+                                                        className="rounded-lg border-slate-200 text-xs font-medium p-2"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-4 flex justify-end gap-3 select-none border-t border-slate-100 pt-3">
+                                        <Button
+                                            size="large"
+                                            icon={<DownloadOutlined />}
+                                            loading={loading && !addToProposalsLoading}
+                                            onClick={() => {
+                                                setActionType('download');
+                                                form.submit();
+                                            }}
+                                            className="rounded-xl h-11 px-5 text-xs font-bold border-slate-350 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                                        >
+                                            Export DOCX
+                                        </Button>
+                                        <Button
+                                            type="primary"
+                                            size="large"
+                                            icon={<PlusOutlined />}
+                                            loading={addToProposalsLoading}
+                                            onClick={() => {
+                                                setActionType('addToProposals');
+                                                form.submit();
+                                            }}
+                                            className="bg-[#16A34A] hover:bg-[#15803D] border-none rounded-xl h-11 px-5 text-xs font-bold text-white shadow-sm"
+                                        >
+                                            Add to Proposals
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
                         </Col>
 
                         {/* Right Column: Live A4 Document Preview & Quick Export Sidebar (9 Cols on desktop) */}
-                        <Col xs={24} lg={9} xl={9} className="space-y-6">
+                        {previewVisible && (
+                            <Col xs={24} lg={9} xl={9} className="space-y-6">
                             <div className="sticky top-6 space-y-6">
 
                                 {/* Document Preview Toolbar & Container */}
@@ -1992,6 +1832,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                 </Card>
                             </div>
                         </Col>
+                        )}
                     </Row>
                 </Form>
             </div>
