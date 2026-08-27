@@ -106,14 +106,28 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     const [sanctionOrder, setSanctionOrder] = useState('');
     const [totalCost, setTotalCost] = useState('');
 
+    // Team & Leaders (by default the project leader is the Project Co-ordinator of that proposal)
+    const [projectLeader, setProjectLeader] = useState(() => {
+        return (
+            existingRecord?.project_co_ordinator ||
+            existingRecord?.project_coordinator ||
+            existingRecord?.quotation_given_by_name ||
+            getLoggedUserName() ||
+            ''
+        );
+    });
+    const [coLeaders, setCoLeaders] = useState('');
+    const [coreStMembers, setCoreStMembers] = useState([]);
+
     useEffect(() => {
         if (existingRecord) {
             const desc = existingRecord.quote_description || existingRecord.activity || '';
             if (desc) {
                 setTitleOfProject(desc);
             }
-            if (existingRecord.project_co_ordinator || existingRecord.quotation_given_by_name) {
-                setProjectLeader(existingRecord.project_co_ordinator || existingRecord.quotation_given_by_name || '');
+            const leader = existingRecord.project_co_ordinator || existingRecord.project_coordinator || existingRecord.quotation_given_by_name || getLoggedUserName() || '';
+            if (leader) {
+                setProjectLeader(leader);
             }
             if (existingRecord.customer_name) {
                 setSponsoringAgency(existingRecord.customer_name);
@@ -121,13 +135,34 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
             if (existingRecord.quote_amount) {
                 setTotalCost(existingRecord.quote_amount);
             }
+        } else if (proposalId || propProposalId) {
+            const pid = proposalId || propProposalId;
+            async function fetchProposalDetails() {
+                try {
+                    const res = await axios.get(`${API_BASE_URL}/proposals/${pid}`);
+                    if (res.data) {
+                        const p = res.data;
+                        if (p.quote_description || p.activity) {
+                            setTitleOfProject(p.quote_description || p.activity);
+                        }
+                        const leader = p.project_co_ordinator || p.project_coordinator || p.quotation_given_by_name || getLoggedUserName() || '';
+                        if (leader) {
+                            setProjectLeader(leader);
+                        }
+                        if (p.customer_name) {
+                            setSponsoringAgency(p.customer_name);
+                        }
+                        if (p.quote_amount) {
+                            setTotalCost(p.quote_amount);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load proposal details for ISO proposal:', e);
+                }
+            }
+            fetchProposalDetails();
         }
-    }, [existingRecord]);
-
-    // Team & Leaders
-    const [projectLeader, setProjectLeader] = useState('');
-    const [coLeaders, setCoLeaders] = useState('');
-    const [coreStMembers, setCoreStMembers] = useState([]);
+    }, [existingRecord, proposalId, propProposalId]);
 
     // Partners
     const [devPartnersName, setDevPartnersName] = useState('');
