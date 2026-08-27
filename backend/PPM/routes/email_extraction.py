@@ -409,10 +409,12 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
             clean_lines = []
             for l in lines:
                 l_norm = l.lower()
-                if l_norm not in seen and not any(dp in l_norm for dp in ["person", "null", "none", "array of", "@"]):
+                if l_norm not in seen and not any(dp in l_norm for dp in ["person", "null", "none", "array of", "@", "continued support", "thank you", "greetings", "dear sir", "dear madam"]):
                     seen.add(l_norm)
                     clean_lines.append(l)
             final_kind = "\n".join(clean_lines) if clean_lines else None
+            if not final_kind and person_name:
+                final_kind = person_name
         else:
             final_kind = None
 
