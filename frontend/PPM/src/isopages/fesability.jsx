@@ -140,7 +140,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
 
     // Review points responses and details
     const [responses, setResponses] = useState({
-        r1_response: '', r2_response: '', r3_response: '', r4_response: '', r5_response: '', r6_response: '',
+        r1_response: 'Yes', r2_response: 'Yes', r3_response: 'Yes', r4_response: 'Yes', r5_response: 'Yes', r6_response: 'Yes',
         r1_details: '', r2_details: '', r3_details: '', r4_details: '', r5_details: '', r6_details: '',
     });
 

@@ -26,7 +26,7 @@ router = APIRouter(prefix="/iso", tags=["ISO Feasibility Review Generator"])
 class ReviewPointRequest(BaseModel):
     sl_no: int
     point: str
-    response: str = ""
+    response: str = "Yes"
     details: str = ""
 
 
@@ -284,37 +284,37 @@ def create_feasibility_document(
         (
             1,
             "Compliance of all technical requirements?",
-            "",
+            "Yes",
             ""
         ),
         (
             2,
             "Delivery and Post Delivery activity compliance",
-            "",
+            "Yes",
             ""
         ),
         (
             3,
             "Any other requirements not stated in the enquiry, but necessary in the intended use.\nEg : Item has be flame proof,\nItem has to be used in different sites etc.\nPlease mention in details",
-            "",
+            "Yes",
             ""
         ),
         (
             4,
             "Any Critical / Special Characteristic identified in drawing /specifications?",
-            "",
+            "Yes",
             ""
         ),
         (
             5,
             "All Statutory & Regulatory requirement applicable?\neg : Fire safety certification, etc",
-            "",
+            "Yes",
             ""
         ),
         (
             6,
             "Any Operation Risk related to following is identified (if yes give details)\n1. New Technology\n2. Ability and capacity to provide product or service\n3. Short delivery time frame",
-            "",
+            "Yes",
             ""
         )
     ]
@@ -332,7 +332,11 @@ def create_feasibility_document(
         det = def_det
 
         if sl in points_map:
-            resp, det = points_map[sl]
+            val_resp, val_det = points_map[sl]
+            if val_resp is not None and val_resp.strip() != "":
+                resp = val_resp
+            if val_det is not None:
+                det = val_det
 
         add_text(review_table.cell(row_idx, 0), f"{sl}.", font_size=10, bold=False, alignment=WD_ALIGN_PARAGRAPH.CENTER)
         add_text(review_table.cell(row_idx, 1), pt, font_size=10, bold=False, alignment=WD_ALIGN_PARAGRAPH.LEFT)
@@ -444,17 +448,17 @@ async def generate_feasibility_doc_get(
     centre_dept: str = Query("", description="Centre / Dept name for header (e.g. C-SVT)"),
     group_name: str = Query("", description="Group ISO code name for footer"),
     doc_code: str = Query("", description="Full Document Code e.g. CMTI-QMS-VT-049/Rev00"),
-    r1_response: str = Query("", description="Compliance of all technical requirements? (Yes/No/Na)"),
+    r1_response: str = Query("Yes", description="Compliance of all technical requirements? (Yes/No/Na)"),
     r1_details: str = Query("", description="Compliance of all technical requirements details"),
-    r2_response: str = Query("", description="Delivery and Post Delivery activity compliance (Yes/No/Na)"),
+    r2_response: str = Query("Yes", description="Delivery and Post Delivery activity compliance (Yes/No/Na)"),
     r2_details: str = Query("", description="Delivery and Post Delivery activity compliance details"),
-    r3_response: str = Query("", description="Any other requirements not stated... (Yes/No/Na)"),
+    r3_response: str = Query("Yes", description="Any other requirements not stated... (Yes/No/Na)"),
     r3_details: str = Query("", description="Any other requirements details"),
-    r4_response: str = Query("", description="Any Critical / Special Characteristic... (Yes/No/Na)"),
+    r4_response: str = Query("Yes", description="Any Critical / Special Characteristic... (Yes/No/Na)"),
     r4_details: str = Query("", description="Any Critical / Special Characteristic details"),
-    r5_response: str = Query("", description="All Statutory & Regulatory requirement... (Yes/No/Na)"),
+    r5_response: str = Query("Yes", description="All Statutory & Regulatory requirement... (Yes/No/Na)"),
     r5_details: str = Query("", description="All Statutory & Regulatory details"),
-    r6_response: str = Query("", description="Any Operation Risk... (Yes/No/Na)"),
+    r6_response: str = Query("Yes", description="Any Operation Risk... (Yes/No/Na)"),
     r6_details: str = Query("", description="Any Operation Risk details"),
     doc_no: str = Query("", description="Document Number for header"),
     doc_date: str = Query("", description="Document Date for header"),

@@ -336,6 +336,7 @@ class DynamicTable(Base):
     header_name = Column(String, nullable=False)
     columns = Column(JSON, nullable=False)
     rows = Column(JSON, nullable=False)  # raw, editable rows - NOT computed/display rows
+    category = Column(String, nullable=True, default="recurring")
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
