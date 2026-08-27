@@ -44,3 +44,14 @@ class QuotationRequest(BaseModel):
     signatory_lines: List[str] = Field(default_factory=list)
     signatories: List[SignatorySpec] = Field(default_factory=list)
     filename: Optional[str] = None
+    technical_requirements: Optional[str] = None
+    billing_address: Optional[str] = None
+    shipping_address: Optional[str] = None
+    delivery_time_date: Optional[str] = None
+    mode_of_delivery: Optional[str] = None
+    supporting_documentation: Optional[str] = None
+    standards: Optional[str] = None
+    penalty_clause: Optional[str] = None
+    claims: Optional[str] = None
+    legal_requirements: Optional[str] = None
+    other_requirements: Optional[str] = None

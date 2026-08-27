@@ -433,6 +433,36 @@ def build_proposal_document(data: dict) -> Document:
             elif hasattr(t, "model_dump"):
                 add_table_block(document, t.model_dump())
 
+    # Quotation Requirement section (named ESSENTIAL REQUIREMENT)
+    req_fields = {
+        "Any Technical Requirements": data.get("technical_requirements"),
+        "Billing Address": data.get("billing_address"),
+        "Shipping Address": data.get("shipping_address"),
+        "Delivery Time/Date": data.get("delivery_time_date"),
+        "Mode of Delivery": data.get("mode_of_delivery"),
+        "Supporting Documentation": data.get("supporting_documentation"),
+        "National & International Standards": data.get("standards"),
+        "Any Penalty Clause": data.get("penalty_clause"),
+        "Any Claims": data.get("claims"),
+        "Any Specific Legal Requirements": data.get("legal_requirements"),
+        "Any Other Requirements (Specify)": data.get("other_requirements"),
+    }
+
+    if any(req_fields.values()):
+        document.add_page_break()
+        add_section_heading(document, "ESSENTIAL REQUIREMENT", center=True)
+        for label, val in req_fields.items():
+            if val:
+                p_item = document.add_paragraph()
+                p_item.paragraph_format.space_after = Pt(4)
+                r_lbl = p_item.add_run(f"{label}: ")
+                r_lbl.bold = True
+                r_lbl.font.size = Pt(11)
+                r_lbl.font.name = "Calibri"
+                r_val = p_item.add_run(str(val))
+                r_val.font.size = Pt(11)
+                r_val.font.name = "Calibri"
+
     add_signature_block(document, name=signatory_name, designation_lines=signatory_lines, signatories=signatories)
 
     return document
