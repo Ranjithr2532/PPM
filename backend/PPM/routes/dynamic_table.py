@@ -282,10 +282,10 @@ def save_and_generate_word_document(
     doc = DocxDocument()
 
     for section in doc.sections:
-        section.top_margin = Inches(0.5)
-        section.bottom_margin = Inches(0.5)
-        section.left_margin = Inches(0.6)
-        section.right_margin = Inches(0.6)
+        section.top_margin = Inches(0.4)
+        section.bottom_margin = Inches(0.4)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
 
     # ---- low-level OOXML helpers -----------------------------------
     def set_cell_padding(cell, top=45, bottom=45, left=100, right=100):
@@ -355,8 +355,8 @@ def save_and_generate_word_document(
         pBdr.append(bottom)
         pPr.append(pBdr)
 
-        p.paragraph_format.space_before = Pt(8)
-        p.paragraph_format.space_after = Pt(3)
+        p.paragraph_format.space_before = Pt(6)
+        p.paragraph_format.space_after = Pt(2)
         r = p.add_run(text)
         r.font.bold = True
         run_size(r, 9.5)
@@ -366,8 +366,8 @@ def save_and_generate_word_document(
 
     def add_subsection_heading(text):
         p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(5)
-        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.space_before = Pt(4)
+        p.paragraph_format.space_after = Pt(1)
         r = p.add_run(text)
         r.font.bold = True
         run_size(r, 9)
@@ -388,7 +388,7 @@ def save_and_generate_word_document(
             cell = header_cells[c_idx]
             set_cell_border(cell, bottom={"sz": 6, "color": DARK_HEX})
             set_cell_background(cell, LIGHT_HEX)
-            set_cell_padding(cell, top=45, bottom=45, left=80, right=80)
+            set_cell_padding(cell, top=30, bottom=30, left=80, right=80)
             p = cell.paragraphs[0]
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
@@ -421,7 +421,7 @@ def save_and_generate_word_document(
                     set_cell_border(cell, bottom={"sz": 2, "color": RULE_HEX})
                 if bg:
                     set_cell_background(cell, bg)
-                set_cell_padding(cell, top=40, bottom=40, left=80, right=80)
+                set_cell_padding(cell, top=24, bottom=24, left=80, right=80)
 
                 raw_val = row_data.get(htext, "")
                 h_str = str(htext).strip()
@@ -481,7 +481,7 @@ def save_and_generate_word_document(
         row_cells = meta_table.rows[idx].cells
         for cell in row_cells:
             set_cell_border(cell, bottom={"sz": 2, "color": RULE_HEX})
-            set_cell_padding(cell, top=30, bottom=30, left=0, right=60)
+            set_cell_padding(cell, top=18, bottom=18, left=0, right=60)
 
         p0 = row_cells[0].paragraphs[0]
         p0.paragraph_format.space_before = Pt(0)
@@ -500,7 +500,11 @@ def save_and_generate_word_document(
         r1.font.name = FONT
         r1.font.color.rgb = INK
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+    p_space1 = doc.add_paragraph()
+    p_space1.paragraph_format.space_before = Pt(5)
+    p_space1.paragraph_format.space_after = Pt(0)
+    p_space1.paragraph_format.line_spacing = 1.0
+    p_space1.add_run().font.size = Pt(1)
 
     # ---- Pre-compute totals ----
     computed_tables_data = []
@@ -538,7 +542,11 @@ def save_and_generate_word_document(
         is_total_row_fn=lambda r: r.get("Cost Section Category") == "Grand Total",
     )
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+    p_space2 = doc.add_paragraph()
+    p_space2.paragraph_format.space_before = Pt(1)
+    p_space2.paragraph_format.space_after = Pt(0)
+    p_space2.paragraph_format.line_spacing = 1.0
+    p_space2.add_run().font.size = Pt(1)
 
     # ---- 2. Detailed Cost Breakdown ----
     add_section_heading("2. Detailed Cost Breakdown")
@@ -552,7 +560,11 @@ def save_and_generate_word_document(
         )
 
     # ---- Grand Total banner ----
-    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+    p_space3 = doc.add_paragraph()
+    p_space3.paragraph_format.space_before = Pt(1)
+    p_space3.paragraph_format.space_after = Pt(0)
+    p_space3.paragraph_format.line_spacing = 1.0
+    p_space3.add_run().font.size = Pt(1)
     grand_box = doc.add_table(rows=1, cols=1)
     grand_box.alignment = WD_TABLE_ALIGNMENT.CENTER
     c = grand_box.rows[0].cells[0]
@@ -577,7 +589,11 @@ def save_and_generate_word_document(
     r2.font.name = FONT
     r2.font.color.rgb = ACCENT
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    p_space4 = doc.add_paragraph()
+    p_space4.paragraph_format.space_before = Pt(1)
+    p_space4.paragraph_format.space_after = Pt(0)
+    p_space4.paragraph_format.line_spacing = 1.0
+    p_space4.add_run().font.size = Pt(1)
 
     # ---- Sign-off matrix ----
     sig_table = doc.add_table(rows=2, cols=3)
