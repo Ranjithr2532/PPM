@@ -10,7 +10,8 @@ import {
   MessageOutlined,
   FileWordOutlined,
   MenuOutlined,
-  FilePdfOutlined
+  FilePdfOutlined,
+  RobotOutlined
 } from '@ant-design/icons'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -60,7 +61,9 @@ function Sidebar() {
                             ? 'document-generate'
                             : section === 'iso-generation'
                               ? 'iso-generation'
-                              : 'proposals'
+                              : section === 'ai-proposal' || section === 'create-proposal'
+                                ? 'ai-proposal'
+                                : 'proposals'
 
   let userName = ''
   let userRole = ''
@@ -263,11 +266,13 @@ function Sidebar() {
             else if (info.key === 'chats') navigate(`${prefix}/chats`)
             else if (info.key === 'document-generate') navigate(`${prefix}/document-generate`)
             else if (info.key === 'iso-generation') navigate(`${prefix}/iso-generation`)
+            else if (info.key === 'ai-proposal') navigate(`${prefix}/ai-proposal`)
 
             else navigate(`${prefix}/proposals`)
           }}
           items={[
             { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
+            { key: 'ai-proposal', icon: <RobotOutlined />, label: 'AI Proposal' },
             ...(!isGuest && !isDirector ? [{
               key: 'chats',
               icon: <MessageOutlined />,

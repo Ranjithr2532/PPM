@@ -43,6 +43,7 @@ import {
     PaperClipOutlined,
     UploadOutlined,
     EditOutlined,
+    RobotOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
@@ -144,6 +145,138 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
     const [rawStudioHeaders, setRawStudioHeaders] = useState([]);
     const [costModalOpen, setCostModalOpen] = useState(false);
 
+    // AI Email Extraction State
+    const [aiPanelOpen, setAiPanelOpen] = useState(false);
+    const [aiEmailText, setAiEmailText] = useState('');
+    const [aiExtracting, setAiExtracting] = useState(false);
+    const [aiExtractedSummary, setAiExtractedSummary] = useState(null);
+
+    // Handle extracting details from customer email to auto-fill Document Form
+    const handleExtractEmailForDocument = async () => {
+        if (!aiEmailText.trim()) {
+            message.warning('Please paste the customer email text first.');
+            return;
+        }
+
+        setAiExtracting(true);
+        setAiExtractedSummary(null);
+
+        try {
+            const res = await axios.post(`${API_BASE_URL}/ai/extract-email`, {
+                email_text: aiEmailText
+            }, {
+                timeout: 130000
+            });
+
+            const data = res.data || {};
+            
+            // Format customer raw address block (ensure no email address appears in customer name/address)
+            const cleanCustName = (data.customer_name && !data.customer_name.includes('@')) ? data.customer_name.trim() : '';
+            const cleanCustAddr = (data.customer_address && !data.customer_address.includes('@')) ? data.customer_address.trim() : '';
+
+            let custRaw = '';
+            if (cleanCustName && cleanCustAddr) {
+                custRaw = `${cleanCustName}\n${cleanCustAddr}`;
+            } else if (cleanCustName) {
+                custRaw = cleanCustName;
+            } else if (cleanCustAddr) {
+                custRaw = cleanCustAddr;
+            }
+
+            // Filename
+            let generatedFilename = form.getFieldValue('filename');
+            if (data.proposal_subject) {
+                const safeName = data.proposal_subject
+                    .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+                    .trim()
+                    .replace(/\s+/g, '_');
+                generatedFilename = `${safeName || 'Proposal'}.docx`;
+            }
+
+            // Populate form values
+            const updates = {};
+            if (data.email_to && data.email_to.length > 0) {
+                updates.email_to = data.email_to.join(', ');
+            }
+            if (data.email_cc && data.email_cc.length > 0) {
+                updates.email_cc = data.email_cc.join(', ');
+            }
+            if (custRaw) {
+                updates.customer_raw = custRaw;
+            }
+            if (data.kind_attention) {
+                let ka = data.kind_attention;
+                if (typeof ka === 'string' && ka.includes(',') && !ka.includes('\n')) {
+                    ka = ka.split(',').map(s => s.trim()).filter(Boolean).join('\n');
+                }
+                updates.kind_attention = ka;
+            }
+            if (data.proposal_subject) {
+                updates.subject = data.proposal_subject;
+            }
+            if (data.introductory_paragraph) {
+                updates.scope_intro = data.introductory_paragraph;
+            }
+            if (cleanCustName) {
+                setCustomerSearchText(cleanCustName);
+                const matched = customerSuggestions.find(
+                    (c) => c.name && (
+                        c.name.trim().toLowerCase() === cleanCustName.trim().toLowerCase() ||
+                        c.name.toLowerCase().includes(cleanCustName.toLowerCase()) ||
+                        cleanCustName.toLowerCase().includes(c.name.toLowerCase())
+                    )
+                );
+                if (matched) {
+                    setSelectedCustomer(matched);
+                    const addrs = Array.isArray(matched.addresses)
+                        ? matched.addresses
+                        : matched.address
+                            ? [matched.address]
+                            : [];
+                    setAddressOptions(addrs.map((a) => ({ value: a, label: a })));
+                }
+            }
+
+            form.setFieldsValue(updates);
+
+            // Populate scope items safely
+            const rawScopes = (Array.isArray(data.scope_of_work) && data.scope_of_work.length > 0)
+                ? data.scope_of_work
+                : (Array.isArray(data.objectives) && data.objectives.length > 0)
+                    ? data.objectives
+                    : [];
+
+            const validScopes = rawScopes.filter(
+                (item) => typeof item === 'string' && item.trim().length > 3 && !item.toLowerCase().includes('array of') && !item.toLowerCase().includes('list of')
+            );
+            
+            if (validScopes.length > 0) {
+                setScopeItems(validScopes);
+            } else {
+                setScopeItems([]);
+            }
+
+            setAiExtractedSummary({
+                customer: data.customer_name,
+                subject: data.proposal_subject,
+                scopeCount: validScopes.length
+            });
+
+            message.success('Proposal details successfully extracted and populated into the document form!');
+        } catch (err) {
+            console.error('Email extraction error:', err);
+            if (err.response?.status === 503) {
+                message.error('AI service is unavailable. Please ensure Ollama & FastAPI are running.');
+            } else if (err.response?.status === 504) {
+                message.error('AI request timed out. Please try again.');
+            } else {
+                message.error('Failed to extract email details. Please check network/backend status.');
+            }
+        } finally {
+            setAiExtracting(false);
+        }
+    };
+
     // Helper to calculate subtotal for a table in internalCostTables
     const getTableSubtotal = (tbl) => {
         if (!tbl || !tbl.rows || !Array.isArray(tbl.rows)) return 0;
@@ -225,6 +358,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
     // Customer suggestions state
     const [customerSuggestions, setCustomerSuggestions] = useState([]);
     const [customerOptions, setCustomerOptions] = useState([]);
+    const [customerSearchText, setCustomerSearchText] = useState('');
     const [addressOptions, setAddressOptions] = useState([]);
     const [selectedCustomer, setSelectedCustomer] = useState(null);
 
@@ -294,6 +428,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
 
     // Handle searching customers by name, address, email or phone
     const handleCustomerSearch = (searchText) => {
+        setCustomerSearchText(searchText);
         if (!searchText || searchText.trim().length < 1) {
             setCustomerOptions([]);
             return;
@@ -340,6 +475,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
 
     // Handle selecting customer option
     const handleCustomerSelect = (value, option) => {
+        setCustomerSearchText(value);
         if (option && option.customer) {
             const c = option.customer;
             setSelectedCustomer(c);
@@ -796,6 +932,16 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                 {/* Right side: Modern Buttons */}
                 <div className="flex flex-wrap items-center gap-3 shrink-0">
                     <Button
+                        icon={<RobotOutlined className={aiPanelOpen ? "text-indigo-600" : ""} />}
+                        onClick={() => setAiPanelOpen(!aiPanelOpen)}
+                        className={`rounded-none border border-slate-900 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 ${
+                            aiPanelOpen ? 'bg-indigo-50 text-indigo-950 border-indigo-900 shadow-[2px_2px_0px_0px_rgba(79,70,229,1)]' : 'bg-white text-slate-900 hover:bg-slate-50'
+                        }`}
+                    >
+                        {aiPanelOpen ? 'Hide AI Auto-Fill' : '⚡ AI Email Auto-Fill'}
+                    </Button>
+
+                    <Button
                         icon={previewVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
                         onClick={() => setPreviewVisible(!previewVisible)}
                         className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
@@ -853,6 +999,90 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                     <Row gutter={[24, 24]}>
                         {/* Left Column: Input Form Studio */}
                         <Col xs={24} lg={previewVisible ? 15 : 24} xl={previewVisible ? 15 : 24} className="space-y-6">
+
+                            {/* AI Email Extraction / Auto-Fill Panel */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                                <div 
+                                    onClick={() => setAiPanelOpen(!aiPanelOpen)}
+                                    className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-800 transition"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-6 h-6 rounded bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center text-indigo-300">
+                                            <RobotOutlined className="text-xs" />
+                                        </div>
+                                        <div>
+                                            <span className="font-bold text-xs uppercase tracking-wider block">
+                                                AI Email Auto-Fill & Document Populate
+                                            </span>
+                                            <span className="text-[10px] text-slate-300 font-normal block">
+                                                Paste customer email thread from Outlook/Gmail to instantly populate customer info, subject, scope, and metadata.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs font-bold text-indigo-300 hover:underline">
+                                        {aiPanelOpen ? '▲ Collapse Panel' : '▼ Expand & Paste Email'}
+                                    </span>
+                                </div>
+
+                                {aiPanelOpen && (
+                                    <div className="p-4 bg-slate-50/80 border-t border-slate-900 space-y-3">
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <MailOutlined className="text-indigo-600" />
+                                                    Paste Customer Email Thread:
+                                                </label>
+                                                {aiEmailText.length > 0 && (
+                                                    <span className="text-[10px] text-slate-400 font-mono">
+                                                        {aiEmailText.length} chars
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <TextArea
+                                                rows={6}
+                                                value={aiEmailText}
+                                                onChange={(e) => setAiEmailText(e.target.value)}
+                                                placeholder="Paste complete raw customer email here (including headers, forwarded body, technical requirements, signature)..."
+                                                className="text-xs font-mono rounded-none border border-slate-900 focus:border-indigo-600 bg-white"
+                                            />
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    type="primary"
+                                                    loading={aiExtracting}
+                                                    disabled={!aiEmailText.trim()}
+                                                    onClick={handleExtractEmailForDocument}
+                                                    className="rounded-none border border-slate-900 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] transition-all flex items-center gap-1.5"
+                                                >
+                                                    {aiExtracting ? 'Analyzing Email with AI...' : '⚡ Extract & Populate Document'}
+                                                </Button>
+
+                                                <Button
+                                                    onClick={() => {
+                                                        setAiEmailText('');
+                                                        setAiExtractedSummary(null);
+                                                    }}
+                                                    disabled={!aiEmailText}
+                                                    className="rounded-none border border-slate-900 text-slate-700 bg-white hover:bg-slate-100 text-xs h-9 px-3"
+                                                >
+                                                    Clear
+                                                </Button>
+                                            </div>
+
+                                            {aiExtractedSummary && (
+                                                <div className="flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 font-medium animate-fadeIn">
+                                                    <CheckCircleOutlined className="text-emerald-600" />
+                                                    <span>
+                                                        Populated: <strong>{aiExtractedSummary.customer || 'Customer'}</strong> | <strong>{aiExtractedSummary.scopeCount} Scope Items</strong>
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Section 1: Document Metadata & Header Settings */}
                             <div className="border border-slate-900 bg-white mb-6">
@@ -964,16 +1194,25 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                             <td className="border-r border-slate-900 p-1">
                                                 <AutoComplete
                                                     options={customerOptions}
-                                                    onSearch={handleCustomerSearch}
+                                                    value={customerSearchText}
+                                                    onChange={(val) => {
+                                                        setCustomerSearchText(val);
+                                                        handleCustomerSearch(val);
+                                                    }}
                                                     onSelect={handleCustomerSelect}
                                                     style={{ width: '100%' }}
                                                 >
                                                     <Input placeholder="Search existing name..." variant="borderless" className="p-1 text-xs font-semibold" />
                                                 </AutoComplete>
                                             </td>
-                                            <td className="p-1">
+                                            <td className="p-1 align-top">
                                                 <Form.Item name="kind_attention" noStyle>
-                                                    <Input variant="borderless" className="p-1 text-xs font-medium" placeholder="e.g. Mr. Rajesh Sharma (General Manager)" />
+                                                    <TextArea 
+                                                        variant="borderless" 
+                                                        autoSize={{ minRows: 2, maxRows: 4 }} 
+                                                        className="p-1 text-xs font-medium" 
+                                                        placeholder="e.g. Mr. Rajesh Sharma&#10;General Manager" 
+                                                    />
                                                 </Form.Item>
                                             </td>
                                         </tr>
@@ -1675,9 +1914,9 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                         )}
 
                                         {formValues.kind_attention && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">Kind Attention: </span>
-                                                <span className="text-slate-700 font-medium">{formValues.kind_attention}</span>
+                                            <div className="flex items-start gap-1">
+                                                <span className="font-bold text-slate-900 shrink-0">Kind Attention: </span>
+                                                <span className="text-slate-700 font-medium whitespace-pre-line">{formValues.kind_attention}</span>
                                             </div>
                                         )}
 

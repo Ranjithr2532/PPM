@@ -18,3 +18,4 @@ pandas
 python-docx
 python-jose[cryptography]
 bcrypt
+requests

@@ -346,13 +346,18 @@ def build_proposal_document(data: dict) -> Document:
                 r_c.font.size = Pt(11)
 
     if kind_attention:
-        p_ka = document.add_paragraph()
-        p_ka.paragraph_format.space_after = Pt(2)
-        r_ka_lbl = p_ka.add_run("Kind Attention: ")
-        r_ka_lbl.font.bold = True
-        r_ka_lbl.font.size = Pt(11)
-        r_ka = p_ka.add_run(kind_attention)
-        r_ka.font.size = Pt(11)
+        ka_lines = [l.strip() for l in str(kind_attention).splitlines() if l.strip()]
+        for idx, kal in enumerate(ka_lines):
+            p_ka = document.add_paragraph()
+            p_ka.paragraph_format.space_after = Pt(2)
+            if idx == 0:
+                r_ka_lbl = p_ka.add_run("Kind Attention: ")
+                r_ka_lbl.font.bold = True
+                r_ka_lbl.font.size = Pt(11)
+            else:
+                p_ka.paragraph_format.left_indent = Inches(1.2)
+            r_ka = p_ka.add_run(kal)
+            r_ka.font.size = Pt(11)
 
     if reference:
         p_ref = document.add_paragraph()

@@ -49,6 +49,7 @@ from iso.projectplan import router as iso_projectplan_router
 from iso.sqap import router as iso_sqap_router
 from iso.bom import router as iso_bom_router
 from iso.drawingregister import router as iso_drawing_register_router
+from routes.email_extraction import router as email_extraction_router
 # from ai_routes.ai import router as ai_router
 
 
@@ -106,6 +107,7 @@ app.include_router(iso_projectplan_router)
 app.include_router(iso_sqap_router)
 app.include_router(iso_bom_router)
 app.include_router(iso_drawing_register_router)
+app.include_router(email_extraction_router)
 
 
 
