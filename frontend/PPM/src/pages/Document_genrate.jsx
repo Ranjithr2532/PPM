@@ -20,6 +20,7 @@ import {
     Select,
     DatePicker,
     Alert,
+    Checkbox,
 } from 'antd';
 import {
     FileWordOutlined,
@@ -184,6 +185,7 @@ export default function DocumentGenerate({
     const [internalCostTables, setInternalCostTables] = useState([]);
     const [rawStudioHeaders, setRawStudioHeaders] = useState([]);
     const [costModalOpen, setCostModalOpen] = useState(false);
+    const [shippingSameAsBilling, setShippingSameAsBilling] = useState(false);
 
     // AI Email Extraction State
     const [aiPanelOpen, setAiPanelOpen] = useState(false);
@@ -847,6 +849,19 @@ export default function DocumentGenerate({
             signatory_lines: primarySig.lines,
             signatories: formattedSignatories,
             filename: values.filename || 'Proposal.docx',
+
+            // Quotation requirements
+            technical_requirements: values.technical_requirements || '',
+            billing_address: values.billing_address || '',
+            shipping_address: values.shipping_address || '',
+            delivery_time_date: values.delivery_time_date || '',
+            mode_of_delivery: values.mode_of_delivery || '',
+            supporting_documentation: values.supporting_documentation || '',
+            standards: values.standards || '',
+            penalty_clause: values.penalty_clause || '',
+            claims: values.claims || '',
+            legal_requirements: values.legal_requirements || '',
+            other_requirements: values.other_requirements || '',
         };
 
         const response = await axios.post(
@@ -1233,6 +1248,17 @@ export default function DocumentGenerate({
                     customer_type: 'Govt',
                     request_type: 'Direct Enquiry',
                     proposal_status: ['Submitted'],
+                    technical_requirements: '',
+                    billing_address: '',
+                    shipping_address: '',
+                    delivery_time_date: '',
+                    mode_of_delivery: '',
+                    supporting_documentation: '',
+                    standards: '',
+                    penalty_clause: '',
+                    claims: '',
+                    legal_requirements: '',
+                    other_requirements: '',
                 }}
                 className="w-full"
             >
@@ -1779,10 +1805,119 @@ export default function DocumentGenerate({
                                 </div>
                             </div>
 
-                            {/* Section 6: Signatories & Terms */}
+                            {/* Section 6: Quotation Requirement */}
                             <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>6. Terms & Signatories</span>
+                                    <span>6. Quotation Requirement</span>
+                                    <span className="text-[10px] text-slate-400 font-normal">Terms & Logistics</span>
+                                </div>
+                                <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
+                                    Define project-specific technical constraints, delivery terms, and legal/billing requirements.
+                                </div>
+                                <div className="p-3">
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="technical_requirements" label={<span className="font-bold text-xs text-slate-800">Any Technical Requirements</span>}>
+                                                <TextArea rows={2} placeholder="e.g. Specific tolerance, material grade..." />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="billing_address" label={<span className="font-bold text-xs text-slate-800">Billing Address</span>}>
+                                                <TextArea 
+                                                    rows={2} 
+                                                    placeholder="Billing Address..." 
+                                                    onChange={(e) => {
+                                                        if (shippingSameAsBilling) {
+                                                            form.setFieldsValue({ shipping_address: e.target.value });
+                                                        }
+                                                    }}
+                                                />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={8}>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-xs text-slate-800">Shipping Address</span>
+                                                <Checkbox 
+                                                    checked={shippingSameAsBilling}
+                                                    onChange={(e) => {
+                                                        const checked = e.target.checked;
+                                                        setShippingSameAsBilling(checked);
+                                                        if (checked) {
+                                                            form.setFieldsValue({
+                                                                shipping_address: form.getFieldValue('billing_address') || ''
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="text-[11px] text-slate-500 font-semibold"
+                                                >
+                                                    Same as Billing
+                                                </Checkbox>
+                                            </div>
+                                            <Form.Item name="shipping_address" noStyle>
+                                                <TextArea 
+                                                    rows={2} 
+                                                    placeholder="Shipping Address..." 
+                                                    disabled={shippingSameAsBilling}
+                                                />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]} className="mt-2">
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="delivery_time_date" label={<span className="font-bold text-xs text-slate-800">Delivery Time/Date</span>}>
+                                                <Input placeholder="e.g. 4 Weeks from PO" />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="mode_of_delivery" label={<span className="font-bold text-xs text-slate-800">Mode of Delivery</span>}>
+                                                <Input placeholder="e.g. Hand Delivery, Speed Post" />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="supporting_documentation" label={<span className="font-bold text-xs text-slate-800">Supporting Documentation</span>}>
+                                                <Input placeholder="e.g. Calibration certificates, test reports" />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]} className="mt-2">
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="standards" label={<span className="font-bold text-xs text-slate-800">National & International Standards</span>}>
+                                                <Input placeholder="e.g. ISO 9001, AS9100" />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="penalty_clause" label={<span className="font-bold text-xs text-slate-800">Any Penalty Clause</span>}>
+                                                <Input placeholder="e.g. LD clause 0.5% per week" />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={8}>
+                                            <Form.Item name="claims" label={<span className="font-bold text-xs text-slate-800">Any Claims</span>}>
+                                                <Input placeholder="e.g. Warranty support, replacement claims" />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]} className="mt-2">
+                                        <Col xs={24} md={12}>
+                                            <Form.Item name="legal_requirements" label={<span className="font-bold text-xs text-slate-800">Any Specific Legal Requirements</span>}>
+                                                <Input placeholder="e.g. NDA, Intellectual Property rights" />
+                                            </Form.Item>
+                                        </Col>
+                                        <Col xs={24} md={12}>
+                                            <Form.Item name="other_requirements" label={<span className="font-bold text-xs text-slate-800">Any Other Requirements (Specify)</span>}>
+                                                <Input placeholder="Any other requirements..." />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+                                </div>
+                            </div>
+
+                            {/* Section 7: Signatories & Terms */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>7. Terms & Signatories</span>
                                     <Button
                                         size="small"
                                         icon={<PlusOutlined />}
@@ -1873,14 +2008,14 @@ export default function DocumentGenerate({
                                 </div>
                             </div>
 
-                            {/* SECTION 7: PROPOSAL SUBMISSION & MANUAL ENTRY DETAILS */}
+                            {/* SECTION 8: PROPOSAL SUBMISSION & MANUAL ENTRY DETAILS */}
                             <div className="border-2 border-blue-600 bg-white mb-6 shadow-[4px_4px_0px_0px_rgba(37,99,235,1)]">
                                 <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-blue-900 text-white p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <CheckCircleOutlined className="text-lg text-emerald-400" />
                                         <div>
                                             <span className="font-extrabold text-sm uppercase tracking-wider block">
-                                                7. Proposal Submission & Manual Entry Details
+                                                8. Proposal Submission & Manual Entry Details
                                             </span>
                                             <span className="text-[11px] text-blue-200 font-normal">
                                                 These fields are automatically synchronized with Document Studio. Complete and verify below before final submission.
