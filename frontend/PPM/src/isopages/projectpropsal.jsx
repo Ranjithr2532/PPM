@@ -443,6 +443,59 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
         }
     };
 
+    const handleExtractFromCostEstimation = async () => {
+        if (!proposalId) {
+            message.warning("No proposal ID associated with this document. Please save a draft first or ensure a project is selected.");
+            return;
+        }
+        try {
+            const res = await axios.get(`${API_BASE_URL}/dynamic-tables/${proposalId}/latest-costs`);
+            const data = res.data;
+            if (!data || (!data.recurring?.length && !data.non_recurring?.length)) {
+                message.info("No saved cost breakdown data found for this proposal.");
+                return;
+            }
+
+            if (data.recurring && Array.isArray(data.recurring)) {
+                const mappedRecurring = data.recurring.map((t, idx) => {
+                    const itemDetails = t.items && t.items.length > 0 ? ` (${t.items.join(", ")})` : "";
+                    return {
+                        sl_no: `${idx + 1}.`,
+                        item_type: "Recurring",
+                        items: `${t.table_name}${itemDetails}`,
+                        budget_amount: String(t.subtotal || 0),
+                        remarks: ""
+                    };
+                });
+                setRecurringBudget(mappedRecurring);
+            }
+
+            if (data.non_recurring && Array.isArray(data.non_recurring)) {
+                const mappedNonRecurring = data.non_recurring.map((t, idx) => {
+                    const itemDetails = t.items && t.items.length > 0 ? ` (${t.items.join(", ")})` : "";
+                    return {
+                        sl_no: `${idx + 1}.`,
+                        item_type: "Non-Recurring",
+                        items: `${t.table_name}${itemDetails}`,
+                        budget_amount: String(t.subtotal || 0),
+                        remarks: ""
+                    };
+                });
+                setNonRecurringBudget(mappedNonRecurring);
+            }
+
+            if (data.grand_total !== undefined) {
+                const inLakhs = (data.grand_total / 100000).toFixed(2);
+                setTotalCost(`${inLakhs} Lakh`);
+            }
+
+            message.success("Successfully loaded cost estimation data!");
+        } catch (err) {
+            console.error("Failed to extract cost estimation details:", err);
+            message.error("Failed to load cost estimation data. Please try again.");
+        }
+    };
+
     // Dynamic array handler helpers
     const handleArrayChange = (setter, list, index, val) => {
         const updated = [...list];
@@ -759,8 +812,19 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                 {/* POINT 4: FINANCIAL PROPOSAL */}
                 <div className="space-y-4 mb-6">
                     <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                        <div className="font-bold text-xs uppercase tracking-wide text-slate-900">
-                            4. Financial proposal
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-1 px-2">
+                            <span className="font-bold text-xs uppercase tracking-wide text-slate-900">
+                                4. Financial proposal
+                            </span>
+
+                            <button
+                                type="button"
+                                onClick={handleExtractFromCostEstimation}
+                                className="ml-4 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[11px] rounded-lg shadow-md shadow-indigo-600/10 transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 border-0 outline-none"
+                            >
+                                <DownloadOutlined style={{ fontSize: 12 }} />
+                                Load Costs Data
+                            </button>
                         </div>
                         <div className="text-[11px] font-bold text-indigo-700">
                             Grand Total: Rs. {grandTotal.toLocaleString()}
@@ -1216,11 +1280,10 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                                                                 <td
                                                                     key={m}
                                                                     onClick={() => toggleTaskMonth(idx, m)}
-                                                                    className={`border border-slate-800 p-1 text-center font-extrabold cursor-pointer transition-all select-none ${
-                                                                        isSelected 
-                                                                            ? 'bg-slate-300 text-slate-900 shadow-inner' 
-                                                                            : 'hover:bg-slate-100 text-slate-300'
-                                                                    }`}
+                                                                    className={`border border-slate-800 p-1 text-center font-extrabold cursor-pointer transition-all select-none ${isSelected
+                                                                        ? 'bg-slate-300 text-slate-900 shadow-inner'
+                                                                        : 'hover:bg-slate-100 text-slate-300'
+                                                                        }`}
                                                                     title={`Click to toggle Month ${m} for Task ${idx + 1}`}
                                                                 >
                                                                     {isSelected ? 'X' : ''}

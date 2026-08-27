@@ -82,6 +82,7 @@ class DynamicTableItem(BaseModel):
     header_name: str
     columns: List[str]
     rows: List[Dict[str, Any]]
+    category: Optional[str] = "recurring"
 
 
 class GenerateWordPayload(BaseModel):
@@ -121,6 +122,7 @@ def get_saved_tables(project_id: int, db: Session = Depends(get_db)):
             "header_name": r.header_name,
             "columns": r.columns,
             "rows": r.rows,
+            "category": r.category or "recurring",
         }
         for r in rows
     ]
@@ -185,6 +187,7 @@ def get_version_tables(project_id: int, version: int, db: Session = Depends(get_
             "header_name": r.header_name,
             "columns": r.columns,
             "rows": r.rows,
+            "category": r.category or "recurring",
         }
         for r in rows
     ]
@@ -214,6 +217,79 @@ def delete_version(project_id: int, version: int, db: Session = Depends(get_db))
         )
     db.commit()
     return {"detail": f"Version {version} deleted successfully"}
+
+
+# ------------------------------------------------------------------
+# GET /dynamic-tables/{project_id}/latest-costs
+# ------------------------------------------------------------------
+@router.get("/{project_id}/latest-costs")
+def get_latest_costs_summary(project_id: int, db: Session = Depends(get_db)):
+    """
+    Returns a categorized cost summary (recurring vs non-recurring)
+    for the latest version of a project.
+    """
+    max_version = (
+        db.query(func.max(DynamicTable.version))
+        .filter(DynamicTable.project_id == project_id)
+        .scalar()
+    )
+    if max_version is None:
+        return {
+            "recurring": [],
+            "non_recurring": [],
+            "recurring_subtotal": 0.0,
+            "non_recurring_subtotal": 0.0,
+            "grand_total": 0.0
+        }
+
+    rows = (
+        db.query(DynamicTable)
+        .filter(
+            DynamicTable.project_id == project_id,
+            DynamicTable.version == max_version,
+        )
+        .order_by(DynamicTable.id)
+        .all()
+    )
+
+    recurring_list = []
+    non_recurring_list = []
+
+    for r in rows:
+        # Determine items list (roles or descriptions)
+        first_col = r.columns[0] if r.columns else "Description"
+        if r.header_name == "Manpower":
+            first_col = "Role"
+            
+        items = [row.get(first_col, "") for row in r.rows if row.get(first_col)]
+
+        # Compute subtotal
+        computed_rows, total_amount = compute_rows_for_header(r.header_name, r.rows, r.columns)
+        subtotal = total_amount if total_amount is not None else 0.0
+
+        table_info = {
+            "table_name": r.header_name,
+            "subtotal": subtotal,
+            "items": items
+        }
+
+        category = r.category or "recurring"
+        if category == "recurring":
+            recurring_list.append(table_info)
+        else:
+            non_recurring_list.append(table_info)
+
+    rec_sub = sum(t["subtotal"] for t in recurring_list)
+    non_rec_sub = sum(t["subtotal"] for t in non_recurring_list)
+    grand = rec_sub + non_rec_sub
+
+    return {
+        "recurring": recurring_list,
+        "non_recurring": non_recurring_list,
+        "recurring_subtotal": round(rec_sub, 2),
+        "non_recurring_subtotal": round(non_rec_sub, 2),
+        "grand_total": round(grand, 2)
+    }
 
 
 # ------------------------------------------------------------------
@@ -248,7 +324,9 @@ def save_and_generate_word_document(
 
         match = True
         for db_tab, p_tab in zip(db_tables, p_tables):
-            if db_tab.header_name != p_tab.header_name or db_tab.columns != p_tab.columns or db_tab.rows != p_tab.rows:
+            p_cat = getattr(p_tab, 'category', 'recurring') or 'recurring'
+            db_cat = db_tab.category or 'recurring'
+            if db_tab.header_name != p_tab.header_name or db_tab.columns != p_tab.columns or db_tab.rows != p_tab.rows or db_cat != p_cat:
                 match = False
                 break
         if match:
@@ -273,6 +351,7 @@ def save_and_generate_word_document(
                     header_name=item.header_name,
                     columns=item.columns,
                     rows=item.rows,
+                    category=item.category or "recurring",
                     created_by=payload.created_by,
                 )
             )
@@ -373,6 +452,17 @@ def save_and_generate_word_document(
         run_size(r, 9)
         r.font.name = FONT
         r.font.color.rgb = ACCENT
+        return p
+
+    def add_subsubsection_heading(text):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after = Pt(1)
+        r = p.add_run(text)
+        r.font.bold = True
+        run_size(r, 8.5)
+        r.font.name = FONT
+        r.font.color.rgb = INK
         return p
 
     def build_data_table(headers, rows, is_total_row_fn):
@@ -507,9 +597,9 @@ def save_and_generate_word_document(
     p_space1.add_run().font.size = Pt(1)
 
     # ---- Pre-compute totals ----
-    computed_tables_data = []
     grand_total = 0.0
-    table_letters = []
+    recurring_tables = []
+    non_recurring_tables = []
 
     for idx, item in enumerate(payload.tables):
         if not item.columns:
@@ -520,26 +610,69 @@ def save_and_generate_word_document(
             cols = ["Role", "Rate (₹)", "Basis", "Duration", "People", "Total (₹)"]
 
         rows, total_amount = compute_rows_for_header(item.header_name, item.rows, item.columns)
-        letter = chr(65 + idx)
+        cat = getattr(item, 'category', 'recurring') or 'recurring'
+        
+        table_info = {
+            "header_name": item.header_name,
+            "columns": cols,
+            "rows": rows,
+            "subtotal": total_amount or 0.0,
+            "has_subtotal": total_amount is not None
+        }
+
+        if cat == "recurring":
+            recurring_tables.append(table_info)
+        else:
+            non_recurring_tables.append(table_info)
+
         if total_amount is not None:
             grand_total += total_amount
-            table_letters.append(letter)
-        computed_tables_data.append((letter, item.header_name, cols, rows, total_amount))
+
+    rec_sum = sum(t["subtotal"] for t in recurring_tables)
+    non_rec_sum = sum(t["subtotal"] for t in non_recurring_tables)
 
     # ---- 1. Cost Summary ----
     add_section_heading("1. Cost Summary")
 
-    exec_headers = ["Ref", "Cost Section Category", "Subtotal (₹)"]
-    exec_rows = [
-        {"Ref": f"Section {let}", "Cost Section Category": h_name, "Subtotal (₹)": (sub_tot or 0.0)}
-        for (let, h_name, cols, r_data, sub_tot) in computed_tables_data
-    ]
-    exec_rows.append({"Ref": "", "Cost Section Category": "Grand Total", "Subtotal (₹)": grand_total})
+    exec_headers = ["Ref", "Cost Section / Table Name", "Subtotal (₹)"]
+    exec_rows = []
+
+    if recurring_tables:
+        exec_rows.append({
+            "Ref": "Section A",
+            "Cost Section / Table Name": "Recurring Expenses (Total)",
+            "Subtotal (₹)": rec_sum
+        })
+        for idx, t in enumerate(recurring_tables):
+            exec_rows.append({
+                "Ref": f"A{idx + 1}",
+                "Cost Section / Table Name": f"  • {t['header_name']}",
+                "Subtotal (₹)": t["subtotal"]
+            })
+
+    if non_recurring_tables:
+        exec_rows.append({
+            "Ref": "Section B",
+            "Cost Section / Table Name": "Non-Recurring Expenses (Total)",
+            "Subtotal (₹)": non_rec_sum
+        })
+        for idx, t in enumerate(non_recurring_tables):
+            exec_rows.append({
+                "Ref": f"B{idx + 1}",
+                "Cost Section / Table Name": f"  • {t['header_name']}",
+                "Subtotal (₹)": t["subtotal"]
+            })
+
+    exec_rows.append({
+        "Ref": "",
+        "Cost Section / Table Name": "Grand Total",
+        "Subtotal (₹)": grand_total
+    })
 
     build_data_table(
         exec_headers,
         exec_rows,
-        is_total_row_fn=lambda r: r.get("Cost Section Category") == "Grand Total",
+        is_total_row_fn=lambda r: r.get("Cost Section / Table Name") in ["Grand Total", "Recurring Expenses (Total)", "Non-Recurring Expenses (Total)"],
     )
 
     p_space2 = doc.add_paragraph()
@@ -551,13 +684,25 @@ def save_and_generate_word_document(
     # ---- 2. Detailed Cost Breakdown ----
     add_section_heading("2. Detailed Cost Breakdown")
 
-    for (let, h_name, columns, rows, total_amount) in computed_tables_data:
-        add_subsection_heading(f"Section {let} — {h_name}")
-        build_data_table(
-            columns,
-            rows,
-            is_total_row_fn=lambda r, cols=columns: str(r.get(cols[0], "")).strip().lower() == "total" or str(r.get("People", "")).strip().lower() == "total",
-        )
+    if recurring_tables:
+        add_subsection_heading("Section A — Recurring Expenses")
+        for idx, t in enumerate(recurring_tables):
+            add_subsubsection_heading(f"A{idx + 1}. {t['header_name']}")
+            build_data_table(
+                t["columns"],
+                t["rows"],
+                is_total_row_fn=lambda r, cols=t["columns"]: str(r.get(cols[0], "")).strip().lower() == "total" or str(r.get("People", "")).strip().lower() == "total",
+            )
+
+    if non_recurring_tables:
+        add_subsection_heading("Section B — Non-Recurring Expenses")
+        for idx, t in enumerate(non_recurring_tables):
+            add_subsubsection_heading(f"B{idx + 1}. {t['header_name']}")
+            build_data_table(
+                t["columns"],
+                t["rows"],
+                is_total_row_fn=lambda r, cols=t["columns"]: str(r.get(cols[0], "")).strip().lower() == "total" or str(r.get("People", "")).strip().lower() == "total",
+            )
 
     # ---- Grand Total banner ----
     p_space3 = doc.add_paragraph()
@@ -576,7 +721,7 @@ def save_and_generate_word_document(
     p.paragraph_format.space_before = Pt(0)
     p.paragraph_format.space_after = Pt(0)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    formula_suffix = f" ({' + '.join(table_letters)})" if table_letters else ""
+    formula_suffix = " (Section A + Section B)" if (recurring_tables and non_recurring_tables) else ""
     r1 = p.add_run(f"Grand Total Estimated Cost{formula_suffix}:  ")
     r1.font.bold = True
     run_size(r1, 9.5)

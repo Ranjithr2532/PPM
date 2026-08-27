@@ -177,9 +177,6 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
     const updateRow = useCallback((index, key, value) => {
         const next = [...rows];
         next[index] = { ...next[index], [key]: value };
-        if (index === rows.length - 1 && value !== "") {
-            next.push(emptyRow(columns, headerName));
-        }
         onChange({ ...headerItem, rows: next });
 
         setActiveCell(prev => {
@@ -206,9 +203,6 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
         }
         const newAmount = computeRowAmount(updatedCb);
         next[index] = { ...next[index], "Cost Breakup": updatedCb, "Total Amount": newAmount };
-        if (index === rows.length - 1) {
-            next.push(emptyRow(columns, headerName));
-        }
         onChange({ ...headerItem, rows: next });
 
         setActiveCell(prev => {
@@ -268,43 +262,37 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
             const colIdx = cols.indexOf(colKey);
 
             if (e.key === "Tab") {
-                e.preventDefault();
                 if (colIdx < cols.length - 1) {
+                    e.preventDefault();
                     focusCell(rowIdx, cols[colIdx + 1]);
                 } else if (rowIdx < rows.length - 1) {
+                    e.preventDefault();
                     focusCell(rowIdx + 1, cols[0]);
-                } else {
-                    addRow();
                 }
             } else { // Enter
-                e.preventDefault();
                 if (rowIdx < rows.length - 1) {
+                    e.preventDefault();
                     focusCell(rowIdx + 1, colKey);
-                } else {
-                    addRow();
                 }
             }
         } else {
             const colIdx = columns.indexOf(colKey);
             if (e.key === "Tab") {
-                e.preventDefault();
                 if (colIdx < columns.length - 1) {
+                    e.preventDefault();
                     focusCell(rowIdx, columns[colIdx + 1]);
                 } else if (rowIdx < rows.length - 1) {
+                    e.preventDefault();
                     focusCell(rowIdx + 1, columns[0]);
-                } else {
-                    addRow();
                 }
             } else { // Enter
-                e.preventDefault();
                 if (rowIdx < rows.length - 1) {
+                    e.preventDefault();
                     focusCell(rowIdx + 1, colKey);
-                } else {
-                    addRow();
                 }
             }
         }
-    }, [headerName, rows, columns, addRow, focusCell]);
+    }, [headerName, rows, columns, focusCell]);
 
     // ── Role selection & rate autofill ──
     const handleRoleSelect = useCallback((rowIdx, value, option) => {
@@ -331,9 +319,6 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
 
         const updatedCb = { ...currentCb, rate: newRate };
         next[rowIdx] = { ...next[rowIdx], "Role": value, "Cost Breakup": updatedCb, "Total Amount": computeRowAmount(updatedCb) };
-        if (rowIdx === rows.length - 1 && value !== "") {
-            next.push(emptyRow(columns, headerName));
-        }
         onChange({ ...headerItem, rows: next });
 
         setActiveCell(prev => {
@@ -349,9 +334,6 @@ function HeaderRowsEditor({ headerItem, onChange, onDeleteHeader, officialRates 
         if (!matched) setRateToggleRow(prev => { const n = { ...prev }; delete n[rowIdx]; return n; });
         const next = [...rows];
         next[rowIdx] = { ...next[rowIdx], "Role": value };
-        if (rowIdx === rows.length - 1 && value !== "") {
-            next.push(emptyRow(columns, headerName));
-        }
         onChange({ ...headerItem, rows: next });
 
         setActiveCell(prev => {
@@ -1104,18 +1086,35 @@ function DocxPreview({ headers, title, createdBy }) {
             return {
                 letter,
                 name: h.header_name,
-                subtotal
+                subtotal,
+                category: h.category || "recurring"
             };
         });
     }, [headers]);
+
+    const recurringTotals = useMemo(() => sectionTotals.filter(s => s.category === "recurring"), [sectionTotals]);
+    const nonRecurringTotals = useMemo(() => sectionTotals.filter(s => s.category !== "recurring"), [sectionTotals]);
+
+    const recurringSubtotal = useMemo(() => recurringTotals.reduce((sum, s) => sum + s.subtotal, 0), [recurringTotals]);
+    const nonRecurringSubtotal = useMemo(() => nonRecurringTotals.reduce((sum, s) => sum + s.subtotal, 0), [nonRecurringTotals]);
 
     const grandTotal = useMemo(() => {
         return sectionTotals.reduce((acc, s) => acc + s.subtotal, 0);
     }, [sectionTotals]);
 
-    const tableLetters = useMemo(() => {
-        return sectionTotals.map(s => s.letter).join(" + ");
-    }, [sectionTotals]);
+    const recurringTables = useMemo(() => {
+        return docTables.filter((t, idx) => {
+            const origHeader = headers[idx] || {};
+            return (origHeader.category || "recurring") === "recurring";
+        });
+    }, [docTables, headers]);
+
+    const nonRecurringTables = useMemo(() => {
+        return docTables.filter((t, idx) => {
+            const origHeader = headers[idx] || {};
+            return (origHeader.category || "recurring") !== "recurring";
+        });
+    }, [docTables, headers]);
 
     const formattedDate = useMemo(() => {
         const d = new Date();
@@ -1124,6 +1123,10 @@ function DocxPreview({ headers, title, createdBy }) {
         const yyyy = d.getFullYear();
         return `${dd}-${mm}-${yyyy}`;
     }, []);
+
+    const formulaSuffix = useMemo(() => {
+        return recurringTotals.length > 0 && nonRecurringTotals.length > 0 ? " (Section A + Section B)" : "";
+    }, [recurringTotals, nonRecurringTotals]);
 
     return (
         <div
@@ -1174,20 +1177,51 @@ function DocxPreview({ headers, title, createdBy }) {
                     <thead>
                         <tr className="bg-[#F7F7F7]">
                             <th className="border-b-2 border-[#222222] px-2 py-1 text-left font-bold text-[#222222] w-16">Ref</th>
-                            <th className="border-b-2 border-[#222222] px-2 py-1 text-left font-bold text-[#222222]">Cost Section Category</th>
+                            <th className="border-b-2 border-[#222222] px-2 py-1 text-left font-bold text-[#222222]">Cost Section / Table Name</th>
                             <th className="border-b-2 border-[#222222] px-2 py-1 text-right font-bold text-[#222222] w-28">Subtotal (₹)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {sectionTotals.map((s, idx) => (
-                            <tr key={idx}>
-                                <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">Section {s.letter}</td>
-                                <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">{s.name}</td>
-                                <td className="border-b border-[#CFCFCF] px-2 py-1 text-right font-medium">
-                                    {formatIndianCurrency(s.subtotal, true)}
-                                </td>
-                            </tr>
-                        ))}
+                        {recurringTotals.length > 0 && (
+                            <>
+                                <tr className="bg-[#F7F7F7] font-bold">
+                                    <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">Section A</td>
+                                    <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">Recurring Expenses (Total)</td>
+                                    <td className="border-b border-[#CFCFCF] px-2 py-1 text-right">
+                                        {formatIndianCurrency(recurringSubtotal, true)}
+                                    </td>
+                                </tr>
+                                {recurringTotals.map((s, idx) => (
+                                    <tr key={`rec-${idx}`}>
+                                        <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">A{idx + 1}</td>
+                                        <td className="border-b border-[#CFCFCF] px-2 py-1 text-left" style={{ paddingLeft: 12 }}>• {s.name}</td>
+                                        <td className="border-b border-[#CFCFCF] px-2 py-1 text-right">
+                                            {formatIndianCurrency(s.subtotal, true)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </>
+                        )}
+                        {nonRecurringTotals.length > 0 && (
+                            <>
+                                <tr className="bg-[#F7F7F7] font-bold">
+                                    <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">Section B</td>
+                                    <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">Non-Recurring Expenses (Total)</td>
+                                    <td className="border-b border-[#CFCFCF] px-2 py-1 text-right">
+                                        {formatIndianCurrency(nonRecurringSubtotal, true)}
+                                    </td>
+                                </tr>
+                                {nonRecurringTotals.map((s, idx) => (
+                                    <tr key={`non-rec-${idx}`}>
+                                        <td className="border-b border-[#CFCFCF] px-2 py-1 text-left">B{idx + 1}</td>
+                                        <td className="border-b border-[#CFCFCF] px-2 py-1 text-left" style={{ paddingLeft: 12 }}>• {s.name}</td>
+                                        <td className="border-b border-[#CFCFCF] px-2 py-1 text-right">
+                                            {formatIndianCurrency(s.subtotal, true)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </>
+                        )}
                         <tr className="bg-[#F7F7F7] font-bold">
                             <td className="border-t border-b-2 border-[#222222] px-2 py-1 text-left"></td>
                             <td className="border-t border-b-2 border-[#222222] px-2 py-1 text-left font-bold">Grand Total</td>
@@ -1205,60 +1239,122 @@ function DocxPreview({ headers, title, createdBy }) {
 
                 {docTables.length === 0 ? (
                     <div className="text-slate-400 text-center py-4 italic">No sections configured</div>
-                ) : docTables.map((t, idx) => {
-                    const letter = String.fromCharCode(65 + idx);
-                    return (
-                        <div key={idx} className="mb-4">
-                            <h3 className="font-bold text-[9px] text-[#7A2E2E] mt-2.5 mb-1.5">
-                                Section {letter} — {t.title}
-                            </h3>
-                            <table className="w-full border-collapse text-[8px] mb-1">
-                                <thead>
-                                    <tr className="bg-[#F7F7F7]">
-                                        {t.headers.map((h, hi) => {
-                                            const h_str = h.trim();
-                                            let align = "text-left";
-                                            if (h_str === "Basis" || h_str === "People") align = "text-center";
-                                            else if (h_str.includes("Total") || h_str.includes("Amount") || hi === t.headers.length - 1) align = "text-right";
+                ) : (
+                    <>
+                        {recurringTables.length > 0 && (
+                            <div className="mb-4">
+                                <h3 className="font-bold text-[9.5px] text-[#7A2E2E] mt-3 mb-2" style={{ textDecoration: "underline" }}>
+                                    Section A — Recurring Expenses
+                                </h3>
+                                {recurringTables.map((t, idx) => (
+                                    <div key={`rec-table-${idx}`} className="mb-3">
+                                        <h4 className="font-bold text-[8.5px] text-[#222222] mt-2 mb-1.5">
+                                            A{idx + 1}. {t.title}
+                                        </h4>
+                                        <table className="w-full border-collapse text-[8px] mb-1">
+                                            <thead>
+                                                <tr className="bg-[#F7F7F7]">
+                                                    {t.headers.map((h, hi) => {
+                                                        const h_str = h.trim();
+                                                        let align = "text-left";
+                                                        if (h_str === "Basis" || h_str === "People") align = "text-center";
+                                                        else if (h_str.includes("Total") || h_str.includes("Amount") || hi === t.headers.length - 1) align = "text-right";
 
-                                            return (
-                                                <th key={hi} className={`border-b-2 border-[#222222] px-2 py-1 font-bold text-[#222222] uppercase ${align}`}>
-                                                    {h}
-                                                </th>
-                                            );
-                                        })}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {t.rows.map((row, ri) => {
-                                        const isTotalRow = ri === t.rows.length - 1 && (t.title === "Manpower" || t.headers.includes("Total Amount"));
-                                        return (
-                                            <tr key={ri} className={isTotalRow ? "font-bold bg-[#F7F7F7]" : ""}>
-                                                {row.map((cell, ci) => {
-                                                    const h_str = t.headers[ci].trim();
-                                                    let align = "text-left";
-                                                    if (h_str === "Basis" || h_str === "People") align = "text-center";
-                                                    else if (h_str.includes("Total") || h_str.includes("Amount") || ci === t.headers.length - 1) align = "text-right";
-
+                                                        return (
+                                                            <th key={hi} className={`border-b-2 border-[#222222] px-2 py-1 font-bold text-[#222222] uppercase ${align}`}>
+                                                                {h}
+                                                            </th>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {t.rows.map((row, ri) => {
+                                                    const isTotalRow = ri === t.rows.length - 1 && (t.title === "Manpower" || t.headers.includes("Total Amount"));
                                                     return (
-                                                        <td key={ci} className={`border-b border-[#CFCFCF] px-2 py-1 text-[#222222] ${isTotalRow ? "border-t border-b-2 border-[#222222]" : ""} ${align}`}>
-                                                            {cell}
-                                                        </td>
+                                                        <tr key={ri} className={isTotalRow ? "font-bold bg-[#F7F7F7]" : ""}>
+                                                            {row.map((cell, ci) => {
+                                                                const h_str = t.headers[ci].trim();
+                                                                let align = "text-left";
+                                                                if (h_str === "Basis" || h_str === "People") align = "text-center";
+                                                                else if (h_str.includes("Total") || h_str.includes("Amount") || ci === t.headers.length - 1) align = "text-right";
+
+                                                                return (
+                                                                    <td key={ci} className={`border-b border-[#CFCFCF] px-2 py-1 text-[#222222] ${isTotalRow ? "border-t border-b-2 border-[#222222]" : ""} ${align}`}>
+                                                                        {cell}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
                                                     );
                                                 })}
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    );
-                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {nonRecurringTables.length > 0 && (
+                            <div className="mb-4">
+                                <h3 className="font-bold text-[9.5px] text-[#7A2E2E] mt-3 mb-2" style={{ textDecoration: "underline" }}>
+                                    Section B — Non-Recurring Expenses
+                                </h3>
+                                {nonRecurringTables.map((t, idx) => (
+                                    <div key={`nonrec-table-${idx}`} className="mb-3">
+                                        <h4 className="font-bold text-[8.5px] text-[#222222] mt-2 mb-1.5">
+                                            B{idx + 1}. {t.title}
+                                        </h4>
+                                        <table className="w-full border-collapse text-[8px] mb-1">
+                                            <thead>
+                                                <tr className="bg-[#F7F7F7]">
+                                                    {t.headers.map((h, hi) => {
+                                                        const h_str = h.trim();
+                                                        let align = "text-left";
+                                                        if (h_str === "Basis" || h_str === "People") align = "text-center";
+                                                        else if (h_str.includes("Total") || h_str.includes("Amount") || hi === t.headers.length - 1) align = "text-right";
+
+                                                        return (
+                                                            <th key={hi} className={`border-b-2 border-[#222222] px-2 py-1 font-bold text-[#222222] uppercase ${align}`}>
+                                                                {h}
+                                                            </th>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {t.rows.map((row, ri) => {
+                                                    const isTotalRow = ri === t.rows.length - 1 && (t.title === "Manpower" || t.headers.includes("Total Amount"));
+                                                    return (
+                                                        <tr key={ri} className={isTotalRow ? "font-bold bg-[#F7F7F7]" : ""}>
+                                                            {row.map((cell, ci) => {
+                                                                const h_str = t.headers[ci].trim();
+                                                                let align = "text-left";
+                                                                if (h_str === "Basis" || h_str === "People") align = "text-center";
+                                                                else if (h_str.includes("Total") || h_str.includes("Amount") || ci === t.headers.length - 1) align = "text-right";
+
+                                                                return (
+                                                                    <td key={ci} className={`border-b border-[#CFCFCF] px-2 py-1 text-[#222222] ${isTotalRow ? "border-t border-b-2 border-[#222222]" : ""} ${align}`}>
+                                                                        {cell}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
 
                 {/* Grand Total banner */}
                 <div className="mt-5 mb-5 p-2 bg-[#F7F7F7]" style={{ borderTop: "1px solid #222222", borderBottom: "1px solid #222222" }}>
                     <span className="font-bold text-[8px] text-[#222222]">
-                        Grand Total Estimated Cost{tableLetters ? ` (${tableLetters})` : ""}:
+                        Grand Total Estimated Cost{formulaSuffix}:
                     </span>
                     <span className="font-bold text-[9px] text-[#7A2E2E] ml-2 font-mono">
                         ₹ {formatIndianCurrency(grandTotal, true)}
@@ -1293,6 +1389,7 @@ export function CostEstimationModal({
     initialHeaders = null,
 }) {
     const [headers, setHeaders] = useState([]);
+    const [activeTab, setActiveTab] = useState("recurring");
     const [generating, setGenerating] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [currentVersion, setCurrentVersion] = useState(null);
@@ -1377,13 +1474,20 @@ export function CostEstimationModal({
             setAddSectionName("");
             setRatesPanelOpen(false);
             setFocusedRow(null);
+            setActiveTab("recurring");
             return;
         }
 
         if (initialHeaders && Array.isArray(initialHeaders) && initialHeaders.length > 0) {
-            setHeaders(initialHeaders);
+            const mapped = initialHeaders.map(h => ({
+                ...h,
+                category: h.category || (h.header_name === MANPOWER_HEADER ? "recurring" : "recurring")
+            }));
+            setHeaders(mapped);
         } else {
-            setHeaders([{ header_name: MANPOWER_HEADER, columns: MANPOWER_COLUMNS, rows: [] }]);
+            setHeaders([
+                { header_name: MANPOWER_HEADER, columns: MANPOWER_COLUMNS, rows: [], category: "recurring" }
+            ]);
         }
         setCurrentVersion(null);
         setCollapsedSections(new Set());
@@ -1392,16 +1496,19 @@ export function CostEstimationModal({
     const closeModal = () => onClose();
 
     const handleResetWorkspace = () => {
-        setHeaders([{ header_name: MANPOWER_HEADER, columns: MANPOWER_COLUMNS, rows: [] }]);
+        setHeaders([
+            { header_name: MANPOWER_HEADER, columns: MANPOWER_COLUMNS, rows: [], category: "recurring" }
+        ]);
         setCurrentVersion(null);
         setCollapsedSections(new Set());
         setAddSectionExpanded(false);
         setFocusedRow(null);
+        setActiveTab("recurring");
         message.success("Workspace reset to initial state");
     };
 
-    const handleHeaderChange = (index, updated) => {
-        setHeaders(prev => prev.map((h, i) => i === index ? updated : h));
+    const handleHeaderChange = (headerName, updated) => {
+        setHeaders(prev => prev.map(h => h.header_name === headerName ? updated : h));
     };
 
     const handleRemoveHeader = (headerName) => {
@@ -1421,7 +1528,7 @@ export function CostEstimationModal({
         const name = addSectionName.trim();
         if (!name) { message.warning("Enter a section name"); return; }
         if (headers.some(h => h.header_name === name)) { message.warning("A section with this name already exists"); return; }
-        const newSection = { header_name: name, columns: DEFAULT_CUSTOM_COLUMNS, rows: [] };
+        const newSection = { header_name: name, columns: DEFAULT_CUSTOM_COLUMNS, rows: [], category: activeTab };
         setHeaders(prev => [...prev, newSection]);
         setAddSectionExpanded(false);
         setAddSectionName("");
@@ -1493,6 +1600,7 @@ export function CostEstimationModal({
                 const updatedRow = { ...nextRows[targetIdx], "Cost Breakup": updatedCb, "Total Amount": newAmount };
                 if (designation) updatedRow["Role"] = designation;
                 nextRows[targetIdx] = updatedRow;
+                setFocusedRow(null);
                 message.success(`₹${numRate.toLocaleString("en-IN")} applied to row ${targetIdx + 1}`);
             } else {
                 const newCb = { type: "hourly", rate: numRate, hours: 0, days: 0, months: 0, quantity: 1 };
@@ -1688,13 +1796,42 @@ export function CostEstimationModal({
                         </div>
                     </div>
 
-
+                    {/* ── Category Segmented Tabs ── */}
+                    <div className="px-8 py-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 select-none">
+                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab("recurring")}
+                                className={`px-5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border-none ${
+                                    activeTab === "recurring"
+                                        ? "bg-white text-blue-600 shadow-xs"
+                                        : "text-slate-600 hover:text-slate-900 bg-transparent"
+                                }`}
+                            >
+                                Recurring Costs
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab("non-recurring")}
+                                className={`px-5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border-none ${
+                                    activeTab === "non-recurring"
+                                        ? "bg-white text-blue-600 shadow-xs"
+                                        : "text-slate-600 hover:text-slate-900 bg-transparent"
+                                }`}
+                            >
+                                Non-Recurring Costs
+                            </button>
+                        </div>
+                        <div className="text-xs text-slate-400 font-medium">
+                            Switch tabs to configure recurring vs one-time costs
+                        </div>
+                    </div>
 
                     {/* ── Body: sidebar + scroll area + rates panel ── */}
                     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-                        {/* Jump-to-section sidebar (only when 2+ sections) */}
-                        {headers.length >= 2 && (
+                        {/* Jump-to-section sidebar (only when 2+ sections in current category) */}
+                        {headers.filter(h => (h.category || "recurring") === activeTab).length >= 2 && (
                             <div
                                 style={{
                                     width: 158,
@@ -1708,14 +1845,14 @@ export function CostEstimationModal({
                                 <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider px-2 mb-3">
                                     Sections
                                 </div>
-                                {headers.map(h => {
+                                {headers.filter(h => (h.category || "recurring") === activeTab).map(h => {
                                     const subtotal = getSectionSubtotal(h);
                                     return (
                                         <button
                                             key={h.header_name}
                                             type="button"
                                             onClick={() => scrollToSection(h.header_name)}
-                                            className="w-full text-left px-2.5 py-2 text-xs font-semibold text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all cursor-pointer mb-0.5"
+                                            className="w-full text-left px-2.5 py-2 text-xs font-semibold text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all cursor-pointer mb-0.5 border-none bg-transparent"
                                             title={h.header_name}
                                         >
                                             <div className="truncate font-bold">{h.header_name}</div>
@@ -1734,7 +1871,7 @@ export function CostEstimationModal({
                             id="cost-studio-scroll"
                         >
                             <div className="space-y-5">
-                                {headers.map((h, idx) => {
+                                {headers.filter(h => (h.category || "recurring") === activeTab).map((h) => {
                                     const isCollapsed = collapsedSections.has(h.header_name);
                                     const isManpower = h.header_name === MANPOWER_HEADER;
                                     const subtotal = getSectionSubtotal(h);
@@ -1802,7 +1939,7 @@ export function CostEstimationModal({
                                                 <div className="p-5">
                                                     <HeaderRowsEditor
                                                         headerItem={h}
-                                                        onChange={(updated) => handleHeaderChange(idx, updated)}
+                                                        onChange={(updated) => handleHeaderChange(h.header_name, updated)}
                                                         onDeleteHeader={handleRemoveHeader}
                                                         officialRates={officialRates}
                                                         onCellFocused={(rowIndex, colKey, val) => {
