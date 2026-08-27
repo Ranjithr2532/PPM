@@ -182,6 +182,7 @@ export default function DocumentGenerate({
 
     // Dynamic state for Internal Cost Estimation Tables
     const [internalCostTables, setInternalCostTables] = useState([]);
+    const [rawStudioHeaders, setRawStudioHeaders] = useState([]);
     const [costModalOpen, setCostModalOpen] = useState(false);
 
     // AI Email Extraction State
@@ -993,6 +994,32 @@ export default function DocumentGenerate({
             const result = await response.json();
             const newProjectId = result?.proposal_id;
 
+            // Save the internal cost estimation dynamic tables to database if we have tables
+            if (newProjectId && rawStudioHeaders && rawStudioHeaders.length > 0) {
+                try {
+                    const token = localStorage.getItem('token');
+                    await axios.post(
+                        `${API_BASE_URL}/dynamic-tables/${newProjectId}/generate-word`,
+                        {
+                            title: values.subject || "Internal Cost Estimation",
+                            created_by: uName,
+                            tables: rawStudioHeaders,
+                        },
+                        {
+                            headers: {
+                                accept: 'application/json',
+                                'Content-Type': 'application/json',
+                                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                            },
+                            responseType: 'blob',
+                        }
+                    );
+                    console.log("Successfully saved cost estimation tables to DB under ID:", newProjectId);
+                } catch (dbErr) {
+                    console.error("Failed to save cost estimation tables:", dbErr);
+                }
+            }
+
             // 4. Upload generated docx + all attachments to /documents/
             if (newProjectId) {
                 try {
@@ -1694,10 +1721,68 @@ export default function DocumentGenerate({
                                 </div>
                             </div>
 
-                            {/* Section 5: Signatories & Terms */}
+                            {/* Section 5: Internal Cost Estimation */}
                             <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>5. Terms & Signatories</span>
+                                    <span>5. Internal Cost Estimation</span>
+                                    <Button
+                                        size="small"
+                                        icon={<EditOutlined />}
+                                        onClick={() => setCostModalOpen(true)}
+                                        className="rounded-none bg-blue-600 hover:bg-blue-700 text-white border-none text-[10px] font-bold h-6"
+                                    >
+                                        Open Cost Estimation Sheet
+                                    </Button>
+                                </div>
+                                <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
+                                    Configure internal costing sheet, manpower, and expenses (currently not saved to database).
+                                </div>
+                                <div className="p-3">
+                                    {internalCostTables.length === 0 ? (
+                                        <div className="text-center py-4 text-xs text-slate-400 border border-dashed border-slate-300">
+                                            No cost estimation applied yet. Click <strong>Open Cost Estimation Sheet</strong> to configure.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {internalCostTables.map((tbl, idx) => (
+                                                <div key={idx} className="border border-slate-200 p-2.5 bg-slate-50">
+                                                    <div className="font-bold text-xs text-slate-800 mb-1">{tbl.title || `Table ${idx + 1}`}</div>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-left text-[11px] border-collapse bg-white">
+                                                            <thead>
+                                                                <tr className="border-b border-slate-300 bg-slate-100 text-slate-700">
+                                                                    {tbl.headers.map((h, hIdx) => (
+                                                                        <th key={hIdx} className="p-1.5 font-bold border-r border-slate-200">{h}</th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {tbl.rows.map((r, rIdx) => (
+                                                                    <tr key={rIdx} className="border-b border-slate-200 hover:bg-slate-50">
+                                                                        {r.map((cell, cIdx) => (
+                                                                            <td key={cIdx} className="p-1.5 text-slate-600 border-r border-slate-200">{cell}</td>
+                                                                        ))}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {grandInternalTotal > 0 && (
+                                                <div className="text-right font-bold text-xs text-slate-900 pt-2 border-t border-slate-200">
+                                                    Grand Internal Total: <span className="text-blue-700 font-mono">₹{grandInternalTotal.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Section 6: Signatories & Terms */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>6. Terms & Signatories</span>
                                     <Button
                                         size="small"
                                         icon={<PlusOutlined />}
@@ -1788,14 +1873,14 @@ export default function DocumentGenerate({
                                 </div>
                             </div>
 
-                            {/* SECTION 6: PROPOSAL SUBMISSION & MANUAL ENTRY DETAILS */}
+                            {/* SECTION 7: PROPOSAL SUBMISSION & MANUAL ENTRY DETAILS */}
                             <div className="border-2 border-blue-600 bg-white mb-6 shadow-[4px_4px_0px_0px_rgba(37,99,235,1)]">
                                 <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-blue-900 text-white p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <CheckCircleOutlined className="text-lg text-emerald-400" />
                                         <div>
                                             <span className="font-extrabold text-sm uppercase tracking-wider block">
-                                                6. Proposal Submission & Manual Entry Details
+                                                7. Proposal Submission & Manual Entry Details
                                             </span>
                                             <span className="text-[11px] text-blue-200 font-normal">
                                                 These fields are automatically synchronized with Document Studio. Complete and verify below before final submission.
@@ -2157,6 +2242,22 @@ export default function DocumentGenerate({
                     </Row>
                 </div>
             </Form>
+
+            <CostEstimationModal
+                open={costModalOpen}
+                onClose={() => setCostModalOpen(false)}
+                projectId={null}
+                hideGenerateWord={true}
+                initialHeaders={rawStudioHeaders}
+                onApply={(studioHeaders) => {
+                    setRawStudioHeaders(studioHeaders);
+                    const formattedTables = convertHeadersToDocumentTables(studioHeaders);
+                    if (formattedTables && formattedTables.length > 0) {
+                        setInternalCostTables(formattedTables);
+                    }
+                }}
+                title={formValues.subject || "Internal Cost Estimation"}
+            />
         </div>
     );
 }
