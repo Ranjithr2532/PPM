@@ -449,4 +449,27 @@ class ISODocumentList(Base):
     document_no = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, server_default="true", nullable=False)
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+
+
+# -------------------------------------------------
+# ISO DOCUMENTS TABLE (SAVED AND UPLOADED ISO FILES)
+# -------------------------------------------------
+class ISODocument(Base):
+    __tablename__ = "iso_documents"
+
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    doc_type = Column(String(50), nullable=False, index=True)
+    document_no = Column(String(100), nullable=False, index=True)
+    proposal_id = Column(BigInteger, ForeignKey("proposals.id", ondelete="SET NULL"), nullable=True, index=True)
+    submission_id = Column(BigInteger, ForeignKey("iso_submissions.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_type = Column(String(50), nullable=True)
+    file_size = Column(BigInteger, nullable=True)
+    is_uploaded = Column(Boolean, default=True, server_default="true", nullable=False)
+
+    uploaded_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
 

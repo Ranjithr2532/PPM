@@ -40,6 +40,54 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
         db.add(pp_doc)
         db.commit()
 
+    existing_053 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "053").first()
+    if not existing_053:
+        plan_doc = ISODocumentList(
+            name="Project Plan",
+            initial="PJ",
+            code="CMTI-SMC-QMS-053/Rev00",
+            document_no="053",
+            is_active=True,
+        )
+        db.add(plan_doc)
+        db.commit()
+
+    existing_055 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "055").first()
+    if not existing_055:
+        sqap_doc = ISODocumentList(
+            name="Software Quality Assurance Plan",
+            initial="SQ",
+            code="CMTI-SMC-QMS-055/Rev00",
+            document_no="055",
+            is_active=True,
+        )
+        db.add(sqap_doc)
+        db.commit()
+
+    existing_063 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "063").first()
+    if not existing_063:
+        bom_doc = ISODocumentList(
+            name="Bill of Materials",
+            initial="BM",
+            code="CMTI-SMC-QMS-063/Rev00",
+            document_no="063",
+            is_active=True,
+        )
+        db.add(bom_doc)
+        db.commit()
+
+    existing_064 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "064").first()
+    if not existing_064:
+        dwg_doc = ISODocumentList(
+            name="Drawing Issue Register",
+            initial="DR",
+            code="CMTI-SMC-QMS-064/Rev00",
+            document_no="064",
+            is_active=True,
+        )
+        db.add(dwg_doc)
+        db.commit()
+
     query = db.query(ISODocumentList)
     if is_active is not None:
         query = query.filter(ISODocumentList.is_active == is_active)

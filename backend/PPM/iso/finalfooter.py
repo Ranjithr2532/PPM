@@ -131,9 +131,11 @@ def build_signature_table_element(
     group_name: str = "",
     doc_code: str = "072"
 ):
-    """Internal helper to construct the Prepared by / Approved by table inside any container (Document or Footer)."""
     # Main Footer Table (3 rows x 4 cols)
-    table = container.add_table(rows=3, cols=4)
+    if hasattr(container, "is_linked_to_previous") or container.__class__.__name__ in ("_Footer", "_Header"):
+        table = container.add_table(3, 4, Inches(6.27))
+    else:
+        table = container.add_table(rows=3, cols=4)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
 
@@ -273,24 +275,42 @@ def add_footer_table(
     else:
         container = target
 
-    # Setup standard section footer text (repeats cleanly on every page bottom)
-    if section:
+    # 1. Resolve exact revision text (always full CMTI code)
+    code_candidate = (doc_code or "").strip()
+    group_candidate = (group_name or "").strip()
+
+    if code_candidate.upper().startswith("CMTI"):
+        rev_text = code_candidate
+    elif group_candidate.upper().startswith("CMTI"):
+        rev_text = group_candidate
+    elif code_candidate and "/" in code_candidate:
+        rev_text = code_candidate
+    else:
+        group_str = group_candidate.upper() if group_candidate else ""
+        if group_str.startswith("C-") or group_str.startswith("G-"):
+            group_str = group_str[2:]
+        
+        group_part = f"-{group_str}" if group_str else ""
+        code_str = f"-{code_candidate}" if code_candidate else ""
+        rev_text = f"CMTI-QMS{group_part}{code_str}/Rev00"
+
+    if not in_body and section:
         footer = section.footer
-        footer.paragraphs[0].text = ""
-        footer.paragraphs[0].paragraph_format.space_before = Pt(0)
-        footer.paragraphs[0].paragraph_format.space_after = Pt(0)
-        footer.paragraphs[0].paragraph_format.line_spacing = 1.0
 
-        group_name_clean = (group_name or "").strip()
-        if group_name_clean.upper().startswith("CMTI-QMS"):
-            rev_text = group_name_clean
-        elif doc_code and str(doc_code).upper().startswith("CMTI"):
-            rev_text = doc_code
-        else:
-            group_str = group_name_clean.upper() if group_name_clean else "      "
-            rev_text = f"CMTI-QMS-{group_str}-{doc_code}/Rev00"
+        # Step 1: Add the signature table FIRST into the footer
+        build_signature_table_element(
+            container=footer,
+            prepared_name=prepared_name,
+            approved_name=approved_name,
+            group_name=group_name,
+            doc_code=doc_code
+        )
 
-        rev_para = footer.paragraphs[0]
+        # Step 2: Add the ISO revision text paragraph AFTER the table
+        rev_para = footer.add_paragraph()
+        rev_para.paragraph_format.space_before = Pt(4)
+        rev_para.paragraph_format.space_after = Pt(0)
+        rev_para.paragraph_format.line_spacing = 1.0
         rev_para.text = f"ISO 9001-2015                                                                                     {rev_text}"
         rev_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
         if rev_para.runs:
@@ -298,8 +318,17 @@ def add_footer_table(
             run_rev.font.name = "Arial"
             run_rev.font.size = Pt(8.5)
 
-    # Build Prepared by / Approved by table inside selected container
-    if container:
+        # Step 3: Remove the initial default empty paragraph that was before the table
+        if footer.paragraphs and len(footer.paragraphs) > 1:
+            first_p = footer.paragraphs[0]
+            if not first_p.text.strip():
+                try:
+                    first_p._element.getparent().remove(first_p._element)
+                except Exception:
+                    pass
+
+    elif container:
+        # If in body (e.g. multi-page proposals/plans)
         build_signature_table_element(
             container=container,
             prepared_name=prepared_name,
@@ -307,6 +336,18 @@ def add_footer_table(
             group_name=group_name,
             doc_code=doc_code
         )
+
+        if hasattr(container, "add_paragraph"):
+            rev_para = container.add_paragraph()
+            rev_para.paragraph_format.space_before = Pt(4)
+            rev_para.paragraph_format.space_after = Pt(0)
+            rev_para.paragraph_format.line_spacing = 1.0
+            rev_para.text = f"ISO 9001-2015                                                                                     {rev_text}"
+            rev_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            if rev_para.runs:
+                run_rev = rev_para.runs[0]
+                run_rev.font.name = "Arial"
+                run_rev.font.size = Pt(8.5)
 
 
 def create_iso_footer_document(

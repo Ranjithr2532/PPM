@@ -33,11 +33,11 @@ class ContractReviewItemRequest(BaseModel):
 
 class ContractReviewRequest(BaseModel):
     project_id: Optional[int] = None
-    quote_no: str = "PPM/SMPM/021/2024-25(01)"
-    quote_date: str = "09.10.2024"
-    po_number: str = "GEMC-511687719961275"
-    po_date: str = "19-11-2024"
-    customer_name: str = "Bharath Electronics Limited"
+    quote_no: str = ""
+    quote_date: str = ""
+    po_number: str = ""
+    po_date: str = ""
+    customer_name: str = ""
     select_type: str = "Quotation"  # "Quotation" | "Tender" | "Proposal"
     centre_dept: str = ""  # Logged-in user's centre
     group_name: str = ""  # Logged-in user's group name
@@ -220,11 +220,11 @@ def add_header_type_selection(cell, selected_type="Quotation"):
 # ============================================================
 
 def create_contract_review_document(
-    quote_no: str = "PPM/SMPM/021/2024-25(01)",
-    quote_date: str = "09.10.2024",
-    po_number: str = "GEMC-511687719961275",
-    po_date: str = "19-11-2024",
-    customer_name: str = "Bharath Electronics Limited",
+    quote_no: str = "",
+    quote_date: str = "",
+    po_number: str = "",
+    po_date: str = "",
+    customer_name: str = "",
     select_type: str = "Quotation",
     centre_dept: str = "",
     group_name: str = "",
@@ -406,11 +406,11 @@ def create_contract_review_document(
 
 
 def generate_contract_review_bytes(
-    quote_no: str = "PPM/SMPM/021/2024-25(01)",
-    quote_date: str = "09.10.2024",
-    po_number: str = "GEMC-511687719961275",
-    po_date: str = "19-11-2024",
-    customer_name: str = "Bharath Electronics Limited",
+    quote_no: str = "",
+    quote_date: str = "",
+    po_number: str = "",
+    po_date: str = "",
+    customer_name: str = "",
     select_type: str = "Quotation",
     centre_dept: str = "",
     group_name: str = "",
@@ -509,26 +509,19 @@ async def generate_contract_review_doc_get(
         else:
             db_select_type = "Quotation"
 
-        # Overwrite parameter values only if they are empty or default
-        if not quote_no or quote_no == "PPM/SMPM/021/2024-25(01)":
+        # Overwrite parameter values if empty
+        if not quote_no:
             quote_no = db_quote_no
-        if not quote_date or quote_date == "09.10.2024":
+        if not quote_date:
             quote_date = db_quote_date
-        if not po_number or po_number == "GEMC-511687719961275":
+        if not po_number:
             po_number = db_po_number
-        if not po_date or po_date == "19-11-2024":
+        if not po_date:
             po_date = db_po_date
-        if not customer_name or customer_name in ("Bharath Electronics Limited", "Bharat Electronics Limited"):
+        if not customer_name:
             customer_name = db_customer_name
-        if not select_type or select_type == "Quotation":
+        if not select_type:
             select_type = db_select_type
-    else:
-        # Fallbacks to defaults if not filled
-        if not quote_no: quote_no = "PPM/SMPM/021/2024-25(01)"
-        if not quote_date: quote_date = "09.10.2024"
-        if not po_number: po_number = "GEMC-511687719961275"
-        if not po_date: po_date = "19-11-2024"
-        if not customer_name: customer_name = "Bharath Electronics Limited"
 
     # Construct review items list from query params
     review_items = [
@@ -622,18 +615,18 @@ async def generate_contract_review_doc_post(
         else:
             db_select_type = "Quotation"
 
-        # Overwrite parameter values only if they are empty or default
-        if not quote_no or quote_no == "PPM/SMPM/021/2024-25(01)":
+        # Overwrite parameter values if empty
+        if not quote_no:
             quote_no = db_quote_no
-        if not quote_date or quote_date == "09.10.2024":
+        if not quote_date:
             quote_date = db_quote_date
-        if not po_number or po_number == "GEMC-511687719961275":
+        if not po_number:
             po_number = db_po_number
-        if not po_date or po_date == "19-11-2024":
+        if not po_date:
             po_date = db_po_date
-        if not customer_name or customer_name in ("Bharath Electronics Limited", "Bharat Electronics Limited"):
+        if not customer_name:
             customer_name = db_customer_name
-        if not select_type or select_type == "Quotation":
+        if not select_type:
             select_type = db_select_type
 
     buffer = generate_contract_review_bytes(

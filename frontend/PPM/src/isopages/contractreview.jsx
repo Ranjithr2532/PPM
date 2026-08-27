@@ -294,8 +294,8 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                     ...prev,
                     q1_val: data.company_name || prev.q1_val || '',
                     q2_val: data.subject || prev.q2_val || '',
-                    q6_val: data.delivery_period || '06 months from the date of acceptance',
-                    q10_val: data.payment_terms || '80% after completion of the work & 20% after the successful implementation & submission of report.'
+                    q6_val: data.delivery_period || prev.q6_val || '',
+                    q10_val: data.payment_terms || prev.q10_val || ''
                 }));
             }
         } catch (err) {
@@ -329,8 +329,8 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                     ...prev,
                     q1_val: data.company_name || prev.q1_val || '',
                     q2_val: data.subject || prev.q2_val || '',
-                    q6_val: data.delivery_period || '06 months from the date of acceptance',
-                    q10_val: data.payment_terms || '80% after completion of the work & 20% after the successful implementation & submission of report.'
+                    q6_val: data.delivery_period || prev.q6_val || '',
+                    q10_val: data.payment_terms || prev.q10_val || ''
                 }));
 
                 alert(`File "${file.name}" read successfully! Quotation details filled.`);

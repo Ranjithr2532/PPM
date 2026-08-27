@@ -52,11 +52,43 @@ export const isoSubmissionService = {
   },
 
   /**
+   * Upload existing ISO document file (.docx / .pdf) directly
+   */
+  async uploadFile(formData) {
+    const response = await axios.post(`${API_BASE_URL}/iso-submissions/upload-file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  /**
    * Delete ISO submission record
    */
   async deleteSubmission(id) {
     const response = await axios.delete(`${API_BASE_URL}/iso-submissions/${id}`);
     return response.data;
+  },
+
+  /**
+   * Download file directly from MinIO or public URL keeping its exact original filename & extension
+   */
+  async downloadFileFromUrl(fileUrl, filename) {
+    if (!fileUrl) return;
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error('Fetch failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename || 'document');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      window.open(fileUrl, '_blank');
+    }
   },
 
   /**
@@ -67,12 +99,12 @@ export const isoSubmissionService = {
       responseType: 'blob',
     });
     const blob = new Blob([response.data], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      type: response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', filename.endsWith('.docx') ? filename : `${filename}.docx`);
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -116,6 +148,37 @@ export const getLoggedUserCentreDept = () => {
     return upper.startsWith('C-') ? upper : (upper ? `C-${upper}` : '');
   } catch (e) {
     return '';
+  }
+};
+
+/**
+ * Get current logged in user's Group string
+ */
+export const getLoggedUserGroup = () => {
+  try {
+    const rawUser = window.localStorage.getItem('ppm_user') || window.localStorage.getItem('user');
+    if (!rawUser) return '';
+    const parsedUser = JSON.parse(rawUser);
+    return (parsedUser.group || '').trim();
+  } catch (e) {
+    return '';
+  }
+};
+
+/**
+ * Get current logged in user's role string
+ */
+export const getCurrentUserRole = () => {
+  try {
+    const rawUser = window.localStorage.getItem('ppm_user') || window.localStorage.getItem('user');
+    if (!rawUser) return 'scientist';
+    const parsed = JSON.parse(rawUser);
+    const r = (parsed.role || '').toLowerCase().trim();
+    if (r === 'centre head' || r === 'center head') return 'ch';
+    if (r === 'group head') return 'gh';
+    return r || 'scientist';
+  } catch (e) {
+    return 'scientist';
   }
 };
 

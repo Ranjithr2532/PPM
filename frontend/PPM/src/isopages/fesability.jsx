@@ -106,7 +106,7 @@ const REVIEW_POINTS_TEMPLATES = [
     },
 ];
 
-export default function Fesability({ proposalId: propProposalId, submissionId: propSubmissionId, onBack }) {
+export default function Fesability({ proposalId: propProposalId, submissionId: propSubmissionId, onBack, docInfo }) {
     const [proposals, setProposals] = useState([]);
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -122,11 +122,20 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const [conclusion, setConclusion] = useState('Feasible'); // 'Feasible' | 'Not Feasible'
     const [filename, setFilename] = useState('CMTI_Feasibility_Report.docx');
     const loggedCentreDept = getLoggedUserCentreDept();
-    const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('049'));
-    const [docNo, setDocNo] = useState('');
+    const [revisionCode, setRevisionCode] = useState(() => docInfo?.code || getDefaultRevisionCode('049'));
+    const [docNo, setDocNo] = useState(() => docInfo?.document_no || '');
     const [docDate, setDocDate] = useState(getTodayDateString());
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
+
+    useEffect(() => {
+        if (docInfo?.code) {
+            setRevisionCode(docInfo.code);
+        }
+        if (docInfo?.document_no && !docNo) {
+            setDocNo(docInfo.document_no);
+        }
+    }, [docInfo]);
 
 
     // Review points responses and details
@@ -290,6 +299,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             params.append('conclusion', conclusion);
             params.append('centre_dept', freshCentreDept);
             params.append('group_name', revisionCode);
+            params.append('doc_code', revisionCode);
             params.append('doc_no', docNo);
             params.append('doc_date', docDate);
             params.append('prepared_by', preparedBy);
@@ -338,6 +348,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             const headerData = {
                 documentTitle: 'FEASIBILITY STUDY REPORT',
                 docNo: docNo || '049/001',
+                code: revisionCode,
                 dateStr: docDate,
                 pageStr: '1 of 1',
                 centreDept: loggedCentreDept || 'SMPM',

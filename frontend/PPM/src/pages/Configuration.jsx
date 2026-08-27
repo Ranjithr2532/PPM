@@ -11,7 +11,9 @@ import {
   message,
   Space,
   Popconfirm,
+
   Checkbox,
+  Switch,
 } from 'antd'
 import dayjs from 'dayjs'
 import { API_BASE_URL } from '../config/api.js'
@@ -47,6 +49,13 @@ function Configuration({ projectRows = [] }) {
   const [manpowerRateSubmitLoading, setManpowerRateSubmitLoading] = useState(false)
   const [editingManpowerRate, setEditingManpowerRate] = useState(null)
   const [manpowerRateForm] = Form.useForm()
+
+  const [isoDocData, setIsoDocData] = useState([])
+  const [isoDocLoading, setIsoDocLoading] = useState(false)
+  const [isoDocModalOpen, setIsoDocModalOpen] = useState(false)
+  const [isoDocSubmitLoading, setIsoDocSubmitLoading] = useState(false)
+  const [editingIsoDoc, setEditingIsoDoc] = useState(null)
+  const [isoDocForm] = Form.useForm()
 
   const fetchStages = useCallback(async () => {
     setStageLoading(true)
@@ -167,11 +176,135 @@ function Configuration({ projectRows = [] }) {
     }
   }, [])
 
+  const fetchIsoDocs = useCallback(async () => {
+    setIsoDocLoading(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/iso-document-list/`, {
+        headers: { accept: 'application/json' },
+      })
+      if (!response.ok) {
+        throw new Error('Unable to fetch ISO documents')
+      }
+      const payload = await response.json()
+      const normalized = Array.isArray(payload)
+        ? payload.map((item, index) => ({
+          ...item,
+          key: item.id ?? index,
+          slNo: index + 1,
+        }))
+        : []
+      setIsoDocData(normalized)
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to fetch ISO documents')
+    } finally {
+      setIsoDocLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchStages()
     fetchCentres()
     fetchManpowerRates()
-  }, [fetchStages, fetchCentres, fetchManpowerRates])
+    fetchIsoDocs()
+  }, [fetchStages, fetchCentres, fetchManpowerRates, fetchIsoDocs])
+
+  const openIsoDocModal = (doc = null) => {
+    setEditingIsoDoc(doc)
+    isoDocForm.setFieldsValue({
+      name: doc?.name ?? '',
+      initial: doc?.initial ?? '',
+      code: doc?.code ?? '',
+      document_no: doc?.document_no ?? '',
+      is_active: doc?.is_active ?? true,
+    })
+    setIsoDocModalOpen(true)
+  }
+
+  const closeIsoDocModal = () => {
+    setIsoDocModalOpen(false)
+    setEditingIsoDoc(null)
+    isoDocForm.resetFields()
+  }
+
+  const handleIsoDocSubmit = async () => {
+    try {
+      const values = await isoDocForm.validateFields()
+      setIsoDocSubmitLoading(true)
+      const isEditing = Boolean(editingIsoDoc)
+      const url = isEditing
+        ? `${API_BASE_URL}/iso-document-list/${editingIsoDoc.id}`
+        : `${API_BASE_URL}/iso-document-list/`
+      const method = isEditing ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: values.name,
+          initial: values.initial,
+          code: values.code,
+          document_no: values.document_no,
+          is_active: values.is_active !== undefined ? values.is_active : true,
+        }),
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Unable to save ISO document')
+      }
+      message.success(isEditing ? 'ISO document updated' : 'ISO document created')
+      closeIsoDocModal()
+      fetchIsoDocs()
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to save ISO document')
+    } finally {
+      setIsoDocSubmitLoading(false)
+    }
+  }
+
+  const handleDeleteIsoDoc = async (doc) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/iso-document-list/${doc.id}`, {
+        method: 'DELETE',
+        headers: { accept: '*/*' },
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Unable to delete ISO document')
+      }
+      message.success('ISO document deleted')
+      fetchIsoDocs()
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to delete ISO document')
+    }
+  }
+
+  const handleToggleIsoDocStatus = async (doc, checked) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/iso-document-list/${doc.id}`, {
+        method: 'PUT',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          is_active: checked,
+        }),
+      })
+      if (!response.ok) {
+        throw new Error('Failed to update status')
+      }
+      message.success(`ISO document ${checked ? 'activated' : 'deactivated'}`)
+      fetchIsoDocs()
+    } catch (error) {
+      console.error(error)
+      message.error('Failed to update status')
+    }
+  }
 
   const openManpowerRateModal = (rate = null) => {
     setEditingManpowerRate(rate)
@@ -489,6 +622,51 @@ function Configuration({ projectRows = [] }) {
     setGroupData([])
   }
 
+  const isoDocColumns = [
+    { title: 'Sl no', dataIndex: 'slNo', key: 'slNo', width: 70 },
+    { title: 'Document Name', dataIndex: 'name', key: 'name' },
+    {
+      title: 'Initial',
+      dataIndex: 'initial',
+      key: 'initial',
+      width: 90,
+      render: (val) => (
+        <span className="font-bold text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200">
+          {val || '-'}
+        </span>
+      ),
+    },
+    { title: 'Document Code', dataIndex: 'code', key: 'code' },
+    { title: 'Doc No', dataIndex: 'document_no', key: 'document_no', width: 100 },
+    {
+      title: 'Active',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      width: 90,
+      render: (value, record) => (
+        <Switch
+          checked={Boolean(value)}
+          disabled={isGuest}
+          size="small"
+          onChange={(checked) => handleToggleIsoDocStatus(record, checked)}
+        />
+      ),
+    },
+    ...(!isGuest ? [{
+      title: 'Actions',
+      key: 'actions',
+      width: 140,
+      render: (_, record) => (
+        <Space size="small">
+          <Button type="link" icon={<EditOutlined />} onClick={() => openIsoDocModal(record)}>Edit</Button>
+          <Popconfirm title="Delete ISO document" description="This action cannot be undone." okText="Delete" okButtonProps={{ danger: true }} onConfirm={() => handleDeleteIsoDoc(record)}>
+            <Button type="link" danger icon={<DeleteOutlined />}>Delete</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    }] : []),
+  ]
+
   const stageColumns = [
     { title: 'Sl no', key: 'slNo', render: (_, __, index) => index + 1 },
     { title: 'Stage Name', dataIndex: 'name', key: 'name' },
@@ -690,6 +868,34 @@ function Configuration({ projectRows = [] }) {
         />
       </div>
 
+      {/* ISO Document Templates Section */}
+      <div className="rounded-3xl bg-white p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Title level={5} className="!mb-0 text-slate-800 font-bold">
+              ISO Document Templates
+            </Title>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Manage ISO quality management standard document templates, document codes, and document numbers.
+            </p>
+          </div>
+          {!isGuest && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openIsoDocModal()}>
+              Add ISO Document
+            </Button>
+          )}
+        </div>
+
+        <Table
+          rowKey="key"
+          columns={isoDocColumns}
+          dataSource={isoDocData}
+          loading={isoDocLoading}
+          pagination={{ pageSize: 10 }}
+          bordered
+        />
+      </div>
+
       <Modal
         title={editingStage ? 'Edit Stage' : 'Add Stage'}
         open={stageModalOpen}
@@ -829,6 +1035,55 @@ function Configuration({ projectRows = [] }) {
             rules={[{ required: true, message: 'Please enter rate' }]}
           >
             <InputNumber min={0} style={{ width: '100%' }} placeholder="Enter rate" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={editingIsoDoc ? 'Edit ISO Document Template' : 'Add ISO Document Template'}
+        open={isoDocModalOpen}
+        onCancel={closeIsoDocModal}
+        onOk={handleIsoDocSubmit}
+        confirmLoading={isoDocSubmitLoading}
+        okText={editingIsoDoc ? 'Update' : 'Create'}
+        maskClosable={false}
+      >
+        <Form form={isoDocForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="Document Name"
+            rules={[{ required: true, message: 'Please enter document name' }]}
+          >
+            <Input placeholder="e.g. Bill of Materials, Minutes of Meeting" />
+          </Form.Item>
+          <Form.Item
+            name="initial"
+            label="Initial / Abbreviation"
+            rules={[{ required: true, message: 'Please enter initial' }]}
+            tooltip="Short 2-3 letter code e.g. BM, MM, PP, SQ, DR, FS"
+          >
+            <Input placeholder="e.g. BM" maxLength={10} />
+          </Form.Item>
+          <Form.Item
+            name="code"
+            label="Document Code"
+            rules={[{ required: true, message: 'Please enter document code' }]}
+          >
+            <Input placeholder="e.g. CMTI-SMC-QMS-063/Rev00" />
+          </Form.Item>
+          <Form.Item
+            name="document_no"
+            label="Document Number (Format: 3 digits)"
+            rules={[{ required: true, message: 'Please enter document number' }]}
+          >
+            <Input placeholder="e.g. 063, 064, 049" />
+          </Form.Item>
+          <Form.Item
+            name="is_active"
+            label="Active Status"
+            valuePropName="checked"
+          >
+            <Switch checkedChildren="Active" unCheckedChildren="Inactive" defaultChecked />
           </Form.Item>
         </Form>
       </Modal>

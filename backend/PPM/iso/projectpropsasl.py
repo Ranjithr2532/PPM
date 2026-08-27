@@ -68,6 +68,8 @@ class ProjectProposalRequest(BaseModel):
     
     research_tasks: Optional[List[str]] = None
     timeline_tasks: Optional[List[TimelineTaskRequest]] = None
+    task_active_months: Optional[Dict[str, Any]] = None
+    taskActiveMonths: Optional[Dict[str, Any]] = None
     
     salient_achievements: str = ""
     expected_trl: str = ""
@@ -640,10 +642,22 @@ def create_project_proposal_document(
             add_text(gantt_table.cell(r_idx, 0), f"{idx + 1}. {task}", font_size=8)
 
             str_idx = str(idx)
-            if str_idx in active_map and isinstance(active_map[str_idx], list):
-                active_m = [int(m) for m in active_map[str_idx] if str(m).isdigit()]
-            elif idx in active_map and isinstance(active_map[idx], list):
-                active_m = [int(m) for m in active_map[idx] if str(m).isdigit()]
+            val = None
+            if isinstance(active_map, dict):
+                val = active_map.get(str_idx)
+                if val is None:
+                    val = active_map.get(idx)
+                if val is None:
+                    val = active_map.get(f"task_{idx}")
+                if val is None:
+                    val = active_map.get(f"task_{str_idx}")
+
+            if isinstance(val, list):
+                active_m = [int(m) for m in val if str(m).isdigit()]
+            elif isinstance(val, (set, tuple)):
+                active_m = [int(m) for m in val if str(m).isdigit()]
+            elif isinstance(val, str):
+                active_m = [int(m.strip()) for m in val.split(",") if m.strip().isdigit()]
             else:
                 active_m = []
 
@@ -798,6 +812,7 @@ def generate_project_proposal_bytes(
     proposed_objectives: Optional[List[str]] = None,
     current_status: str = "",
     research_tasks: Optional[List[str]] = None,
+    task_active_months: Optional[Dict[str, Any]] = None,
     timeline_tasks: Optional[List[TimelineTaskRequest]] = None,
     salient_achievements: str = "",
     expected_trl: str = "",
@@ -832,6 +847,7 @@ def generate_project_proposal_bytes(
         proposed_objectives=proposed_objectives,
         current_status=current_status,
         research_tasks=research_tasks,
+        task_active_months=task_active_months,
         timeline_tasks=timeline_tasks,
         salient_achievements=salient_achievements,
         expected_trl=expected_trl,
@@ -947,6 +963,7 @@ async def generate_project_proposal_doc_post(
         proposed_objectives=payload.proposed_objectives,
         current_status=payload.current_status,
         research_tasks=payload.research_tasks,
+        task_active_months=payload.task_active_months or payload.taskActiveMonths,
         timeline_tasks=payload.timeline_tasks,
         salient_achievements=payload.salient_achievements,
         expected_trl=payload.expected_trl,

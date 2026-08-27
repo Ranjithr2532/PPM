@@ -45,6 +45,10 @@ from iso.projectteam import router as iso_projectteam_router
 from iso.mom import router as iso_mom_router
 from iso.quation_reader import router as iso_quotation_reader_router
 from iso.projectpropsasl import router as iso_projectpropsasl_router
+from iso.projectplan import router as iso_projectplan_router
+from iso.sqap import router as iso_sqap_router
+from iso.bom import router as iso_bom_router
+from iso.drawingregister import router as iso_drawing_register_router
 # from ai_routes.ai import router as ai_router
 
 
@@ -98,6 +102,10 @@ app.include_router(iso_submission_router)
 app.include_router(iso_document_list_router)
 app.include_router(iso_quotation_reader_router)
 app.include_router(iso_projectpropsasl_router)
+app.include_router(iso_projectplan_router)
+app.include_router(iso_sqap_router)
+app.include_router(iso_bom_router)
+app.include_router(iso_drawing_register_router)
 
 
 

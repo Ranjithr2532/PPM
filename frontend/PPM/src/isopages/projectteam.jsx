@@ -352,7 +352,7 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
             const userId = currentUser.id || currentUser.user_id || currentUser.userId;
 
             const headerData = {
-                documentTitle: 'CONSTITUTION OF PROJECT TEAM',
+                documentTitle: 'PROJECT TEAM',
                 docNo: docNo || '045/001',
                 dateStr: docDate,
                 pageStr: '1 of 1',
@@ -500,12 +500,11 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         ))}
                     </select>
 
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
-                        'bg-amber-100 text-amber-800'
-                    }`}>
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                            status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                                status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                    'bg-amber-100 text-amber-800'
+                        }`}>
                         {status}
                     </span>
                 </div>

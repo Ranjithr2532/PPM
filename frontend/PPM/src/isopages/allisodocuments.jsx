@@ -9,8 +9,10 @@ import {
     PlusOutlined,
     FileWordOutlined,
     ArrowLeftOutlined,
+    UploadOutlined,
+    PaperClipOutlined,
 } from '@ant-design/icons';
-import { Modal, Tag, Button, Spin, Empty, Input, message, Popconfirm } from 'antd';
+import { Modal, Tag, Button, Spin, Empty, Input, message, Popconfirm, Upload } from 'antd';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService } from '../services/isoSubmissionService';
@@ -19,16 +21,25 @@ import ContractReview from './contractreview.jsx';
 import ProjectTeam from './projectteam.jsx';
 import Mom from './mom.jsx';
 import ProjectProposal from './projectpropsal.jsx';
+import ProjectPlan from './projectplan.jsx';
+import Sqap from './sqap.jsx';
+import Bom from './bom.jsx';
+import DrawingRegister from './drawingregister.jsx';
+import GenericIsoForm from './GenericIsoForm.jsx';
 
 const getDocTypeKey = (doc) => {
     const name = (doc.name || '').toUpperCase();
     const docNo = (doc.document_no || '').trim();
 
     if (docNo === '049' || name.includes('FEASIBILITY')) return 'FEASIBILITY';
-    if (docNo === '051' || name.includes('CONTRACT')) return 'CONTRACT_REVIEW';
+    if (docNo === '051' || docNo === '050' || name.includes('CONTRACT')) return 'CONTRACT_REVIEW';
     if (docNo === '045' || name.includes('TEAM')) return 'PROJECT_TEAM';
     if (docNo === '037' || name.includes('MINUTES') || name.includes('MOM')) return 'MOM';
     if (docNo === '009' || name.includes('PROPOSAL')) return 'PROJECT_PROPOSAL';
+    if (docNo === '055' || name.includes('SQAP') || name.includes('ASSURANCE') || name.includes('SOFTWARE QUALITY')) return 'SQAP';
+    if (docNo === '053' || name.includes('PLAN')) return 'PROJECT_PLAN';
+    if (docNo === '063' || name.includes('BOM') || name.includes('BILL OF MATERIALS')) return 'BOM';
+    if (docNo === '064' || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) return 'DRAWING_REGISTER';
     return name.replace(/\s+/g, '_');
 };
 
@@ -68,10 +79,50 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
     const [rejectComment, setRejectComment] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
     const [activeFormState, setActiveFormState] = useState(null); // null | { docTypeKey, id }
+    const [uploadModalVisible, setUploadModalVisible] = useState(false);
+    const [selectedDocForUpload, setSelectedDocForUpload] = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const [fileList, setFileList] = useState([]);
 
     const userRole = getUserRole();
     const isAdmin = userRole === 'admin' || userRole === 'director';
     const isApprover = userRole === 'ch' || userRole === 'admin' || userRole === 'gh';
+
+    const handleOpenUploadModal = (doc) => {
+        setSelectedDocForUpload(doc);
+        setFileList([]);
+        setUploadModalVisible(true);
+    };
+
+    const handleUploadSubmit = async () => {
+        if (!fileList.length || !selectedDocForUpload) {
+            message.warning('Please select a file to upload');
+            return;
+        }
+        setUploading(true);
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const userId = rawUser ? JSON.parse(rawUser)?.id : null;
+
+            const docTypeKey = getDocTypeKey(selectedDocForUpload);
+            const formData = new FormData();
+            formData.append('file', fileList[0]);
+            formData.append('doc_type', docTypeKey);
+            formData.append('document_no', selectedDocForUpload.document_no || '000');
+            if (proposalId) formData.append('proposal_id', proposalId);
+            if (userId) formData.append('created_by', userId);
+
+            await isoSubmissionService.uploadFile(formData);
+            message.success(`ISO Document "${selectedDocForUpload.name}" uploaded successfully!`);
+            setUploadModalVisible(false);
+            fetchData();
+        } catch (err) {
+            console.error('Upload error:', err);
+            message.error('Failed to upload file');
+        } finally {
+            setUploading(false);
+        }
+    };
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -95,23 +146,31 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
         fetchData();
     }, [fetchData]);
 
-    const handleCreateForm = (docTypeKey) => {
-        setActiveFormState({ docTypeKey, id: null });
+    const handleCreateForm = (docTypeKey, doc = null) => {
+        setActiveFormState({ docTypeKey, id: null, docInfo: doc });
     };
 
-    const handleEditForm = (docTypeKey, subId) => {
-        setActiveFormState({ docTypeKey, id: subId });
+    const handleEditForm = (docTypeKey, subId, doc = null) => {
+        setActiveFormState({ docTypeKey, id: subId, docInfo: doc });
     };
 
 
     const handleDownload = async (sub) => {
         try {
-            message.loading({ content: 'Generating Word document...', key: 'docxDownload' });
-            await isoSubmissionService.exportWord(sub.id, `ISO_${sub.doc_type}_${sub.document_no || sub.id}.docx`);
-            message.success({ content: 'Word document downloaded successfully!', key: 'docxDownload' });
+            const isUp = sub.form_data?.is_uploaded;
+            const filePath = sub.form_data?.file_path;
+            const upName = sub.form_data?.uploaded_filename || `ISO_${sub.doc_type}_${(sub.document_no || sub.id).toString().replace('/', '_')}.docx`;
+            message.loading({ content: isUp ? 'Downloading uploaded file...' : 'Generating Word document...', key: 'docxDownload' });
+
+            if (isUp && filePath && filePath.startsWith('http')) {
+                await isoSubmissionService.downloadFileFromUrl(filePath, upName);
+            } else {
+                await isoSubmissionService.exportWord(sub.id, upName);
+            }
+            message.success({ content: isUp ? 'File downloaded successfully!' : 'Word document downloaded successfully!', key: 'docxDownload' });
         } catch (err) {
             console.error('Download error:', err);
-            message.error({ content: 'Failed to download Word document', key: 'docxDownload' });
+            message.error({ content: 'Failed to download file', key: 'docxDownload' });
         }
     };
 
@@ -167,7 +226,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                         Back to ISO Documents Directory
                     </Button>
                 </div>
-                {activeFormState.docTypeKey === 'FEASIBILITY' && (
+                {activeFormState.docTypeKey === 'FEASIBILITY' ? (
                     <Fesability
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
@@ -176,8 +235,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             fetchData();
                         }}
                     />
-                )}
-                {activeFormState.docTypeKey === 'CONTRACT_REVIEW' && (
+                ) : activeFormState.docTypeKey === 'CONTRACT_REVIEW' ? (
                     <ContractReview
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
@@ -186,8 +244,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             fetchData();
                         }}
                     />
-                )}
-                {activeFormState.docTypeKey === 'PROJECT_TEAM' && (
+                ) : activeFormState.docTypeKey === 'PROJECT_TEAM' ? (
                     <ProjectTeam
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
@@ -196,8 +253,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             fetchData();
                         }}
                     />
-                )}
-                {activeFormState.docTypeKey === 'MOM' && (
+                ) : activeFormState.docTypeKey === 'MOM' ? (
                     <Mom
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
@@ -206,11 +262,57 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             fetchData();
                         }}
                     />
-                )}
-                {activeFormState.docTypeKey === 'PROJECT_PROPOSAL' && (
+                ) : activeFormState.docTypeKey === 'PROJECT_PROPOSAL' ? (
                     <ProjectProposal
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'PROJECT_PLAN' ? (
+                    <ProjectPlan
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'SQAP' ? (
+                    <Sqap
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'BOM' ? (
+                    <Bom
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'DRAWING_REGISTER' ? (
+                    <DrawingRegister
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : (
+                    /* Universal Generic Form for Any Custom ISO Document Template */
+                    <GenericIsoForm
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo || { name: activeFormState.docTypeKey }}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -285,6 +387,18 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                         )}
                                     </div>
 
+                                    {sub?.form_data?.is_uploaded && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDownload(sub)}
+                                            className="text-xs text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 mt-1 inline-flex items-center gap-1.5 font-medium cursor-pointer transition text-left"
+                                            title="Click to download uploaded file"
+                                        >
+                                            <PaperClipOutlined />
+                                            <span>Uploaded File: <strong>{sub.form_data.uploaded_filename || 'ISO_Document.docx'}</strong> (Click to Download)</span>
+                                        </button>
+                                    )}
+
                                     {sub?.rejection_comment && (
                                         <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2 mt-1">
                                             <strong>Rejection Comment:</strong> {sub.rejection_comment}
@@ -293,13 +407,23 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                 </div>
 
                                 <div className="flex items-center gap-2 justify-end flex-wrap">
+                                    {/* Upload Document Button */}
+                                    <Button
+                                        size="small"
+                                        icon={<UploadOutlined />}
+                                        onClick={() => handleOpenUploadModal(doc)}
+                                        className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                    >
+                                        Upload File
+                                    </Button>
+
                                     {sub ? (
                                         <>
                                             {/* View / Edit Form */}
                                             <Button
                                                 size="small"
                                                 icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
-                                                onClick={() => handleEditForm(docTypeKey, sub.id)}
+                                                onClick={() => handleEditForm(docTypeKey, sub.id, doc)}
                                                 className="text-xs font-medium border-slate-300 text-slate-800"
                                             >
                                                 {isAdmin
@@ -313,7 +437,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                             : 'Edit Form'}
                                             </Button>
 
-                                            {/* Download Word (.docx) */}
+                                            {/* Download Word (.docx / uploaded file) */}
                                             <Button
                                                 size="small"
                                                 type="primary"
@@ -321,7 +445,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 onClick={() => handleDownload(sub)}
                                                 className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
                                             >
-                                                Word (.docx)
+                                                {sub.form_data?.is_uploaded ? 'Download File' : 'Word (.docx)'}
                                             </Button>
 
                                             {/* Approver Actions (CH / DH / GH / Admin) */}
@@ -375,7 +499,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                             size="small"
                                             type="primary"
                                             icon={<PlusOutlined />}
-                                            onClick={() => handleCreateForm(docTypeKey)}
+                                            onClick={() => handleCreateForm(docTypeKey, doc)}
                                             className="bg-slate-900 hover:bg-indigo-600 text-xs font-bold"
                                         >
                                             Create Form
@@ -387,6 +511,36 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     })}
                 </div>
             )}
+
+            {/* Modal for Direct ISO File Upload */}
+            <Modal
+                title={`Upload ISO Document - ${selectedDocForUpload?.name || ''}`}
+                open={uploadModalVisible}
+                onCancel={() => setUploadModalVisible(false)}
+                onOk={handleUploadSubmit}
+                confirmLoading={uploading}
+                okText="Upload Document"
+                cancelText="Cancel"
+                okButtonProps={{ className: 'bg-indigo-600 hover:bg-indigo-700' }}
+            >
+                <div className="py-4 space-y-4">
+                    <p className="text-xs text-slate-500">
+                        Upload your existing ISO Document file (<strong>.docx</strong>, <strong>.pdf</strong>, or <strong>.doc</strong>).
+                    </p>
+                    <Upload
+                        beforeUpload={(file) => {
+                            setFileList([file]);
+                            return false; // Prevent automatic upload
+                        }}
+                        onRemove={() => setFileList([])}
+                        fileList={fileList}
+                        maxCount={1}
+                        accept=".docx,.pdf,.doc"
+                    >
+                        <Button icon={<UploadOutlined />} className="text-xs">Select File</Button>
+                    </Upload>
+                </div>
+            </Modal>
         </div>
     );
 }

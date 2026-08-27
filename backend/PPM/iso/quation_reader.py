@@ -302,22 +302,17 @@ def get_proposal_quotation_details(proposal_id: int, db: Session = Depends(get_d
             print(f"Error parsing PDF for proposal {proposal_id} ({pdf_path}): {e}")
 
 
-    # Fallback to Proposal DB fields if missing
-    comp_name = fields.get("company_name") or prop.customer_name or prop.party_name or ""
-    subject = fields.get("subject") or prop.quote_description or prop.activity or prop.key_deliverables or ""
-    enquiry_ref = fields.get("enquiry_ref") or prop.quote_reference or prop.email_reference or ""
+    # Only read fields from extracted quotation document text, do NOT fallback to proposal DB table
+    comp_name = fields.get("company_name") or ""
+    subject = fields.get("subject") or ""
+    enquiry_ref = fields.get("enquiry_ref") or ""
 
     date_str = fields.get("date") or ""
     if not date_str and prop.quote_date:
         date_str = prop.quote_date.strftime("%d.%m.%Y") if hasattr(prop.quote_date, "strftime") else str(prop.quote_date)
 
     del_str = fields.get("delivery_period") or ""
-    if not del_str:
-        del_str = "06 months from the date of acceptance"
-
     pay_terms = fields.get("payment_terms") or getattr(prop, "payment_terms", None) or ""
-    if not pay_terms:
-        pay_terms = "80% after completion of the work & 20% after the successful implementation & submission of report."
 
     return QuotationExtractionResponse(
         company_name=comp_name,

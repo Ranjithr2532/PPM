@@ -153,9 +153,9 @@ def add_text(
 # ============================================================
 
 def create_feasibility_document(
-    party_details: str = "Bharat Electronics Limited",
-    enquiry_ref: str = "Email dated 19-06-2023",
-    description: str = "Digitization of Fabrication & Components Group & IIOT based software OEE solution related to Machine to Machine Connectivity",
+    party_details: str = "",
+    enquiry_ref: str = "",
+    description: str = "",
     review_points: Optional[List[ReviewPointRequest]] = None,
     conclusion: str = "Feasible",
     centre_dept: str = "",
@@ -163,7 +163,8 @@ def create_feasibility_document(
     doc_no: str = "",
     doc_date: str = "",
     prepared_by: str = "",
-    approved_by: str = ""
+    approved_by: str = "",
+    doc_code: str = ""
 ) -> Document:
     doc = Document()
     section = doc.sections[0]
@@ -183,12 +184,14 @@ def create_feasibility_document(
         doc_no=doc_no,
         date_str=doc_date
     )
+    
+    final_doc_code = doc_code or group_name or "049"
     add_footer_table(
         section,
         prepared_name=prepared_by,
         approved_name=approved_by,
         group_name=group_name,
-        doc_code="049"
+        doc_code=final_doc_code
     )
 
     # Spacing between header and first body table
@@ -382,7 +385,6 @@ def create_feasibility_document(
     run_note_lbl.bold = True
     run_note_lbl.font.name = "Arial"
     run_note_lbl.font.size = Pt(10)
-
     run_note_val = p_not_feasible.add_run("If not feasible, a negotiation for the terms to be made and feasibility form to be refilled for the same.")
     run_note_val.font.name = "Arial"
     run_note_val.font.size = Pt(10)
@@ -391,9 +393,9 @@ def create_feasibility_document(
 
 
 def generate_feasibility_bytes(
-    party_details: str = "Bharat Electronics Limited",
-    enquiry_ref: str = "Email dated 19-06-2023",
-    description: str = "Digitization of Fabrication & Components Group & IIOT based software OEE solution related to Machine to Machine Connectivity",
+    party_details: str = "",
+    enquiry_ref: str = "",
+    description: str = "",
     review_points: Optional[List[ReviewPointRequest]] = None,
     conclusion: str = "Feasible",
     centre_dept: str = "",
@@ -401,7 +403,8 @@ def generate_feasibility_bytes(
     doc_no: str = "",
     doc_date: str = "",
     prepared_by: str = "",
-    approved_by: str = ""
+    approved_by: str = "",
+    doc_code: str = ""
 ) -> io.BytesIO:
     doc = create_feasibility_document(
         party_details=party_details,
@@ -414,7 +417,8 @@ def generate_feasibility_bytes(
         doc_no=doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
-        approved_by=approved_by
+        approved_by=approved_by,
+        doc_code=doc_code or group_name
     )
     buffer = io.BytesIO()
     doc.save(buffer)
@@ -439,6 +443,7 @@ async def generate_feasibility_doc_get(
     conclusion: str = Query("Feasible", description="Feasible or Not Feasible"),
     centre_dept: str = Query("", description="Centre / Dept name for header (e.g. C-SVT)"),
     group_name: str = Query("", description="Group ISO code name for footer"),
+    doc_code: str = Query("", description="Full Document Code e.g. CMTI-QMS-VT-049/Rev00"),
     r1_response: str = Query("", description="Compliance of all technical requirements? (Yes/No/Na)"),
     r1_details: str = Query("", description="Compliance of all technical requirements details"),
     r2_response: str = Query("", description="Delivery and Post Delivery activity compliance (Yes/No/Na)"),
@@ -465,21 +470,12 @@ async def generate_feasibility_doc_get(
         proposal = db.query(Proposal).filter(Proposal.id == project_id).first()
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
-        # Override fields only if they are empty or default
-        if not party_details or party_details == "Bharat Electronics Limited":
-            party_details = proposal.customer_name or ""
-        if not enquiry_ref or enquiry_ref == "Email dated 19-06-2023":
-            enquiry_ref = proposal.email_reference or ""
-        if not description or description == "Digitization of Fabrication & Components Group & IIOT based software OEE solution related to Machine to Machine Connectivity":
-            description = proposal.quote_description or ""
-    else:
-        # Fallback to default values if not explicitly set
         if not party_details:
-            party_details = "Bharat Electronics Limited"
+            party_details = proposal.customer_name or ""
         if not enquiry_ref:
-            enquiry_ref = "Email dated 19-06-2023"
+            enquiry_ref = proposal.email_reference or ""
         if not description:
-            description = "Digitization of Fabrication & Components Group & IIOT based software OEE solution related to Machine to Machine Connectivity"
+            description = proposal.quote_description or ""
 
     # Construct review points list from query params
     review_points = [
@@ -502,7 +498,8 @@ async def generate_feasibility_doc_get(
         doc_no=doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
-        approved_by=approved_by
+        approved_by=approved_by,
+        doc_code=doc_code or group_name
     )
 
     headers = {
@@ -541,12 +538,11 @@ async def generate_feasibility_doc_post(
         proposal = db.query(Proposal).filter(Proposal.id == payload.project_id).first()
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
-        # Override fields if they are default or empty
-        if not party_details or party_details == "Bharat Electronics Limited":
+        if not party_details:
             party_details = proposal.customer_name or ""
-        if not enquiry_ref or enquiry_ref == "Email dated 19-06-2023":
+        if not enquiry_ref:
             enquiry_ref = proposal.email_reference or ""
-        if not description or description == "Digitization of Fabrication & Components Group & IIOT based software OEE solution related to Machine to Machine Connectivity":
+        if not description:
             description = proposal.quote_description or ""
 
     buffer = generate_feasibility_bytes(
@@ -555,12 +551,13 @@ async def generate_feasibility_doc_post(
         description=description,
         review_points=payload.review_points,
         conclusion=payload.conclusion,
-        centre_dept=payload.centre_dept,
-        group_name=payload.group_name,
+        centre_dept=payload.centre_dept or "",
+        group_name=payload.group_name or "",
         doc_no=doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
-        approved_by=approved_by
+        approved_by=approved_by,
+        doc_code=payload.group_name or ""
     )
 
     headers = {
