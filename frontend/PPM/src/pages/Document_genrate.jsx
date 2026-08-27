@@ -44,6 +44,7 @@ import {
     UploadOutlined,
     EditOutlined,
     RobotOutlined,
+    PhoneOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
@@ -169,7 +170,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
             });
 
             const data = res.data || {};
-            
+
             // Format customer raw address block (ensure no email address appears in customer name/address)
             const cleanCustName = (data.customer_name && !data.customer_name.includes('@')) ? data.customer_name.trim() : '';
             const cleanCustAddr = (data.customer_address && !data.customer_address.includes('@')) ? data.customer_address.trim() : '';
@@ -183,31 +184,45 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                 custRaw = cleanCustAddr;
             }
 
-            // Filename
+            // Filename based on Customer Name
             let generatedFilename = form.getFieldValue('filename');
-            if (data.proposal_subject) {
-                const safeName = data.proposal_subject
-                    .replace(/[^a-zA-Z0-9_\-\s]/g, '')
-                    .trim()
-                    .replace(/\s+/g, '_');
-                generatedFilename = `${safeName || 'Proposal'}.docx`;
-            }
+            const nameForFile = cleanCustName || data.proposal_subject || 'Proposal';
+            const safeName = nameForFile
+                .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
+            generatedFilename = `${safeName || 'Proposal'}.docx`;
 
             // Populate form values
-            const updates = {};
+            const updates = {
+                filename: generatedFilename,
+            };
             if (data.email_to && data.email_to.length > 0) {
                 updates.email_to = data.email_to.join(', ');
             }
             if (data.email_cc && data.email_cc.length > 0) {
                 updates.email_cc = data.email_cc.join(', ');
             }
+            if (data.phone_number) {
+                updates.phone = data.phone_number;
+            }
             if (custRaw) {
                 updates.customer_raw = custRaw;
             }
             if (data.kind_attention) {
                 let ka = data.kind_attention;
-                if (typeof ka === 'string' && ka.includes(',') && !ka.includes('\n')) {
-                    ka = ka.split(',').map(s => s.trim()).filter(Boolean).join('\n');
+                if (typeof ka === 'string') {
+                    const rawLines = ka.replace(/,/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+                    const seen = new Set();
+                    const cleanLines = [];
+                    rawLines.forEach(l => {
+                        const low = l.toLowerCase();
+                        if (!seen.has(low)) {
+                            seen.add(low);
+                            cleanLines.push(l);
+                        }
+                    });
+                    ka = cleanLines.join('\n');
                 }
                 updates.kind_attention = ka;
             }
@@ -249,7 +264,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
             const validScopes = rawScopes.filter(
                 (item) => typeof item === 'string' && item.trim().length > 3 && !item.toLowerCase().includes('array of') && !item.toLowerCase().includes('list of')
             );
-            
+
             if (validScopes.length > 0) {
                 setScopeItems(validScopes);
             } else {
@@ -405,7 +420,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                         const phones = Array.isArray(customer.phone) ? customer.phone : [];
                         const addresses = Array.isArray(customer.address) ? customer.address : [];
                         const alternate_contacts = Array.isArray(customer.alternate_contact_details) ? customer.alternate_contact_details : [];
-                        
+
                         return {
                             ...customer,
                             name: customer.name,
@@ -490,10 +505,17 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
             const firstAddr = addrs[0] || '';
             const formatted = firstAddr ? `${c.name}\n${firstAddr}` : c.name;
 
+            const safeCustName = (c.name || 'Proposal')
+                .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
+
             form.setFieldsValue({
                 customer_raw: formatted,
                 email_to: c.email || form.getFieldValue('email_to') || '',
+                phone: c.phone_no || c.phone || form.getFieldValue('phone') || '',
                 kind_attention: c.alternate_contact_details || form.getFieldValue('kind_attention') || '',
+                filename: `${safeCustName || 'Proposal'}.docx`,
             });
 
             message.info(`Selected "${c.name}" — Name & Address populated!`);
@@ -729,6 +751,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                 dept: values.dept || '',
                 email_to,
                 email_cc,
+                phone: values.phone || '',
                 customer_lines,
                 kind_attention: values.kind_attention || '',
                 reference: values.reference || '',
@@ -831,13 +854,9 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                 if (values.kind_attention) {
                     extractedData.kind_attention = values.kind_attention;
                 }
-                // Ensure kind_attention name (e.g. Manjunath) does not populate alternate_contact_details number field
-                if (extractedData.alternate_contact_details && values.kind_attention) {
-                    const altStr = String(extractedData.alternate_contact_details).trim().toLowerCase();
-                    const kindStr = String(values.kind_attention).trim().toLowerCase();
-                    if (altStr === kindStr || kindStr.includes(altStr) || altStr.includes(kindStr)) {
-                        extractedData.alternate_contact_details = '';
-                    }
+                if (values.phone) {
+                    if (!extractedData.phone_no) extractedData.phone_no = values.phone;
+                    if (!extractedData.alternate_contact_details) extractedData.alternate_contact_details = values.phone;
                 }
 
                 message.success(`Document "${filename}" generated & extracted into Proposal Form!`);
@@ -934,11 +953,10 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                     <Button
                         icon={<RobotOutlined className={aiPanelOpen ? "text-indigo-600" : ""} />}
                         onClick={() => setAiPanelOpen(!aiPanelOpen)}
-                        className={`rounded-none border border-slate-900 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 ${
-                            aiPanelOpen ? 'bg-indigo-50 text-indigo-950 border-indigo-900 shadow-[2px_2px_0px_0px_rgba(79,70,229,1)]' : 'bg-white text-slate-900 hover:bg-slate-50'
-                        }`}
+                        className={`rounded-none border border-slate-900 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 ${aiPanelOpen ? 'bg-indigo-50 text-indigo-950 border-indigo-900 shadow-[2px_2px_0px_0px_rgba(79,70,229,1)]' : 'bg-white text-slate-900 hover:bg-slate-50'
+                            }`}
                     >
-                        {aiPanelOpen ? 'Hide AI Auto-Fill' : '⚡ AI Email Auto-Fill'}
+                        {aiPanelOpen ? 'Hide  Auto-Fill' : ' Extract  Email and  Auto-Fill'}
                     </Button>
 
                     <Button
@@ -987,6 +1005,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                         dept: '',
                         email_to: '',
                         email_cc: '',
+                        phone: '',
                         customer_raw: '',
                         kind_attention: '',
                         reference: '',
@@ -1002,7 +1021,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
 
                             {/* AI Email Extraction / Auto-Fill Panel */}
                             <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
-                                <div 
+                                <div
                                     onClick={() => setAiPanelOpen(!aiPanelOpen)}
                                     className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-800 transition"
                                 >
@@ -1012,7 +1031,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                         </div>
                                         <div>
                                             <span className="font-bold text-xs uppercase tracking-wider block">
-                                                AI Email Auto-Fill & Document Populate
+                                                Extract Email Auto-Fill & Document Populate
                                             </span>
                                             <span className="text-[10px] text-slate-300 font-normal block">
                                                 Paste customer email thread from Outlook/Gmail to instantly populate customer info, subject, scope, and metadata.
@@ -1056,7 +1075,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                                     onClick={handleExtractEmailForDocument}
                                                     className="rounded-none border border-slate-900 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] transition-all flex items-center gap-1.5"
                                                 >
-                                                    {aiExtracting ? 'Analyzing Email with AI...' : '⚡ Extract & Populate Document'}
+                                                    {aiExtracting ? 'Analyzing Email with AI...' : ' Extract & Populate Document'}
                                                 </Button>
 
                                                 <Button
@@ -1110,13 +1129,13 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                             </td>
                                             <td className="border-r border-slate-900 p-1">
                                                 <Form.Item name="dept" noStyle>
-                                                    <Input 
-                                                        prefix={<ApartmentOutlined className="text-slate-450 mr-1" />} 
-                                                        variant="borderless" 
+                                                    <Input
+                                                        prefix={<ApartmentOutlined className="text-slate-450 mr-1" />}
+                                                        variant="borderless"
                                                         className="p-1 text-xs font-semibold"
                                                         suffix={
-                                                            <ReloadOutlined 
-                                                                className="cursor-pointer text-blue-600 hover:text-blue-800 text-[10px]" 
+                                                            <ReloadOutlined
+                                                                className="cursor-pointer text-blue-600 hover:text-blue-800 text-[10px]"
                                                                 title="Reload department from profile"
                                                                 onClick={() => {
                                                                     const c = getUserCenter();
@@ -1147,19 +1166,20 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                 </table>
                             </div>
 
-                            {/* Section 2: Distribution & Email List */}
+                            {/* Section 2: Distribution & Contact List */}
                             <div className="border border-slate-900 bg-white mb-6">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
-                                    2. Distribution & Email List
+                                    2. Distribution & Contact List
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Primary and copy email addresses to embed into the official Proposal header metadata block.
+                                    Primary, copy email addresses and contact phone numbers to embed into the official Proposal header metadata block.
                                 </div>
                                 <table className="w-full border-collapse text-xs">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-900">
-                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/2">EMAIL - TO (COMMA SEPARATED)</th>
-                                            <th className="p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/2">EMAIL - CC (COMMA SEPARATED)</th>
+                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-5/12">EMAIL - TO (COMMA SEPARATED)</th>
+                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-4/12">EMAIL - CC (COMMA SEPARATED)</th>
+                                            <th className="p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-3/12">PHONE NUMBER</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1169,9 +1189,14 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                                     <Input prefix={<MailOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="client@company.com, purchase@company.com" />
                                                 </Form.Item>
                                             </td>
-                                            <td className="p-1">
+                                            <td className="border-r border-slate-900 p-1">
                                                 <Form.Item name="email_cc" noStyle>
                                                     <Input prefix={<MailOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="head@cmti.res.in, accounts@cmti.res.in" />
+                                                </Form.Item>
+                                            </td>
+                                            <td className="p-1">
+                                                <Form.Item name="phone" noStyle>
+                                                    <Input prefix={<PhoneOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="e.g. +91 9876543210, 080-22195784" />
                                                 </Form.Item>
                                             </td>
                                         </tr>
@@ -1207,11 +1232,11 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                             </td>
                                             <td className="p-1 align-top">
                                                 <Form.Item name="kind_attention" noStyle>
-                                                    <TextArea 
-                                                        variant="borderless" 
-                                                        autoSize={{ minRows: 2, maxRows: 4 }} 
-                                                        className="p-1 text-xs font-medium" 
-                                                        placeholder="e.g. Mr. Rajesh Sharma&#10;General Manager" 
+                                                    <TextArea
+                                                        variant="borderless"
+                                                        autoSize={{ minRows: 2, maxRows: 4 }}
+                                                        className="p-1 text-xs font-medium"
+                                                        placeholder="e.g. Mr. Rajesh Sharma&#10;General Manager"
                                                     />
                                                 </Form.Item>
                                             </td>
@@ -1449,7 +1474,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                             {/* Card 6: Pricing & Cost Break-Up Tables */}
                             <div className="border border-slate-900 bg-white mb-6">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>6. Pricing & Cost Break-Up Tables</span>
+                                    <span>6.Tables</span>
                                     <Button
                                         type="primary"
                                         size="small"
@@ -1831,246 +1856,252 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                         {/* Right Column: Live A4 Document Preview & Quick Export Sidebar (9 Cols on desktop) */}
                         {previewVisible && (
                             <Col xs={24} lg={9} xl={9} className="space-y-6">
-                            <div className="sticky top-6 space-y-6">
+                                <div className="sticky top-6 space-y-6">
 
-                                {/* Document Preview Toolbar & Container */}
-                                <Card
-                                    title={
-                                        <div className="flex items-center justify-between py-1">
-                                            <Space className="text-slate-900 font-bold text-base">
-                                                <EyeOutlined className="text-blue-600" /> Live Document Preview
-                                            </Space>
-                                            <Space size="xs">
-                                                <Tooltip title="Zoom Out">
-                                                    <Button
-                                                        type="text"
-                                                        size="small"
-                                                        icon={<CompressOutlined />}
-                                                        onClick={() => setPreviewZoom(Math.max(70, previewZoom - 10))}
-                                                        className="hover:bg-slate-200/60 rounded-lg"
-                                                    />
-                                                </Tooltip>
-                                                <Text className="text-xs font-mono font-bold text-slate-600 px-1">{previewZoom}%</Text>
-                                                <Tooltip title="Zoom In">
-                                                    <Button
-                                                        type="text"
-                                                        size="small"
-                                                        icon={<ExpandOutlined />}
-                                                        onClick={() => setPreviewZoom(Math.min(130, previewZoom + 10))}
-                                                        className="hover:bg-slate-200/60 rounded-lg"
-                                                    />
-                                                </Tooltip>
-                                            </Space>
-                                        </div>
-                                    }
-                                    className="shadow-xl rounded-2xl border border-slate-200/90 bg-slate-900/5 backdrop-blur-xs overflow-hidden"
-                                    styles={{ body: { padding: '16px' } }}
-                                >
-                                    {/* Simulated A4 Paper Card */}
-                                    <div
-                                        className="bg-white rounded-xl p-8 shadow-2xl border border-slate-200/90 transition-transform duration-200 overflow-y-auto max-h-[calc(100vh-220px)] min-h-[580px] space-y-5 font-sans text-xs text-slate-800 select-none"
-                                        style={{
-                                            transform: `scale(${previewZoom / 100})`,
-                                            transformOrigin: 'top center',
-                                        }}
+                                    {/* Document Preview Toolbar & Container */}
+                                    <Card
+                                        title={
+                                            <div className="flex items-center justify-between py-1">
+                                                <Space className="text-slate-900 font-bold text-base">
+                                                    <EyeOutlined className="text-blue-600" /> Live Document Preview
+                                                </Space>
+                                                <Space size="xs">
+                                                    <Tooltip title="Zoom Out">
+                                                        <Button
+                                                            type="text"
+                                                            size="small"
+                                                            icon={<CompressOutlined />}
+                                                            onClick={() => setPreviewZoom(Math.max(70, previewZoom - 10))}
+                                                            className="hover:bg-slate-200/60 rounded-lg"
+                                                        />
+                                                    </Tooltip>
+                                                    <Text className="text-xs font-mono font-bold text-slate-600 px-1">{previewZoom}%</Text>
+                                                    <Tooltip title="Zoom In">
+                                                        <Button
+                                                            type="text"
+                                                            size="small"
+                                                            icon={<ExpandOutlined />}
+                                                            onClick={() => setPreviewZoom(Math.min(130, previewZoom + 10))}
+                                                            className="hover:bg-slate-200/60 rounded-lg"
+                                                        />
+                                                    </Tooltip>
+                                                </Space>
+                                            </div>
+                                        }
+                                        className="shadow-xl rounded-2xl border border-slate-200/90 bg-slate-900/5 backdrop-blur-xs overflow-hidden"
+                                        styles={{ body: { padding: '16px' } }}
                                     >
-                                        {/* Document Right Header */}
-                                        <div className="text-right text-slate-600 space-y-1 border-b border-slate-100 pb-3.5">
-                                            <div className="font-bold text-xs text-slate-900">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
-                                            {formValues.dept && <div className="font-bold text-blue-700 text-xs">Dept: {formValues.dept}</div>}
-                                        </div>
-
-                                        {/* Emails */}
-                                        {(formValues.email_to || formValues.email_cc) && (
-                                            <div className="space-y-1 bg-slate-50/90 p-3 rounded-xl border border-slate-200/80 font-mono text-[11px]">
-                                                {formValues.email_to && (
-                                                    <div>
-                                                        <strong className="text-slate-700">Email: </strong>
-                                                        <span className="text-blue-600 font-semibold">{formValues.email_to}</span>
-                                                    </div>
-                                                )}
-                                                {formValues.email_cc && (
-                                                    <div>
-                                                        <strong className="text-slate-700">Cc: </strong>
-                                                        <span className="text-blue-600 font-semibold">{formValues.email_cc}</span>
-                                                    </div>
-                                                )}
+                                        {/* Simulated A4 Paper Card */}
+                                        <div
+                                            className="bg-white rounded-xl p-8 shadow-2xl border border-slate-200/90 transition-transform duration-200 overflow-y-auto max-h-[calc(100vh-220px)] min-h-[580px] space-y-5 font-sans text-xs text-slate-800 select-none"
+                                            style={{
+                                                transform: `scale(${previewZoom / 100})`,
+                                                transformOrigin: 'top center',
+                                            }}
+                                        >
+                                            {/* Document Right Header */}
+                                            <div className="text-right text-slate-600 space-y-1 border-b border-slate-100 pb-3.5">
+                                                <div className="font-bold text-xs text-slate-900">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
+                                                {formValues.dept && <div className="font-bold text-blue-700 text-xs">Dept: {formValues.dept}</div>}
                                             </div>
-                                        )}
 
-                                        {/* Heading */}
-                                        <div className="text-center font-black text-sm text-slate-900 tracking-wider uppercase py-1.5 border-b-2 border-slate-900">
-                                            PROPOSAL INFORMATION
-                                        </div>
-
-                                        {/* Customer Information */}
-                                        {formValues.customer_raw && (
-                                            <div>
-                                                <div className="font-bold text-slate-900 text-xs mb-1">Customer:</div>
-                                                <div className="whitespace-pre-line text-slate-700 pl-3 border-l-2 border-blue-500 font-sans leading-relaxed">
-                                                    {formValues.customer_raw}
+                                            {/* Emails & Contact */}
+                                            {(formValues.email_to || formValues.email_cc || formValues.phone) && (
+                                                <div className="space-y-1 bg-slate-50/90 p-3 rounded-xl border border-slate-200/80 font-mono text-[11px]">
+                                                    {formValues.email_to && (
+                                                        <div>
+                                                            <strong className="text-slate-700">Email: </strong>
+                                                            <span className="text-blue-600 font-semibold">{formValues.email_to}</span>
+                                                        </div>
+                                                    )}
+                                                    {formValues.email_cc && (
+                                                        <div>
+                                                            <strong className="text-slate-700">Cc: </strong>
+                                                            <span className="text-blue-600 font-semibold">{formValues.email_cc}</span>
+                                                        </div>
+                                                    )}
+                                                    {formValues.phone && (
+                                                        <div>
+                                                            <strong className="text-slate-700">Phone: </strong>
+                                                            <span className="text-blue-600 font-semibold">{formValues.phone}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {formValues.kind_attention && (
-                                            <div className="flex items-start gap-1">
-                                                <span className="font-bold text-slate-900 shrink-0">Kind Attention: </span>
-                                                <span className="text-slate-700 font-medium whitespace-pre-line">{formValues.kind_attention}</span>
+                                            {/* Heading */}
+                                            <div className="text-center font-black text-sm text-slate-900 tracking-wider uppercase py-1.5 border-b-2 border-slate-900">
+                                                PROPOSAL INFORMATION
                                             </div>
-                                        )}
 
-                                        {formValues.reference && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">Reference: </span>
-                                                <span className="text-slate-700 font-medium">{formValues.reference}</span>
-                                            </div>
-                                        )}
+                                            {/* Customer Information */}
+                                            {formValues.customer_raw && (
+                                                <div>
+                                                    <div className="font-bold text-slate-900 text-xs mb-1">Customer:</div>
+                                                    <div className="whitespace-pre-line text-slate-700 pl-3 border-l-2 border-blue-500 font-sans leading-relaxed">
+                                                        {formValues.customer_raw}
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                        {formValues.subject && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">Subject: </span>
-                                                <span className="text-slate-900 font-bold">{formValues.subject}</span>
-                                            </div>
-                                        )}
+                                            {formValues.kind_attention && (
+                                                <div className="flex items-start gap-1">
+                                                    <span className="font-bold text-slate-900 shrink-0">Kind Attention: </span>
+                                                    <span className="text-slate-700 font-medium whitespace-pre-line">{formValues.kind_attention}</span>
+                                                </div>
+                                            )}
 
-                                        {formValues.sac_code && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">SAC Code: </span>
-                                                <span className="text-slate-700 font-medium">{formValues.sac_code}</span>
-                                            </div>
-                                        )}
+                                            {formValues.reference && (
+                                                <div>
+                                                    <span className="font-bold text-slate-900">Reference: </span>
+                                                    <span className="text-slate-700 font-medium">{formValues.reference}</span>
+                                                </div>
+                                            )}
 
-                                        {/* Scope of Work */}
-                                        {(formValues.scope_intro || scopeItems.length > 0) && (
-                                            <div className="space-y-2 pt-3 border-t border-slate-200">
-                                                <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Scope of Work:</div>
-                                                {formValues.scope_intro && (
-                                                    <p className="text-slate-700 leading-relaxed italic m-0">{formValues.scope_intro}</p>
-                                                )}
-                                                {scopeItems.length > 0 && (
-                                                    <ul className="list-disc list-inside space-y-1.5 text-slate-700 pl-1">
-                                                        {scopeItems.map((item, i) => (
+                                            {formValues.subject && (
+                                                <div>
+                                                    <span className="font-bold text-slate-900">Subject: </span>
+                                                    <span className="text-slate-900 font-bold">{formValues.subject}</span>
+                                                </div>
+                                            )}
+
+                                            {formValues.sac_code && (
+                                                <div>
+                                                    <span className="font-bold text-slate-900">SAC Code: </span>
+                                                    <span className="text-slate-700 font-medium">{formValues.sac_code}</span>
+                                                </div>
+                                            )}
+
+                                            {/* Scope of Work */}
+                                            {(formValues.scope_intro || scopeItems.length > 0) && (
+                                                <div className="space-y-2 pt-3 border-t border-slate-200">
+                                                    <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Scope of Work:</div>
+                                                    {formValues.scope_intro && (
+                                                        <p className="text-slate-700 leading-relaxed italic m-0">{formValues.scope_intro}</p>
+                                                    )}
+                                                    {scopeItems.length > 0 && (
+                                                        <ul className="list-disc list-inside space-y-1.5 text-slate-700 pl-1">
+                                                            {scopeItems.map((item, i) => (
+                                                                <li key={i} className="leading-relaxed">{item}</li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Terms & Conditions */}
+                                            {termsItems.length > 0 && (
+                                                <div className="space-y-2 pt-3 border-t border-slate-200">
+                                                    <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Payment Terms & Conditions:</div>
+                                                    <ol className="list-decimal list-inside space-y-1.5 text-slate-700 pl-1">
+                                                        {termsItems.map((item, i) => (
                                                             <li key={i} className="leading-relaxed">{item}</li>
                                                         ))}
-                                                    </ul>
-                                                )}
-                                            </div>
-                                        )}
+                                                    </ol>
+                                                </div>
+                                            )}
 
-                                        {/* Terms & Conditions */}
-                                        {termsItems.length > 0 && (
-                                            <div className="space-y-2 pt-3 border-t border-slate-200">
-                                                <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Payment Terms & Conditions:</div>
-                                                <ol className="list-decimal list-inside space-y-1.5 text-slate-700 pl-1">
-                                                    {termsItems.map((item, i) => (
-                                                        <li key={i} className="leading-relaxed">{item}</li>
-                                                    ))}
-                                                </ol>
-                                            </div>
-                                        )}
-
-                                        {/* Cost Tables Preview */}
-                                        {tables.length > 0 && (
-                                            <div className="space-y-3 pt-3 border-t border-slate-200">
-                                                {tables.map((t, idx) => (
-                                                    <div key={idx} className="space-y-1.5">
-                                                        {t.title && <div className="font-bold text-slate-800 text-xs">{t.title}</div>}
-                                                        <table className="w-full border-collapse border border-slate-300 text-[10px]">
-                                                            <thead>
-                                                                <tr className="bg-slate-100">
-                                                                    {t.headers.map((h, hIdx) => (
-                                                                        <th key={hIdx} className="border border-slate-300 p-1.5 font-bold text-slate-900 text-left">
-                                                                            {h}
-                                                                        </th>
-                                                                    ))}
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {t.rows.map((r, rIdx) => (
-                                                                    <tr key={rIdx}>
-                                                                        {r.map((cell, cIdx) => (
-                                                                            <td key={cIdx} className="border border-slate-300 p-1.5 text-slate-700 font-medium">
-                                                                                {cell}
-                                                                            </td>
+                                            {/* Cost Tables Preview */}
+                                            {tables.length > 0 && (
+                                                <div className="space-y-3 pt-3 border-t border-slate-200">
+                                                    {tables.map((t, idx) => (
+                                                        <div key={idx} className="space-y-1.5">
+                                                            {t.title && <div className="font-bold text-slate-800 text-xs">{t.title}</div>}
+                                                            <table className="w-full border-collapse border border-slate-300 text-[10px]">
+                                                                <thead>
+                                                                    <tr className="bg-slate-100">
+                                                                        {t.headers.map((h, hIdx) => (
+                                                                            <th key={hIdx} className="border border-slate-300 p-1.5 font-bold text-slate-900 text-left">
+                                                                                {h}
+                                                                            </th>
                                                                         ))}
                                                                     </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {/* Signatories Footer */}
-                                        {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
-                                            <div className="pt-8 border-t border-slate-300">
-                                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-right">
-                                                    {signatories.map((sig, i) => (
-                                                        <div key={i} className="space-y-0.5">
-                                                            {sig.name && <div className="font-extrabold text-slate-900 text-xs">{sig.name},</div>}
-                                                            {sig.lines_raw && (
-                                                                <div className="whitespace-pre-line text-slate-600 text-[11px] leading-snug">
-                                                                    {sig.lines_raw}
-                                                                </div>
-                                                            )}
+                                                                </thead>
+                                                                <tbody>
+                                                                    {t.rows.map((r, rIdx) => (
+                                                                        <tr key={rIdx}>
+                                                                            {r.map((cell, cIdx) => (
+                                                                                <td key={cIdx} className="border border-slate-300 p-1.5 text-slate-700 font-medium">
+                                                                                    {cell}
+                                                                                </td>
+                                                                            ))}
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
                                                         </div>
                                                     ))}
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </Card>
+                                            )}
 
-                                {/* Action Floating CTA Panel */}
-                                <Card
-                                    className="shadow-xl rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                    styles={{ body: { padding: '20px' } }}
-                                >
-                                    <div className="space-y-3">
-                                        <Row gutter={[12, 12]}>
-                                            <Col xs={24} sm={12}>
-                                                <Button
-                                                    type="primary"
-                                                    size="large"
-                                                    block
-                                                    icon={<DownloadOutlined />}
-                                                    loading={loading && !addToProposalsLoading}
-                                                    onClick={() => {
-                                                        setActionType('download');
-                                                        form.submit();
-                                                    }}
-                                                    className="bg-[#2563EB] hover:bg-[#1E40AF] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
-                                                >
-                                                    Generate DOCX
-                                                </Button>
-                                            </Col>
-                                            <Col xs={24} sm={12}>
-                                                <Button
-                                                    type="primary"
-                                                    size="large"
-                                                    block
-                                                    icon={<PlusOutlined />}
-                                                    loading={addToProposalsLoading}
-                                                    onClick={() => {
-                                                        setActionType('addToProposals');
-                                                        form.submit();
-                                                    }}
-                                                    className="bg-[#16A34A] hover:bg-[#15803D] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
-                                                >
-                                                    Add to Proposals
-                                                </Button>
-                                            </Col>
-                                        </Row>
+                                            {/* Signatories Footer */}
+                                            {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
+                                                <div className="pt-8 border-t border-slate-300">
+                                                    <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-right">
+                                                        {signatories.map((sig, i) => (
+                                                            <div key={i} className="space-y-0.5">
+                                                                {sig.name && <div className="font-extrabold text-slate-900 text-xs">{sig.name},</div>}
+                                                                {sig.lines_raw && (
+                                                                    <div className="whitespace-pre-line text-slate-600 text-[11px] leading-snug">
+                                                                        {sig.lines_raw}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Card>
 
-                                        <Text className="text-center block text-slate-400 text-xs">
-                                            Streams official <code className="text-slate-600 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">.docx</code> directly or auto-fills into Proposal entry.
-                                        </Text>
-                                    </div>
-                                </Card>
-                            </div>
-                        </Col>
+                                    {/* Action Floating CTA Panel */}
+                                    <Card
+                                        className="shadow-xl rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
+                                        styles={{ body: { padding: '20px' } }}
+                                    >
+                                        <div className="space-y-3">
+                                            <Row gutter={[12, 12]}>
+                                                <Col xs={24} sm={12}>
+                                                    <Button
+                                                        type="primary"
+                                                        size="large"
+                                                        block
+                                                        icon={<DownloadOutlined />}
+                                                        loading={loading && !addToProposalsLoading}
+                                                        onClick={() => {
+                                                            setActionType('download');
+                                                            form.submit();
+                                                        }}
+                                                        className="bg-[#2563EB] hover:bg-[#1E40AF] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
+                                                    >
+                                                        Generate DOCX
+                                                    </Button>
+                                                </Col>
+                                                <Col xs={24} sm={12}>
+                                                    <Button
+                                                        type="primary"
+                                                        size="large"
+                                                        block
+                                                        icon={<PlusOutlined />}
+                                                        loading={addToProposalsLoading}
+                                                        onClick={() => {
+                                                            setActionType('addToProposals');
+                                                            form.submit();
+                                                        }}
+                                                        className="bg-[#16A34A] hover:bg-[#15803D] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
+                                                    >
+                                                        Add to Proposals
+                                                    </Button>
+                                                </Col>
+                                            </Row>
+
+                                            <Text className="text-center block text-slate-400 text-xs">
+                                                Streams official <code className="text-slate-600 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">.docx</code> directly or auto-fills into Proposal entry.
+                                            </Text>
+                                        </div>
+                                    </Card>
+                                </div>
+                            </Col>
                         )}
                     </Row>
                 </Form>
