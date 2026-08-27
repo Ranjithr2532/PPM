@@ -88,6 +88,18 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
         db.add(dwg_doc)
         db.commit()
 
+    existing_085 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "085").first()
+    if not existing_085:
+        insp_doc = ISODocumentList(
+            name="Inspection Report",
+            initial="IR",
+            code="CMTI-SMC-QMS-085/Rev00",
+            document_no="085",
+            is_active=True,
+        )
+        db.add(insp_doc)
+        db.commit()
+
     query = db.query(ISODocumentList)
     if is_active is not None:
         query = query.filter(ISODocumentList.is_active == is_active)
