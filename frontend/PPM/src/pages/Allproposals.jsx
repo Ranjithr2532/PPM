@@ -2828,19 +2828,25 @@ export default function Allproposals() {
                           menu={{
                             items: [
                               {
-                                key: 'addProposal',
-                                icon: <PlusOutlined />,
-                                label: 'Add Proposal Form',
-                                onClick: openCoordinatorAddModal,
+                                key: 'attachProposal',
+                                icon: <PaperClipOutlined />,
+                                label: 'Attach Proposal',
+                                onClick: () => {
+                                  openCoordinatorAddModal()
+                                  setProposalCreationMode('manual')
+                                },
                               },
                               {
-                                key: 'createDocument',
+                                key: 'createProposal',
                                 icon: <FileTextOutlined />,
-                                label: 'Create Document',
+                                label: 'Create Proposal (Document Studio)',
                                 onClick: () => {
                                   openCoordinatorAddModal()
                                   setProposalCreationMode('create_document')
                                 },
+                              },
+                              {
+                                type: 'divider',
                               },
                               {
                                 key: 'draftProposal',
@@ -2851,6 +2857,15 @@ export default function Allproposals() {
                                   setProposalCreationMode('draft')
                                 },
                               },
+                              {
+                                key: 'isoProposal',
+                                icon: <FileProtectOutlined />,
+                                label: 'ISO Project Proposal',
+                                onClick: () => {
+                                  openCoordinatorAddModal()
+                                  setProposalCreationMode('iso_project_proposal')
+                                },
+                              },
                             ],
                           }}
                           trigger={['click']}
@@ -2859,9 +2874,9 @@ export default function Allproposals() {
                             type="primary"
                             size="large"
                             icon={<PlusOutlined />}
-                            className="bg-gradient-to-r from-green-500 to-green-600 border-none shadow-md hover:shadow-lg"
+                            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 border-none shadow-md hover:shadow-lg font-bold"
                           >
-                            Add Proposal
+                            Create Proposals
                           </Button>
                         </Dropdown>
                       )}
@@ -3492,17 +3507,17 @@ export default function Allproposals() {
             <span className="text-lg font-bold text-slate-900">
               {proposalCreationMode === 'selection'
                 ? convertingDraftRecord
-                  ? `Add Draft Proposal #${convertingDraftRecord.id} to Proposals`
-                  : 'Add Proposal'
+                  ? `Complete Draft Proposal #${convertingDraftRecord.id}`
+                  : 'Create Proposals'
                 : proposalCreationMode === 'draft'
                   ? 'Create Draft Proposal'
                   : proposalCreationMode === 'create_document'
-                    ? 'Create Document'
+                    ? 'Create Proposal & Document Studio'
                     : proposalCreationMode === 'iso_project_proposal'
                       ? 'ISO Project Proposal (CMTI-QMS-009)'
                       : proposalCreationMode === 'upload_review'
-                        ? 'Add Proposal - Review Extracted Document'
-                        : 'Add Proposal (Manual Entry)'}
+                        ? 'Attach Proposal - Review Extracted Details'
+                        : 'Attach Proposal & Manual Entry Form'}
             </span>
             {proposalCreationMode !== 'selection' && (
               <Button
@@ -3581,13 +3596,13 @@ export default function Allproposals() {
                   Choose Proposal Creation Method
                 </h3>
                 <p className="text-sm text-slate-500 mt-1">
-                  Select how you would like to create this new proposal:
+                  Select your preferred proposal creation workflow:
                 </p>
               </div>
             )}
 
             <Row gutter={[16, 16]} justify="center">
-              {/* Option 1: Manual Entry */}
+              {/* Option 1: Attach Proposal */}
               <Col xs={24} sm={12} md={convertingDraftRecord ? 8 : 6}>
                 <Card
                   hoverable
@@ -3596,13 +3611,13 @@ export default function Allproposals() {
                   styles={{ body: { padding: '20px', textAlign: 'center' } }}
                 >
                   <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-                    <FormOutlined className="text-xl" />
+                    <PaperClipOutlined className="text-xl" />
                   </div>
                   <h4 className="text-sm font-bold text-slate-800 mb-1">
-                    Manual Entry
+                    Attach Proposal
                   </h4>
                   <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
-                    Fill in all proposal details manually using standard inputs.
+                    Attach proposal document (.docx, .pdf) & complete manual entry form with auto-extraction.
                   </p>
                   <Button
                     type="primary"
@@ -3614,12 +3629,12 @@ export default function Allproposals() {
                     }}
                     className="rounded-xl font-semibold bg-blue-600 hover:bg-blue-700"
                   >
-                    {convertingDraftRecord ? 'Complete Manually' : 'Create Manually'}
+                    {convertingDraftRecord ? 'Complete & Attach' : 'Attach Proposal Form'}
                   </Button>
                 </Card>
               </Col>
 
-              {/* Option 2: Create Document */}
+              {/* Option 2: Create Proposal (Document Studio) */}
               <Col xs={24} sm={12} md={convertingDraftRecord ? 8 : 6}>
                 <Card
                   hoverable
@@ -3631,10 +3646,10 @@ export default function Allproposals() {
                     <FileTextOutlined className="text-xl" />
                   </div>
                   <h4 className="text-sm font-bold text-slate-800 mb-1">
-                    Create Document
+                    Create Proposal
                   </h4>
                   <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
-                    Generate proposal document (.docx) with live preview & auto extraction.
+                    Generate proposal document (.docx) with live preview & fill proposal details below in one step.
                   </p>
                   <Button
                     type="primary"
@@ -3760,68 +3775,17 @@ export default function Allproposals() {
         ) : proposalCreationMode === 'create_document' ? (
           <div className="py-2">
             <DocumentGenerate
-              onAddToProposals={(file, extracted, attachments = []) => {
-                setUploadedDocName(file.name)
-                setUploadedDocxFile(file)
-                if (attachments && attachments.length > 0) {
-                  setProposalAttachments(attachments)
+              stageConfig={stageConfig}
+              convertingDraftRecord={convertingDraftRecord}
+              onSuccess={(newPid) => {
+                closeCoordinatorModal()
+                fetchProposals()
+                if (newPid) {
+                  openUploadModalForProject(newPid)
                 }
-
-                const updatedValues = {}
-                const dateVal = extracted.enquiry_date || extracted.quote_date
-                if (dateVal) {
-                  const dateStr = String(dateVal).trim()
-                  let parsedDate = dayjs(dateStr, ['DD/MM/YYYY', 'DD.MM.YYYY', 'DD-MM-YYYY', 'YYYY-MM-DD', 'YYYY/MM/DD', 'MM/DD/YYYY'])
-                  if (!parsedDate.isValid()) {
-                    parsedDate = dayjs(dateStr)
-                  }
-                  if (parsedDate.isValid()) {
-                    updatedValues.enquiry_date = parsedDate
-                    updatedValues.quote_date = parsedDate
-                    updatedValues.revised_negotiated_quote_date = parsedDate
-                  }
-                }
-                if (extracted.customer_name) updatedValues.customer_name = extracted.customer_name
-                if (extracted.customer_type) {
-                  updatedValues.customer_type = extracted.customer_type
-                } else if (extracted.customer_name) {
-                  const matchCust = allCustomerSuggestions.find(
-                    (c) => c.name && c.name.trim().toLowerCase() === extracted.customer_name.trim().toLowerCase()
-                  )
-                  if (matchCust && matchCust.customer_type) {
-                    updatedValues.customer_type = matchCust.customer_type
-                  }
-                }
-                if (extracted.address) updatedValues.address = extracted.address
-                if (extracted.email) updatedValues.email = extracted.email
-                if (extracted.phone_no) updatedValues.phone_no = extracted.phone_no
-                if (extracted.alternate_contact_details && extracted.alternate_contact_details !== extracted.kind_attention) {
-          updatedValues.alternate_contact_details = extracted.alternate_contact_details
-        }
-                const emailRefVal2 = extracted.email_reference || extracted.email || ''
-                if (emailRefVal2) updatedValues.email_reference = emailRefVal2
-                if (extracted.quote_reference) updatedValues.quote_reference = extracted.quote_reference
-                if (extracted.quote_description) updatedValues.quote_description = extracted.quote_description
-                if (extracted.quote_amount) updatedValues.quote_amount = extracted.quote_amount
-                if (extracted.center) {
-                  updatedValues.center = extracted.center
-                  updatedValues.quotation_given_by_department = extracted.center
-                }
-
-                if (currentUserName) {
-                  updatedValues.quotation_given_by_name = currentUserName
-                  if (!updatedValues.center) updatedValues.center = currentUserCenter || ''
-                  if (!updatedValues.quotation_given_by_department) updatedValues.quotation_given_by_department = currentUserCenter ? currentUserCenter.toUpperCase() : ''
-                  updatedValues.group = currentUserGroup || ''
-                }
-
-                if (!updatedValues.proposal_status) {
-                  updatedValues.proposal_status = ['Submitted']
-                }
-
-                coordinatorForm.setFieldsValue(updatedValues)
-                setProposalCreationMode('upload_review')
               }}
+              onBack={() => setProposalCreationMode('selection')}
+              onCancel={closeCoordinatorModal}
             />
           </div>
         ) : proposalCreationMode === 'iso_project_proposal' ? (
@@ -3840,31 +3804,64 @@ export default function Allproposals() {
             />
           </div>
         ) : (
-          <div>
-            {proposalCreationMode === 'upload_review' && (
-              <div className="mb-4 p-4 rounded-xl border border-green-200 bg-green-50/80 space-y-3">
+          <div className="space-y-4">
+            {/* Dedicated Attach Document Box */}
+            <div className="p-4 bg-slate-50 border border-slate-300 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CheckCircleOutlined className="text-green-600 text-base" />
+                  <PaperClipOutlined className="text-blue-600 text-base" />
                   <span className="font-bold text-slate-800 text-sm">
-                    Document Uploaded & Extracted
+                    Attach Proposal Documents & Files (.docx, .pdf, drawings)
                   </span>
                 </div>
-                <div className="text-xs text-slate-600">
-                  Successfully parsed extracted values from <strong>"{uploadedDocName}"</strong>. Please verify and edit any fields below before saving.
-                </div>
+                {docxUploading && <Spin size="small" tip="Parsing .docx document..." />}
+              </div>
 
-                {/* Attachment Chips matching exact design in screenshot */}
-                <div className="pt-2 border-t border-green-200/60 flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mr-1">
-                    <PaperClipOutlined className="text-slate-500 text-sm" />
-                    <span>Attached Documents:</span>
-                  </div>
+              <Dragger
+                multiple
+                beforeUpload={(file) => {
+                  const isDocx = file.name.toLowerCase().endsWith('.docx')
+                  if (isDocx) {
+                    handleDocxUpload(file)
+                  } else {
+                    setProposalAttachments((prev) => [...prev, file])
+                    message.success(`Attached ${file.name}`)
+                  }
+                  return false
+                }}
+                showUploadList={false}
+                className="p-3 bg-white border-dashed border-slate-300 rounded-lg hover:border-blue-500 transition cursor-pointer"
+              >
+                <p className="ant-upload-drag-icon text-slate-400 mb-1">
+                  <InboxOutlined className="text-2xl text-blue-500" />
+                </p>
+                <p className="ant-upload-text text-xs font-semibold text-slate-700">
+                  Click or drag files here to attach (Uploading a <code className="text-blue-600 font-bold">.docx</code> will auto-fill form fields)
+                </p>
+                <p className="ant-upload-hint text-[11px] text-slate-400">
+                  Supports Word (.docx), PDF (.pdf), Excel spreadsheets, technical drawings, and images.
+                </p>
+              </Dragger>
+
+              {/* Attached Document Chips */}
+              {(uploadedDocName || (proposalAttachments && proposalAttachments.length > 0)) && (
+                <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600 mr-1">Attached Files:</span>
 
                   {uploadedDocName && (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-blue-600">
-                      <PaperClipOutlined className="text-slate-400 text-xs" />
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-blue-300 rounded-md text-xs font-medium shadow-xs text-blue-700">
+                      <FileWordOutlined className="text-blue-600 text-xs" />
                       <span className="max-w-[220px] truncate" title={uploadedDocName}>
-                        {uploadedDocName}
+                        {uploadedDocName} (Main Document)
+                      </span>
+                      <span
+                        onClick={() => {
+                          setUploadedDocName('')
+                          setUploadedDocxFile(null)
+                        }}
+                        className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
+                      >
+                        ✕
                       </span>
                     </div>
                   )}
@@ -3872,7 +3869,7 @@ export default function Allproposals() {
                   {proposalAttachments && proposalAttachments.map((file, idx) => (
                     <div
                       key={`${file.name}-${idx}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-blue-600"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-slate-700"
                     >
                       <PaperClipOutlined className="text-slate-400 text-xs" />
                       <span className="max-w-[220px] truncate" title={file.name}>
@@ -3887,8 +3884,8 @@ export default function Allproposals() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <Form
               form={coordinatorForm}

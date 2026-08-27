@@ -17,6 +17,9 @@ import {
     Progress,
     Upload,
     AutoComplete,
+    Select,
+    DatePicker,
+    Alert,
 } from 'antd';
 import {
     FileWordOutlined,
@@ -44,13 +47,40 @@ import {
     UploadOutlined,
     EditOutlined,
     RobotOutlined,
+    PhoneOutlined,
+    InboxOutlined,
+    ArrowLeftOutlined,
+    SendOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
+import dayjs from 'dayjs';
 import { API_BASE_URL } from '../config/api.js';
+import { DISPLAY_DATE_FORMAT, formatDate } from '../config/date.js';
 import { CostEstimationModal, convertHeadersToDocumentTables } from './CostBreakDownAction';
 
 const { TextArea } = Input;
 const { Text, Title, Paragraph } = Typography;
+const { Dragger } = Upload;
+
+const CUSTOMER_TYPE_OPTIONS = [
+    'Govt',
+    'Private',
+    'MHI',
+    'MSME',
+    'Research Institute',
+    'Educational institute',
+];
+
+const REQUEST_TYPE_OPTIONS = [
+    'Call for Proposal',
+    'Mail',
+    'Discussion',
+    'Initiative',
+    'Tender',
+    'Direct Enquiry',
+    'Budgetry offer',
+    'EOI',
+];
 
 const MANPOWER_HEADER = "Manpower";
 const MANPOWER_COLUMNS = ["Role", "Cost Breakup", "Total Amount"];
@@ -120,11 +150,19 @@ const transformTablesForPreviewAndPayload = (structuredTables) => {
     });
 };
 
-export default function DocumentGenerate({ onAddToProposals, projectId }) {
+export default function DocumentGenerate({
+    onAddToProposals,
+    projectId,
+    onSuccess,
+    onBack,
+    onCancel,
+    currentUser,
+    stageConfig = [],
+    convertingDraftRecord = null,
+}) {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
-    const [addToProposalsLoading, setAddToProposalsLoading] = useState(false);
-    const [actionType, setActionType] = useState('download'); // 'download' | 'addToProposals'
+    const [submitProposalLoading, setSubmitProposalLoading] = useState(false);
     const [previewZoom, setPreviewZoom] = useState(100);
     const [previewVisible, setPreviewVisible] = useState(false);
 
@@ -132,17 +170,18 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
     const [scopeItems, setScopeItems] = useState([]);
     const [newScopeInput, setNewScopeInput] = useState('');
     const [scopeAttachments, setScopeAttachments] = useState([]);
+    const [additionalAttachments, setAdditionalAttachments] = useState([]);
+    const [tenderFileList, setTenderFileList] = useState([]);
 
-    // Dynamic state for Terms Bullet Points (Starts empty)
+    // Dynamic state for Terms Bullet Points
     const [termsItems, setTermsItems] = useState([]);
     const [newTermInput, setNewTermInput] = useState('');
 
-    // Dynamic state for Pricing Tables (Starts empty)
+    // Dynamic state for Pricing Tables
     const [tables, setTables] = useState([]);
 
-    // Dynamic state for Internal Cost Estimation Tables (Starts empty)
+    // Dynamic state for Internal Cost Estimation Tables
     const [internalCostTables, setInternalCostTables] = useState([]);
-    const [rawStudioHeaders, setRawStudioHeaders] = useState([]);
     const [costModalOpen, setCostModalOpen] = useState(false);
 
     // AI Email Extraction State
@@ -151,155 +190,17 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
     const [aiExtracting, setAiExtracting] = useState(false);
     const [aiExtractedSummary, setAiExtractedSummary] = useState(null);
 
-    // Handle extracting details from customer email to auto-fill Document Form
-    const handleExtractEmailForDocument = async () => {
-        if (!aiEmailText.trim()) {
-            message.warning('Please paste the customer email text first.');
-            return;
-        }
+    // Customer suggestions state
+    const [customerSuggestions, setCustomerSuggestions] = useState([]);
+    const [customerOptions, setCustomerOptions] = useState([]);
+    const [customerSearchText, setCustomerSearchText] = useState('');
+    const [addressOptions, setAddressOptions] = useState([]);
+    const [selectedCustomer, setSelectedCustomer] = useState(null);
 
-        setAiExtracting(true);
-        setAiExtractedSummary(null);
-
-        try {
-            const res = await axios.post(`${API_BASE_URL}/ai/extract-email`, {
-                email_text: aiEmailText
-            }, {
-                timeout: 130000
-            });
-
-            const data = res.data || {};
-            
-            // Format customer raw address block (ensure no email address appears in customer name/address)
-            const cleanCustName = (data.customer_name && !data.customer_name.includes('@')) ? data.customer_name.trim() : '';
-            const cleanCustAddr = (data.customer_address && !data.customer_address.includes('@')) ? data.customer_address.trim() : '';
-
-            let custRaw = '';
-            if (cleanCustName && cleanCustAddr) {
-                custRaw = `${cleanCustName}\n${cleanCustAddr}`;
-            } else if (cleanCustName) {
-                custRaw = cleanCustName;
-            } else if (cleanCustAddr) {
-                custRaw = cleanCustAddr;
-            }
-
-            // Filename
-            let generatedFilename = form.getFieldValue('filename');
-            if (data.proposal_subject) {
-                const safeName = data.proposal_subject
-                    .replace(/[^a-zA-Z0-9_\-\s]/g, '')
-                    .trim()
-                    .replace(/\s+/g, '_');
-                generatedFilename = `${safeName || 'Proposal'}.docx`;
-            }
-
-            // Populate form values
-            const updates = {};
-            if (data.email_to && data.email_to.length > 0) {
-                updates.email_to = data.email_to.join(', ');
-            }
-            if (data.email_cc && data.email_cc.length > 0) {
-                updates.email_cc = data.email_cc.join(', ');
-            }
-            if (custRaw) {
-                updates.customer_raw = custRaw;
-            }
-            if (data.kind_attention) {
-                let ka = data.kind_attention;
-                if (typeof ka === 'string' && ka.includes(',') && !ka.includes('\n')) {
-                    ka = ka.split(',').map(s => s.trim()).filter(Boolean).join('\n');
-                }
-                updates.kind_attention = ka;
-            }
-            if (data.proposal_subject) {
-                updates.subject = data.proposal_subject;
-            }
-            if (data.introductory_paragraph) {
-                updates.scope_intro = data.introductory_paragraph;
-            }
-            if (cleanCustName) {
-                setCustomerSearchText(cleanCustName);
-                const matched = customerSuggestions.find(
-                    (c) => c.name && (
-                        c.name.trim().toLowerCase() === cleanCustName.trim().toLowerCase() ||
-                        c.name.toLowerCase().includes(cleanCustName.toLowerCase()) ||
-                        cleanCustName.toLowerCase().includes(c.name.toLowerCase())
-                    )
-                );
-                if (matched) {
-                    setSelectedCustomer(matched);
-                    const addrs = Array.isArray(matched.addresses)
-                        ? matched.addresses
-                        : matched.address
-                            ? [matched.address]
-                            : [];
-                    setAddressOptions(addrs.map((a) => ({ value: a, label: a })));
-                }
-            }
-
-            form.setFieldsValue(updates);
-
-            // Populate scope items safely
-            const rawScopes = (Array.isArray(data.scope_of_work) && data.scope_of_work.length > 0)
-                ? data.scope_of_work
-                : (Array.isArray(data.objectives) && data.objectives.length > 0)
-                    ? data.objectives
-                    : [];
-
-            const validScopes = rawScopes.filter(
-                (item) => typeof item === 'string' && item.trim().length > 3 && !item.toLowerCase().includes('array of') && !item.toLowerCase().includes('list of')
-            );
-            
-            if (validScopes.length > 0) {
-                setScopeItems(validScopes);
-            } else {
-                setScopeItems([]);
-            }
-
-            setAiExtractedSummary({
-                customer: data.customer_name,
-                subject: data.proposal_subject,
-                scopeCount: validScopes.length
-            });
-
-            message.success('Proposal details successfully extracted and populated into the document form!');
-        } catch (err) {
-            console.error('Email extraction error:', err);
-            if (err.response?.status === 503) {
-                message.error('AI service is unavailable. Please ensure Ollama & FastAPI are running.');
-            } else if (err.response?.status === 504) {
-                message.error('AI request timed out. Please try again.');
-            } else {
-                message.error('Failed to extract email details. Please check network/backend status.');
-            }
-        } finally {
-            setAiExtracting(false);
-        }
-    };
-
-    // Helper to calculate subtotal for a table in internalCostTables
-    const getTableSubtotal = (tbl) => {
-        if (!tbl || !tbl.rows || !Array.isArray(tbl.rows)) return 0;
-        const headers = tbl.headers || [];
-        let amtColIdx = headers.findIndex(h => /amount|cost|total/i.test(h));
-        if (amtColIdx === -1) amtColIdx = headers.length - 1;
-
-        return tbl.rows.reduce((sum, r) => {
-            let val = 0;
-            if (Array.isArray(r)) {
-                const raw = r[amtColIdx] !== undefined ? r[amtColIdx] : r[r.length - 1];
-                val = parseFloat(String(raw || '').replace(/[^0-9.-]+/g, '')) || 0;
-            } else if (typeof r === 'object' && r !== null) {
-                const raw = r[headers[amtColIdx]] || r['Total Amount'] || r['Total Amount (₹)'] || '0';
-                val = parseFloat(String(raw || '').replace(/[^0-9.-]+/g, '')) || 0;
-            }
-            return sum + val;
-        }, 0);
-    };
-
-    const grandInternalTotal = useMemo(() => {
-        return internalCostTables.reduce((sum, tbl) => sum + getTableSubtotal(tbl), 0);
-    }, [internalCostTables]);
+    // Watched form values
+    const formValues = Form.useWatch([], form) || {};
+    const watchedRequestType = Form.useWatch('request_type', form);
+    const isTenderSelected = (Array.isArray(watchedRequestType) ? watchedRequestType.join(' ') : String(watchedRequestType || '')).toLowerCase().includes('tender');
 
     // Dynamic state for Multiple Signatories
     const [signatories, setSignatories] = useState([
@@ -308,9 +209,6 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
             lines_raw: '',
         },
     ]);
-
-    // Watched form values for live preview synchronization
-    const formValues = Form.useWatch([], form) || {};
 
     // Helper to extract designation from logged-in user
     const getUserDesignation = () => {
@@ -355,42 +253,101 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
         return '';
     };
 
-    // Customer suggestions state
-    const [customerSuggestions, setCustomerSuggestions] = useState([]);
-    const [customerOptions, setCustomerOptions] = useState([]);
-    const [customerSearchText, setCustomerSearchText] = useState('');
-    const [addressOptions, setAddressOptions] = useState([]);
-    const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const getUserName = () => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            if (rawUser) {
+                const parsedUser = JSON.parse(rawUser);
+                return (parsedUser.name || '').trim();
+            }
+        } catch {}
+        return '';
+    };
+
+    const getUserGroup = () => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            if (rawUser) {
+                const parsedUser = JSON.parse(rawUser);
+                return (parsedUser.group || '').trim();
+            }
+        } catch {}
+        return '';
+    };
+
+    // Calculate subtotal for tables
+    const getTableSubtotal = (tbl) => {
+        if (!tbl || !tbl.rows || !Array.isArray(tbl.rows)) return 0;
+        const headers = tbl.headers || [];
+        let amtColIdx = headers.findIndex(h => /amount|cost|total/i.test(h));
+        if (amtColIdx === -1) amtColIdx = headers.length - 1;
+
+        return tbl.rows.reduce((sum, r) => {
+            let val = 0;
+            if (Array.isArray(r)) {
+                const raw = r[amtColIdx] !== undefined ? r[amtColIdx] : r[r.length - 1];
+                val = parseFloat(String(raw || '').replace(/[^0-9.-]+/g, '')) || 0;
+            } else if (typeof r === 'object' && r !== null) {
+                const raw = r[headers[amtColIdx]] || r['Total Amount'] || r['Total Amount (₹)'] || '0';
+                val = parseFloat(String(raw || '').replace(/[^0-9.-]+/g, '')) || 0;
+            }
+            return sum + val;
+        }, 0);
+    };
+
+    const grandPricingTotal = useMemo(() => {
+        return tables.reduce((sum, tbl) => sum + getTableSubtotal(tbl), 0);
+    }, [tables]);
+
+    const grandInternalTotal = useMemo(() => {
+        return internalCostTables.reduce((sum, tbl) => sum + getTableSubtotal(tbl), 0);
+    }, [internalCostTables]);
 
     // Auto-fetch center, logged-in user info, and customer database on mount
     useEffect(() => {
         const fetchedCenter = getUserCenter();
         const fetchedDesignation = getUserDesignation();
-        if (fetchedCenter) {
-            form.setFieldsValue({ dept: fetchedCenter });
-        }
+        const fetchedName = getUserName();
+        const fetchedGroup = getUserGroup();
 
-        try {
-            const rawUser = window.localStorage.getItem('ppm_user');
-            if (rawUser) {
-                const parsedUser = JSON.parse(rawUser);
-                if (parsedUser.name) {
-                    const desigLine = fetchedDesignation ? `${fetchedDesignation}` : '';
-                    const centerLine = fetchedCenter ? `${fetchedCenter}` : '';
-                    const lines = [desigLine, centerLine, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
-                    setSignatories([
-                        {
-                            name: parsedUser.name,
-                            lines_raw: lines,
-                        },
-                    ]);
-                }
+        const initialValues = {
+            date: new Date().toLocaleDateString('en-GB'),
+            dept: fetchedCenter || '',
+            quotation_given_by_name: fetchedName || '',
+            quotation_given_by_department: fetchedCenter || '',
+            center: fetchedCenter || '',
+            group: fetchedGroup || '',
+            proposal_status: ['Submitted'],
+            request_type: 'Direct Enquiry',
+            customer_type: 'Govt',
+        };
+
+        if (convertingDraftRecord) {
+            if (convertingDraftRecord.quote_description) {
+                initialValues.subject = convertingDraftRecord.quote_description;
+                initialValues.quote_description = convertingDraftRecord.quote_description;
             }
-        } catch (e) {
-            console.error('Error populating user signatory:', e);
+            if (convertingDraftRecord.customer_name) {
+                initialValues.customer_raw = convertingDraftRecord.customer_name;
+                initialValues.customer_name = convertingDraftRecord.customer_name;
+            }
         }
 
-        // Fetch customer list with addresses from proposals/customer db
+        form.setFieldsValue(initialValues);
+
+        if (fetchedName) {
+            const desigLine = fetchedDesignation ? `${fetchedDesignation}` : '';
+            const centerLine = fetchedCenter ? `${fetchedCenter}` : '';
+            const lines = [desigLine, centerLine, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
+            setSignatories([
+                {
+                    name: fetchedName,
+                    lines_raw: lines,
+                },
+            ]);
+        }
+
+        // Fetch customer list with addresses
         const fetchCustomers = async () => {
             try {
                 const token = localStorage.getItem('token');
@@ -405,7 +362,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                         const phones = Array.isArray(customer.phone) ? customer.phone : [];
                         const addresses = Array.isArray(customer.address) ? customer.address : [];
                         const alternate_contacts = Array.isArray(customer.alternate_contact_details) ? customer.alternate_contact_details : [];
-                        
+
                         return {
                             ...customer,
                             name: customer.name,
@@ -424,7 +381,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
             }
         };
         fetchCustomers();
-    }, [form]);
+    }, [form, convertingDraftRecord]);
 
     // Handle searching customers by name, address, email or phone
     const handleCustomerSearch = (searchText) => {
@@ -490,13 +447,26 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
             const firstAddr = addrs[0] || '';
             const formatted = firstAddr ? `${c.name}\n${firstAddr}` : c.name;
 
+            const safeCustName = (c.name || 'Proposal')
+                .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
+
             form.setFieldsValue({
                 customer_raw: formatted,
+                customer_name: c.name,
+                customer_type: c.customer_type || form.getFieldValue('customer_type') || 'Govt',
+                address: firstAddr || '',
                 email_to: c.email || form.getFieldValue('email_to') || '',
+                email: c.email || form.getFieldValue('email') || '',
+                phone: c.phone_no || c.phone || form.getFieldValue('phone') || '',
+                phone_no: c.phone_no || c.phone || form.getFieldValue('phone_no') || '',
                 kind_attention: c.alternate_contact_details || form.getFieldValue('kind_attention') || '',
+                alternate_contact_details: c.alternate_contact_details || form.getFieldValue('alternate_contact_details') || '',
+                filename: `${safeCustName || 'Proposal'}.docx`,
             });
 
-            message.info(`Selected "${c.name}" — Name & Address populated!`);
+            message.info(`Selected "${c.name}" — Customer Details Populated!`);
         }
     };
 
@@ -506,11 +476,148 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
         const lines = currentRaw.split('\n');
         const custName = lines[0] || (selectedCustomer ? selectedCustomer.name : '');
         const formatted = addressVal ? `${custName}\n${addressVal}` : custName;
-        form.setFieldsValue({ customer_raw: formatted });
+        form.setFieldsValue({ customer_raw: formatted, address: addressVal });
         message.info('Updated document customer address');
     };
 
-    // Handle adding scope point
+    // Handle extracting details from customer email to auto-fill Document Form
+    const handleExtractEmailForDocument = async () => {
+        if (!aiEmailText.trim()) {
+            message.warning('Please paste the customer email text first.');
+            return;
+        }
+
+        setAiExtracting(true);
+        setAiExtractedSummary(null);
+
+        try {
+            const res = await axios.post(`${API_BASE_URL}/ai/extract-email`, {
+                email_text: aiEmailText
+            }, {
+                timeout: 130000
+            });
+
+            const data = res.data || {};
+
+            const cleanCustName = (data.customer_name && !data.customer_name.includes('@')) ? data.customer_name.trim() : '';
+            const cleanCustAddr = (data.customer_address && !data.customer_address.includes('@')) ? data.customer_address.trim() : '';
+
+            let custRaw = '';
+            if (cleanCustName && cleanCustAddr) {
+                custRaw = `${cleanCustName}\n${cleanCustAddr}`;
+            } else if (cleanCustName) {
+                custRaw = cleanCustName;
+            } else if (cleanCustAddr) {
+                custRaw = cleanCustAddr;
+            }
+
+            let generatedFilename = form.getFieldValue('filename');
+            const nameForFile = cleanCustName || data.proposal_subject || 'Proposal';
+            const safeName = nameForFile
+                .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
+            generatedFilename = `${safeName || 'Proposal'}.docx`;
+
+            const updates = {
+                filename: generatedFilename,
+            };
+            if (data.email_to && data.email_to.length > 0) {
+                updates.email_to = data.email_to.join(', ');
+                updates.email = data.email_to.join(', ');
+            }
+            if (data.email_cc && data.email_cc.length > 0) {
+                updates.email_cc = data.email_cc.join(', ');
+            }
+            if (data.phone_number) {
+                updates.phone = data.phone_number;
+                updates.phone_no = data.phone_number;
+            }
+            if (custRaw) {
+                updates.customer_raw = custRaw;
+                updates.customer_name = cleanCustName;
+                updates.address = cleanCustAddr;
+            }
+            if (data.kind_attention) {
+                let ka = data.kind_attention;
+                if (typeof ka === 'string') {
+                    const rawLines = ka.replace(/,/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+                    const seen = new Set();
+                    const cleanLines = [];
+                    rawLines.forEach(l => {
+                        const low = l.toLowerCase();
+                        if (!seen.has(low)) {
+                            seen.add(low);
+                            cleanLines.push(l);
+                        }
+                    });
+                    ka = cleanLines.join('\n');
+                }
+                updates.kind_attention = ka;
+                updates.alternate_contact_details = ka;
+            }
+            if (data.proposal_subject) {
+                updates.subject = data.proposal_subject;
+                updates.quote_description = data.proposal_subject;
+            }
+            if (data.introductory_paragraph) {
+                updates.scope_intro = data.introductory_paragraph;
+            }
+            if (cleanCustName) {
+                setCustomerSearchText(cleanCustName);
+                const matched = customerSuggestions.find(
+                    (c) => c.name && (
+                        c.name.trim().toLowerCase() === cleanCustName.trim().toLowerCase() ||
+                        c.name.toLowerCase().includes(cleanCustName.toLowerCase()) ||
+                        cleanCustName.toLowerCase().includes(c.name.toLowerCase())
+                    )
+                );
+                if (matched) {
+                    setSelectedCustomer(matched);
+                    if (matched.customer_type) {
+                        updates.customer_type = matched.customer_type;
+                    }
+                    const addrs = Array.isArray(matched.addresses)
+                        ? matched.addresses
+                        : matched.address
+                            ? [matched.address]
+                            : [];
+                    setAddressOptions(addrs.map((a) => ({ value: a, label: a })));
+                }
+            }
+
+            form.setFieldsValue(updates);
+
+            const rawScopes = (Array.isArray(data.scope_of_work) && data.scope_of_work.length > 0)
+                ? data.scope_of_work
+                : (Array.isArray(data.objectives) && data.objectives.length > 0)
+                    ? data.objectives
+                    : [];
+
+            const validScopes = rawScopes.filter(
+                (item) => typeof item === 'string' && item.trim().length > 3 && !item.toLowerCase().includes('array of') && !item.toLowerCase().includes('list of')
+            );
+
+            if (validScopes.length > 0) {
+                setScopeItems(validScopes);
+            }
+
+            setAiExtractedSummary({
+                customer: data.customer_name,
+                subject: data.proposal_subject,
+                scopeCount: validScopes.length
+            });
+
+            message.success('Proposal details successfully extracted and populated into Document Studio & Proposal Form!');
+        } catch (err) {
+            console.error('Email extraction error:', err);
+            message.error('Failed to extract email details.');
+        } finally {
+            setAiExtracting(false);
+        }
+    };
+
+    // Scope & Term handlers
     const handleAddScopeItem = () => {
         if (!newScopeInput.trim()) return;
         setScopeItems([...scopeItems, newScopeInput.trim()]);
@@ -521,7 +628,6 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
         setScopeItems(scopeItems.filter((_, i) => i !== index));
     };
 
-    // Handle adding terms point
     const handleAddTermItem = () => {
         if (!newTermInput.trim()) return;
         setTermsItems([...termsItems, newTermInput.trim()]);
@@ -532,7 +638,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
         setTermsItems(termsItems.filter((_, i) => i !== index));
     };
 
-    // Handle table editing
+    // Table Handlers
     const handleAddTable = () => {
         setTables([
             ...tables,
@@ -687,225 +793,337 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
         setSignatories(updated);
     };
 
-    // Form submission handler to generate DOCX or Add to Proposals
-    const handleSubmit = async (values) => {
-        const isAddToProposals = actionType === 'addToProposals';
-        if (isAddToProposals) {
-            setAddToProposalsLoading(true);
-        } else {
-            setLoading(true);
+    // Generate DOCX blob helper
+    const generateDocxBlob = async (values) => {
+        const email_to = (values.email_to || values.email || '')
+            .split(',')
+            .map((e) => e.trim())
+            .filter(Boolean);
+        const email_cc = (values.email_cc || '')
+            .split(',')
+            .map((e) => e.trim())
+            .filter(Boolean);
+
+        const customer_lines = (values.customer_raw || '')
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean);
+
+        if (customer_lines.length === 0 && values.customer_name) {
+            customer_lines.push(values.customer_name.trim());
+            if (values.address) {
+                customer_lines.push(values.address.trim());
+            }
         }
 
-        try {
-            // Process email lists
-            const email_to = (values.email_to || '')
-                .split(',')
-                .map((e) => e.trim())
-                .filter(Boolean);
-            const email_cc = (values.email_cc || '')
-                .split(',')
-                .map((e) => e.trim())
-                .filter(Boolean);
-
-            // Process customer lines
-            const customer_lines = (values.customer_raw || '')
+        const formattedSignatories = signatories.map((sig) => ({
+            name: sig.name || values.quotation_given_by_name || getUserName(),
+            lines: (sig.lines_raw || '')
                 .split('\n')
                 .map((l) => l.trim())
-                .filter(Boolean);
+                .filter(Boolean),
+        }));
 
-            // Process signatories array
-            const formattedSignatories = signatories.map((sig) => ({
-                name: sig.name || '',
-                lines: (sig.lines_raw || '')
-                    .split('\n')
-                    .map((l) => l.trim())
-                    .filter(Boolean),
-            }));
+        const primarySig = formattedSignatories[0] || { name: values.quotation_given_by_name || getUserName(), lines: [] };
 
-            const primarySig = formattedSignatories[0] || { name: '', lines: [] };
+        const payload = {
+            date: values.date || new Date().toLocaleDateString('en-GB'),
+            dept: values.dept || values.center || getUserCenter(),
+            email_to,
+            email_cc,
+            phone: values.phone || values.phone_no || '',
+            customer_lines,
+            kind_attention: values.kind_attention || values.alternate_contact_details || '',
+            reference: values.reference || values.quote_reference || '',
+            subject: values.subject || values.quote_description || '',
+            sac_code: values.sac_code || '',
+            scope_intro: values.scope_intro || '',
+            scope_items: scopeItems,
+            terms_items: termsItems,
+            tables: tables,
+            internal_cost_tables: internalCostTables,
+            signatory_name: primarySig.name,
+            signatory_lines: primarySig.lines,
+            signatories: formattedSignatories,
+            filename: values.filename || 'Proposal.docx',
+        };
 
-            const payload = {
-                date: values.date || new Date().toLocaleDateString('en-GB'),
-                dept: values.dept || '',
-                email_to,
-                email_cc,
-                customer_lines,
-                kind_attention: values.kind_attention || '',
-                reference: values.reference || '',
-                subject: values.subject || '',
-                sac_code: values.sac_code || '',
-                scope_intro: values.scope_intro || '',
-                scope_items: scopeItems,
-                terms_items: termsItems,
-                tables: tables,
-                internal_cost_tables: internalCostTables,
-                signatory_name: primarySig.name,
-                signatory_lines: primarySig.lines,
-                signatories: formattedSignatories,
-                filename: values.filename || '',
-            };
-
-            const response = await axios.post(
-                `${API_BASE_URL}/Proposal/generate`,
-                payload,
-                {
-                    responseType: 'blob',
-                }
-            );
-
-            // Header disposition check
-            const disposition = response.headers['content-disposition'];
-            let filename = values.filename || 'Proposal.docx';
-            if (disposition && disposition.includes('filename=')) {
-                const match = disposition.match(/filename="?([^"]+)"?/);
-                if (match && match[1]) {
-                    filename = match[1];
-                }
+        const response = await axios.post(
+            `${API_BASE_URL}/Proposal/generate`,
+            payload,
+            {
+                responseType: 'blob',
             }
-            if (!filename.toLowerCase().endsWith('.docx')) {
-                filename += '.docx';
+        );
+
+        const disposition = response.headers['content-disposition'];
+        let filename = values.filename || 'Proposal.docx';
+        if (disposition && disposition.includes('filename=')) {
+            const match = disposition.match(/filename="?([^"]+)"?/);
+            if (match && match[1]) {
+                filename = match[1];
             }
+        }
+        if (!filename.toLowerCase().endsWith('.docx')) {
+            filename += '.docx';
+        }
 
-            const blob = new Blob([response.data], {
-                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            });
+        const blob = new Blob([response.data], {
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
 
-            if (isAddToProposals) {
-                // Act as uploaded document structure: Parse DOCX via /proposals/add-proposal-coordinator
-                const docFile = new File([blob], filename, {
-                    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                });
+        return { blob, filename, payload };
+    };
 
-                const formData = new FormData();
-                formData.append('mode', 'upload');
-                formData.append('file', docFile);
+    // Export DOCX directly
+    const handleExportDocx = async () => {
+        setLoading(true);
+        try {
+            const values = form.getFieldsValue();
+            const { blob, filename } = await generateDocxBlob(values);
 
-                let extractedData = {};
-                try {
-                    const uploadRes = await axios.post(
-                        `${API_BASE_URL}/proposals/add-proposal-coordinator`,
-                        formData,
-                        { headers: { 'Content-Type': 'multipart/form-data' } }
-                    );
-                    if (uploadRes.data && uploadRes.data.success && uploadRes.data.data) {
-                        extractedData = uploadRes.data.data;
-                    }
-                } catch (parseErr) {
-                    console.warn('Backend parsing fallback to form values:', parseErr);
-                }
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(downloadUrl);
 
-                // Ensure key fields from Document Generator are prefilled if missing from parser
-                if (!extractedData.customer_name && customer_lines[0]) {
-                    extractedData.customer_name = customer_lines[0];
-                }
-                if (!extractedData.customer_type) {
-                    if (selectedCustomer && selectedCustomer.customer_type) {
-                        extractedData.customer_type = selectedCustomer.customer_type;
-                    } else if (extractedData.customer_name) {
-                        const found = customerSuggestions.find(
-                            (c) => c.name && c.name.trim().toLowerCase() === extractedData.customer_name.trim().toLowerCase()
-                        );
-                        if (found && found.customer_type) {
-                            extractedData.customer_type = found.customer_type;
-                        }
-                    }
-                }
-                if (!extractedData.address && customer_lines.length > 1) {
-                    extractedData.address = customer_lines.slice(1).join(', ');
-                }
-                if (!extractedData.email && email_to.length > 0) {
-                    extractedData.email = email_to.join(', ');
-                }
-                if (!extractedData.email_reference) {
-                    extractedData.email_reference = extractedData.email || email_to.join(', ') || values.reference || '';
-                }
-                if (!extractedData.quote_reference && values.reference) {
-                    extractedData.quote_reference = values.reference;
-                }
-                if (!extractedData.quote_description && values.subject) {
-                    extractedData.quote_description = values.subject;
-                }
-                if (!extractedData.center && values.dept) {
-                    extractedData.center = values.dept;
-                }
-                if (values.kind_attention) {
-                    extractedData.kind_attention = values.kind_attention;
-                }
-                // Ensure kind_attention name (e.g. Manjunath) does not populate alternate_contact_details number field
-                if (extractedData.alternate_contact_details && values.kind_attention) {
-                    const altStr = String(extractedData.alternate_contact_details).trim().toLowerCase();
-                    const kindStr = String(values.kind_attention).trim().toLowerCase();
-                    if (altStr === kindStr || kindStr.includes(altStr) || altStr.includes(kindStr)) {
-                        extractedData.alternate_contact_details = '';
-                    }
-                }
-
-                message.success(`Document "${filename}" generated & extracted into Proposal Form!`);
-
-                if (onAddToProposals) {
-                    onAddToProposals(docFile, extractedData, scopeAttachments);
-                }
-            } else {
-                // Standard Download DOCX
-                const downloadUrl = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.setAttribute('download', filename);
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                window.URL.revokeObjectURL(downloadUrl);
-
-                message.success(`Proposal document "${filename}" generated successfully!`);
-            }
+            message.success(`Proposal document "${filename}" exported successfully!`);
         } catch (err) {
-            console.error('Failed to generate Proposal document:', err);
-            message.error(
-                err.response?.data?.message ||
-                'Failed to generate document. Please verify backend service.'
-            );
+            console.error('Failed to export DOCX:', err);
+            message.error('Failed to export document. Please check backend service.');
         } finally {
             setLoading(false);
-            setAddToProposalsLoading(false);
         }
     };
 
-    // Calculate completion percentage for the live progress indicator
+    // Submit Proposal + Generate Document + Upload directly
+    const handleSubmitProposal = async () => {
+        try {
+            await form.validateFields();
+        } catch (validationErr) {
+            message.error('Please fill all required proposal fields before submitting.');
+            return;
+        }
+
+        const values = form.getFieldsValue();
+        const custRaw = (values.customer_raw || '').split('\n').map(s => s.trim()).filter(Boolean);
+        const custName = values.customer_name || custRaw[0] || (selectedCustomer ? selectedCustomer.name : '');
+        const quoteDesc = values.quote_description || values.subject || '';
+
+        if (!custName) {
+            message.error('Please enter Customer Name or Customer Information block.');
+            return;
+        }
+        if (!quoteDesc) {
+            message.error('Please enter Subject / Quote Description.');
+            return;
+        }
+
+        setSubmitProposalLoading(true);
+        try {
+            // 1. Generate DOCX file
+            const { blob, filename } = await generateDocxBlob(values);
+            const docFile = new File([blob], filename, {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            });
+
+            // 2. Build proposal payload
+            const rawUser = window.localStorage.getItem('ppm_user');
+            let parsedUser = {};
+            try {
+                parsedUser = rawUser ? JSON.parse(rawUser) : {};
+            } catch {}
+
+            const uName = values.quotation_given_by_name || parsedUser.name || getUserName();
+            const uCenter = values.center || values.dept || parsedUser.center || getUserCenter();
+            const uGroup = values.group || parsedUser.group || getUserGroup();
+
+            const proposalPayload = {
+                enquiry_date: values.date || new Date().toLocaleDateString('en-GB'),
+                customer_type: values.customer_type || (selectedCustomer && selectedCustomer.customer_type) || 'Govt',
+                customer_name: custName,
+                address: values.address || custRaw.slice(1).join(', ') || '',
+                email: values.email || values.email_to || '',
+                phone_no: values.phone_no || values.phone || '',
+                alternate_contact_details: values.alternate_contact_details || values.kind_attention || '',
+                request_type: values.request_type || 'Direct Enquiry',
+                make_in_india: values.make_in_india || '',
+                email_reference: values.email_reference || values.reference || values.email_to || '',
+                quote_reference: values.quote_reference || values.reference || '',
+                quote_description: quoteDesc,
+                quote_amount: values.quote_amount ? String(values.quote_amount) : (grandPricingTotal > 0 ? String(grandPricingTotal) : (grandInternalTotal > 0 ? String(grandInternalTotal) : '')),
+                quotation_given_by_name: uName,
+                quotation_given_by_department: values.quotation_given_by_department || uCenter || '',
+                center: uCenter,
+                group: uGroup,
+                proposal_status: Array.isArray(values.proposal_status) ? values.proposal_status.join(', ') : (values.proposal_status || 'Submitted'),
+                project_coordinator: uName,
+                user_id: parsedUser.id || parsedUser.user_id || 0,
+                user_name: parsedUser.name || uName,
+                user_email: parsedUser.email || '',
+                user_role: parsedUser.role || 'scientist',
+                user_center: uCenter,
+                user_group: uGroup,
+            };
+
+            if (convertingDraftRecord && convertingDraftRecord.id) {
+                proposalPayload.id = convertingDraftRecord.id;
+                proposalPayload.draft = false;
+            }
+
+            // 3. Post proposal to backend
+            const response = await fetch(`${API_BASE_URL}/proposals/add-proposal-coordinator`, {
+                method: 'POST',
+                headers: {
+                    accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(proposalPayload),
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({}));
+                throw new Error(errorBody.detail || 'Failed to create proposal');
+            }
+
+            const result = await response.json();
+            const newProjectId = result?.proposal_id;
+
+            // 4. Upload generated docx + all attachments to /documents/
+            if (newProjectId) {
+                try {
+                    let proposalStageId = 2;
+                    if (stageConfig && stageConfig.length > 0) {
+                        const proposalStage = stageConfig.find(
+                            (s) => (s.name || '').toString().trim().toLowerCase() === 'proposal'
+                        );
+                        if (proposalStage) proposalStageId = proposalStage.id;
+                    }
+
+                    const formData = new FormData();
+                    formData.append('project_id', newProjectId);
+                    formData.append('stage_id', proposalStageId);
+                    formData.append('uploaded_by', uName);
+                    formData.append('name', 'Proposal');
+                    formData.append('version', 'v1');
+                    formData.append('description', 'Official Proposal Document Generated via Document Studio');
+                    formData.append('file', docFile);
+
+                    const allAtts = [...scopeAttachments, ...additionalAttachments];
+                    allAtts.forEach((att) => {
+                        formData.append('attachment', att);
+                    });
+
+                    await fetch(`${API_BASE_URL}/documents/`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    // 5. Upload tender images if any
+                    if (tenderFileList && tenderFileList.length > 0) {
+                        const finalImageUrls = [];
+                        for (const item of tenderFileList) {
+                            if (item.url && !item.originFileObj) {
+                                finalImageUrls.push(item.url);
+                            } else if (item.originFileObj || item instanceof File) {
+                                const fileToUpload = item.originFileObj || item;
+                                const imgFormData = new FormData();
+                                imgFormData.append('project_id', newProjectId);
+                                imgFormData.append('uploaded_by', uName);
+                                imgFormData.append('name', `Tender Image: ${fileToUpload.name}`);
+                                imgFormData.append('description', 'Tender Image');
+                                imgFormData.append('file', fileToUpload);
+
+                                const docUploadRes = await fetch(`${API_BASE_URL}/documents/`, {
+                                    method: 'POST',
+                                    body: imgFormData,
+                                });
+                                if (docUploadRes.ok) {
+                                    const docResData = await docUploadRes.json();
+                                    if (docResData?.url) {
+                                        finalImageUrls.push(docResData.url);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (finalImageUrls.length > 0) {
+                            await fetch(`${API_BASE_URL}/proposals/${newProjectId}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tender_images: JSON.stringify(finalImageUrls) }),
+                            });
+                        }
+                    }
+                } catch (docErr) {
+                    console.error('Error uploading proposal documents:', docErr);
+                }
+            }
+
+            message.success('Proposal submitted and document generated successfully!');
+
+            if (onSuccess) {
+                onSuccess(newProjectId);
+            } else if (onAddToProposals) {
+                onAddToProposals(docFile, proposalPayload, [...scopeAttachments, ...additionalAttachments]);
+            }
+        } catch (err) {
+            console.error('Failed to submit proposal:', err);
+            message.error(err.message || 'Failed to submit proposal');
+        } finally {
+            setSubmitProposalLoading(false);
+        }
+    };
+
+    // Calculate completion percentage
     const calculateProgress = () => {
         let score = 0;
-        if (formValues.date) score += 15;
+        if (formValues.date) score += 10;
         if (formValues.dept) score += 10;
-        if (formValues.customer_raw) score += 20;
-        if (formValues.subject) score += 20;
+        if (formValues.customer_raw || formValues.customer_name) score += 20;
+        if (formValues.subject || formValues.quote_description) score += 20;
         if (scopeItems.length > 0) score += 15;
         if (termsItems.length > 0) score += 10;
-        if (signatories.some((s) => s.name.trim())) score += 10;
+        if (signatories.some((s) => s.name.trim())) score += 15;
         return Math.min(score, 100);
     };
 
     const progressPercent = calculateProgress();
 
     return (
-        <div className="w-full min-h-screen bg-[#F8FAFC] py-6 px-4 sm:px-6 lg:px-10 font-sans antialiased text-[#0F172A]">
+        <div className="w-full min-h-screen bg-[#F8FAFC] py-4 px-3 sm:px-5 lg:px-6 font-sans antialiased text-[#0F172A]">
 
             {/* Enterprise Header Area */}
-            <div className="max-w-7xl mx-auto mb-8 bg-white p-5 border border-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-5 text-slate-900 select-none">
+            <div className="max-w-7xl mx-auto mb-6 bg-white p-4 sm:p-5 border border-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-4 text-slate-900 select-none shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                 {/* Left side: Studio Info & Readiness */}
-                <div className="flex flex-col md:flex-row md:items-center gap-6 flex-1">
+                <div className="flex flex-col md:flex-row md:items-center gap-5 flex-1">
+                    {onBack && (
+                        <Button
+                            icon={<ArrowLeftOutlined />}
+                            onClick={onBack}
+                            className="rounded-none border border-slate-900 font-bold text-xs h-10 px-3 bg-slate-50 hover:bg-slate-100"
+                        >
+                            Back
+                        </Button>
+                    )}
                     <div>
-                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
-                            DOCUMENT STUDIO / PROPOSAL GENERATOR
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-0.5">
+                            DOCUMENT STUDIO & PROPOSAL GENERATOR
                         </div>
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                             <h1 className="text-xl font-extrabold text-slate-900 tracking-tight m-0">
-                                Official Document Studio
+                                Create Proposal & Document Studio
                             </h1>
                             <span className="bg-blue-50 text-blue-700 border border-blue-200 font-bold rounded-full px-2.5 py-0.5 text-[9px] uppercase tracking-wider font-mono">
                                 PRO DOCUMENT V2.0
                             </span>
                         </div>
                         <p className="text-slate-500 text-xs m-0 leading-normal max-w-xl">
-                            Build, format, and stream enterprise proposal documents with real-time A4 preview and instant proposal extraction.
+                            Format official proposal document with live preview, then review & submit the proposal entry below in one seamless step.
                         </p>
                     </div>
 
@@ -913,7 +1131,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
 
                     {/* Document Readiness */}
                     <div className="min-w-[130px]">
-                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-0.5">
                             DOCUMENT READINESS:
                         </div>
                         <div className="text-sm font-extrabold text-blue-600 mb-1 font-mono">
@@ -929,80 +1147,77 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                     </div>
                 </div>
 
-                {/* Right side: Modern Buttons */}
-                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                {/* Right side: Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                     <Button
                         icon={<RobotOutlined className={aiPanelOpen ? "text-indigo-600" : ""} />}
                         onClick={() => setAiPanelOpen(!aiPanelOpen)}
-                        className={`rounded-none border border-slate-900 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 ${
-                            aiPanelOpen ? 'bg-indigo-50 text-indigo-950 border-indigo-900 shadow-[2px_2px_0px_0px_rgba(79,70,229,1)]' : 'bg-white text-slate-900 hover:bg-slate-50'
-                        }`}
+                        className={`rounded-none border border-slate-900 font-bold text-xs h-10 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] transition-all cursor-pointer flex items-center justify-center gap-1.5 ${aiPanelOpen ? 'bg-indigo-50 text-indigo-950 border-indigo-900' : 'bg-white text-slate-900 hover:bg-slate-50'
+                            }`}
                     >
-                        {aiPanelOpen ? 'Hide AI Auto-Fill' : '⚡ AI Email Auto-Fill'}
+                        {aiPanelOpen ? 'Hide Auto-Fill' : 'AI Extract & Auto-Fill'}
                     </Button>
 
                     <Button
                         icon={previewVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
                         onClick={() => setPreviewVisible(!previewVisible)}
-                        className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                        className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-10 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                         {previewVisible ? 'Hide Preview' : 'Show Preview'}
                     </Button>
 
                     <Button
                         icon={<DownloadOutlined />}
-                        loading={loading && !addToProposalsLoading}
-                        onClick={() => {
-                            setActionType('download');
-                            form.submit();
-                        }}
-                        className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                        loading={loading}
+                        onClick={handleExportDocx}
+                        className="rounded-none border border-slate-900 text-slate-900 bg-white hover:bg-slate-50 font-bold text-xs h-10 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                         Export DOCX
                     </Button>
 
                     <Button
                         type="primary"
-                        icon={<PlusOutlined />}
-                        loading={addToProposalsLoading}
-                        onClick={() => {
-                            setActionType('addToProposals');
-                            form.submit();
-                        }}
-                        className="rounded-none border border-slate-900 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-xs h-11 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                        icon={<SendOutlined />}
+                        loading={submitProposalLoading}
+                        onClick={handleSubmitProposal}
+                        className="rounded-none border border-slate-900 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-bold text-xs h-10 px-5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] hover:translate-y-[-1px] transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                        Add to Proposals
+                        Submit Proposal
                     </Button>
                 </div>
             </div>
 
-            {/* Main Studio Workspace Grid */}
-            <div className="max-w-7xl mx-auto">
-                <Form
-                    form={form}
-                    layout="vertical"
-                    onFinish={handleSubmit}
-                    initialValues={{
-                        date: new Date().toLocaleDateString('en-GB'),
-                        dept: '',
-                        email_to: '',
-                        email_cc: '',
-                        customer_raw: '',
-                        kind_attention: '',
-                        reference: '',
-                        subject: '',
-                        sac_code: '',
-                        scope_intro: '',
-                    }}
-                    className="w-full"
-                >
+            {/* Main Form Context */}
+            <Form
+                form={form}
+                layout="vertical"
+                initialValues={{
+                    date: new Date().toLocaleDateString('en-GB'),
+                    dept: '',
+                    email_to: '',
+                    email_cc: '',
+                    phone: '',
+                    customer_raw: '',
+                    kind_attention: '',
+                    reference: '',
+                    subject: '',
+                    sac_code: '',
+                    scope_intro: '',
+                    customer_type: 'Govt',
+                    request_type: 'Direct Enquiry',
+                    proposal_status: ['Submitted'],
+                }}
+                className="w-full"
+            >
+                {/* Main Studio Workspace Grid */}
+                <div className="max-w-7xl mx-auto">
                     <Row gutter={[24, 24]}>
-                        {/* Left Column: Input Form Studio */}
+                        {/* Left Column: Document Studio Form */}
                         <Col xs={24} lg={previewVisible ? 15 : 24} xl={previewVisible ? 15 : 24} className="space-y-6">
 
                             {/* AI Email Extraction / Auto-Fill Panel */}
                             <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
-                                <div 
+                                <div
                                     onClick={() => setAiPanelOpen(!aiPanelOpen)}
                                     className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-800 transition"
                                 >
@@ -1015,7 +1230,7 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                                 AI Email Auto-Fill & Document Populate
                                             </span>
                                             <span className="text-[10px] text-slate-300 font-normal block">
-                                                Paste customer email thread from Outlook/Gmail to instantly populate customer info, subject, scope, and metadata.
+                                                Paste customer email thread from Outlook/Gmail to auto-populate customer info, subject, scope, and proposal metadata.
                                             </span>
                                         </div>
                                     </div>
@@ -1054,9 +1269,9 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                                     loading={aiExtracting}
                                                     disabled={!aiEmailText.trim()}
                                                     onClick={handleExtractEmailForDocument}
-                                                    className="rounded-none border border-slate-900 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:translate-x-[1px] transition-all flex items-center gap-1.5"
+                                                    className="rounded-none border border-slate-900 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] transition-all flex items-center gap-1.5"
                                                 >
-                                                    {aiExtracting ? 'Analyzing Email with AI...' : '⚡ Extract & Populate Document'}
+                                                    {aiExtracting ? 'Analyzing Email with AI...' : ' Extract & Populate Document'}
                                                 </Button>
 
                                                 <Button
@@ -1085,12 +1300,13 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                             </div>
 
                             {/* Section 1: Document Metadata & Header Settings */}
-                            <div className="border border-slate-900 bg-white mb-6">
-                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
-                                    1. Document Metadata & Header Settings
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>1. Document Metadata & Header Settings</span>
+                                    <span className="text-[10px] text-slate-400 font-normal">DOCX Structure</span>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Specify document header attributes including issue date, department code, and target export filename.
+                                    Specify document header attributes including issue date, department code, target export filename, and SAC code.
                                 </div>
                                 <table className="w-full border-collapse text-xs">
                                     <thead>
@@ -1105,23 +1321,23 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                         <tr>
                                             <td className="border-r border-slate-900 p-1">
                                                 <Form.Item name="date" noStyle rules={[{ required: true, message: 'Date is required' }]}>
-                                                    <Input prefix={<CalendarOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" />
+                                                    <Input prefix={<CalendarOutlined className="text-slate-400 mr-1" />} variant="borderless" className="p-1 text-xs" />
                                                 </Form.Item>
                                             </td>
                                             <td className="border-r border-slate-900 p-1">
                                                 <Form.Item name="dept" noStyle>
-                                                    <Input 
-                                                        prefix={<ApartmentOutlined className="text-slate-450 mr-1" />} 
-                                                        variant="borderless" 
+                                                    <Input
+                                                        prefix={<ApartmentOutlined className="text-slate-400 mr-1" />}
+                                                        variant="borderless"
                                                         className="p-1 text-xs font-semibold"
                                                         suffix={
-                                                            <ReloadOutlined 
-                                                                className="cursor-pointer text-blue-600 hover:text-blue-800 text-[10px]" 
+                                                            <ReloadOutlined
+                                                                className="cursor-pointer text-blue-600 hover:text-blue-800 text-[10px]"
                                                                 title="Reload department from profile"
                                                                 onClick={() => {
                                                                     const c = getUserCenter();
                                                                     if (c) {
-                                                                        form.setFieldsValue({ dept: c });
+                                                                        form.setFieldsValue({ dept: c, quotation_given_by_department: c, center: c });
                                                                         message.info(`Updated department to ${c}`);
                                                                     } else {
                                                                         message.warning('No user center found');
@@ -1134,12 +1350,12 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                             </td>
                                             <td className="border-r border-slate-900 p-1">
                                                 <Form.Item name="filename" noStyle>
-                                                    <Input variant="borderless" className="p-1 text-xs" placeholder="Proposal_Name.docx" />
+                                                    <Input prefix={<FileWordOutlined className="text-blue-600 mr-1" />} placeholder="Proposal.docx" variant="borderless" className="p-1 text-xs font-mono" />
                                                 </Form.Item>
                                             </td>
                                             <td className="p-1">
                                                 <Form.Item name="sac_code" noStyle>
-                                                    <Input variant="borderless" className="p-1 text-xs" placeholder="e.g. 998313" />
+                                                    <Input prefix={<SafetyCertificateOutlined className="text-slate-400 mr-1" />} placeholder="998333" variant="borderless" className="p-1 text-xs" />
                                                 </Form.Item>
                                             </td>
                                         </tr>
@@ -1147,436 +1363,330 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                 </table>
                             </div>
 
-                            {/* Section 2: Distribution & Email List */}
-                            <div className="border border-slate-900 bg-white mb-6">
-                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
-                                    2. Distribution & Email List
+                            {/* Section 2: Customer Addressing & Recipient Metadata */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
+                                    <span>2. Customer Addressing & Recipient Information</span>
+                                    <span className="text-[10px] text-slate-400 font-normal">Contact & Reference</span>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Primary and copy email addresses to embed into the official Proposal header metadata block.
+                                    Select from saved database or enter custom recipient details. First line is Customer Name; subsequent lines form the Address.
                                 </div>
-                                <table className="w-full border-collapse text-xs">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <th className="border-r border-slate-900 p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/2">EMAIL - TO (COMMA SEPARATED)</th>
-                                            <th className="p-2 text-left font-bold uppercase tracking-wider text-slate-700 w-1/2">EMAIL - CC (COMMA SEPARATED)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td className="border-r border-slate-900 p-1">
-                                                <Form.Item name="email_to" noStyle>
-                                                    <Input prefix={<MailOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="client@company.com, purchase@company.com" />
-                                                </Form.Item>
-                                            </td>
-                                            <td className="p-1">
-                                                <Form.Item name="email_cc" noStyle>
-                                                    <Input prefix={<MailOutlined className="text-slate-450 mr-1" />} variant="borderless" className="p-1 text-xs" placeholder="head@cmti.res.in, accounts@cmti.res.in" />
-                                                </Form.Item>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
 
-                            {/* Section 3: Customer & Proposal Context */}
-                            <div className="border border-slate-900 bg-white mb-6">
-                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider">
-                                    Customer & Proposal Context
-                                </div>
-                                <table className="w-full border-collapse text-xs">
-                                    <tbody>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td className="border-r border-slate-900 p-2 font-bold uppercase tracking-wider text-slate-700 w-1/2 text-left">CUSTOMER NAME - CUSTOMER NAME (SEARCH DATABASE)</td>
-                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 w-1/2 text-left">KIND ATTENTION</td>
-                                        </tr>
-                                        <tr className="border-b border-slate-900">
-                                            <td className="border-r border-slate-900 p-1">
-                                                <AutoComplete
-                                                    options={customerOptions}
-                                                    value={customerSearchText}
-                                                    onChange={(val) => {
-                                                        setCustomerSearchText(val);
-                                                        handleCustomerSearch(val);
-                                                    }}
-                                                    onSelect={handleCustomerSelect}
-                                                    style={{ width: '100%' }}
-                                                >
-                                                    <Input placeholder="Search existing name..." variant="borderless" className="p-1 text-xs font-semibold" />
-                                                </AutoComplete>
-                                            </td>
-                                            <td className="p-1 align-top">
-                                                <Form.Item name="kind_attention" noStyle>
-                                                    <TextArea 
-                                                        variant="borderless" 
-                                                        autoSize={{ minRows: 2, maxRows: 4 }} 
-                                                        className="p-1 text-xs font-medium" 
-                                                        placeholder="e.g. Mr. Rajesh Sharma&#10;General Manager" 
+                                <div className="p-3 space-y-4">
+                                    {/* AutoComplete Customer Search */}
+                                    <div className="bg-blue-50/60 p-3 border border-blue-200">
+                                        <div className="text-[11px] font-bold text-blue-950 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                            <BankOutlined className="text-blue-600" />
+                                            <span>Quick Customer Search & Auto-Fill:</span>
+                                        </div>
+                                        <AutoComplete
+                                            value={customerSearchText}
+                                            options={customerOptions}
+                                            onSearch={handleCustomerSearch}
+                                            onSelect={handleCustomerSelect}
+                                            placeholder="Type customer name, email, or address to auto-complete..."
+                                            className="w-full text-xs"
+                                        />
+                                    </div>
+
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} md={12}>
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                                    Customer Name & Address Block <span className="text-red-500">*</span>
+                                                </label>
+                                                <Form.Item name="customer_raw" noStyle rules={[{ required: true, message: 'Customer address is required' }]}>
+                                                    <TextArea
+                                                        rows={4}
+                                                        placeholder="M/s Bharat Electronics Ltd&#10;Jalahalli Post, Bangalore - 560013"
+                                                        className="text-xs rounded-none border border-slate-900 focus:border-blue-600"
+                                                        onChange={(e) => {
+                                                            const lines = (e.target.value || '').split('\n').map(s => s.trim()).filter(Boolean);
+                                                            form.setFieldsValue({
+                                                                customer_name: lines[0] || '',
+                                                                address: lines.slice(1).join(', ') || '',
+                                                            });
+                                                        }}
                                                     />
                                                 </Form.Item>
-                                            </td>
-                                        </tr>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td className="border-r border-slate-900 p-2 font-bold uppercase tracking-wider text-slate-700 text-left">CUSTOMER ADDRESS</td>
-                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">REFERENCE</td>
-                                        </tr>
-                                        <tr className="border-b border-slate-900">
-                                            <td className="border-r border-slate-900 p-2 align-top">
-                                                {addressOptions.length > 0 && (
-                                                    <div className="mb-2 pb-2 border-b border-slate-200">
-                                                        <span className="text-[10px] font-bold text-slate-400 block mb-1">Address Option:</span>
-                                                        <AutoComplete
-                                                            options={addressOptions}
-                                                            onSelect={handleAddressSelect}
-                                                            style={{ width: '100%' }}
-                                                        >
-                                                            <Input placeholder="Click to choose address option..." size="small" className="text-xs" />
-                                                        </AutoComplete>
-                                                    </div>
-                                                )}
-                                                <Form.Item name="customer_raw" noStyle rules={[{ required: true, message: 'Customer name & address is required' }]}>
-                                                    <TextArea variant="borderless" rows={3} className="p-1 text-xs font-medium" placeholder="e.g. Mr. customer Address" />
-                                                </Form.Item>
-                                            </td>
-                                            <td className="p-2 align-top">
-                                                <Form.Item name="reference" noStyle>
-                                                    <Input variant="borderless" className="p-1 text-xs font-medium" placeholder="e.g. Email enquiry dated 12/07/2026" />
-                                                </Form.Item>
-                                            </td>
-                                        </tr>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td colSpan={2} className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">PROPOSAL SUBJECT</td>
-                                        </tr>
-                                        <tr>
-                                            <td colSpan={2} className="p-1.5">
-                                                <Form.Item name="subject" noStyle rules={[{ required: true, message: 'Subject line is required' }]}>
-                                                    <Input variant="borderless" className="p-1 text-xs font-bold text-slate-900" placeholder="Proposal for Design, Fabrication & Testing of..." />
-                                                </Form.Item>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Card 4: Scope of Work */}
-                            <div className="border border-slate-900 bg-white mb-6">
-                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>4. Scope of Work</span>
-                                    <span className="bg-slate-800 text-slate-200 border border-slate-700 rounded-full font-mono text-[10px] font-bold px-2 py-0.5">
-                                        {scopeItems.length} POINTS
-                                    </span>
-                                </div>
-                                <table className="w-full border-collapse text-xs">
-                                    <tbody>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">INTRODUCTORY PARAGRAPH (OPTIONAL)</td>
-                                        </tr>
-                                        <tr className="border-b border-slate-900">
-                                            <td className="p-1.5">
-                                                <Form.Item name="scope_intro" noStyle>
-                                                    <TextArea variant="borderless" rows={2} className="p-1 text-xs font-medium" placeholder="With reference to your enquiry, we are pleased to submit our formal proposal..." />
-                                                </Form.Item>
-                                            </td>
-                                        </tr>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">SCOPE BULLET POINTS LIST</td>
-                                        </tr>
-                                        <tr className="border-b border-slate-900">
-                                            <td className="p-3 bg-slate-50/50">
-                                                {scopeItems.length === 0 ? (
-                                                    <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-3">
-                                                        No scope points added yet. Type a point below and press Enter or click Add Point.
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-2 mb-3">
-                                                        {scopeItems.map((item, idx) => (
-                                                            <div key={idx} className="flex items-start justify-between p-2.5 bg-white border border-slate-250 rounded-xl hover:bg-slate-50/50 transition-colors shadow-3xs">
-                                                                <Text className="text-slate-800 text-xs leading-relaxed flex-1 mr-3 font-semibold">
-                                                                    <span className="font-bold text-blue-600 mr-2">•</span>
-                                                                    {item}
-                                                                </Text>
-                                                                <Button
-                                                                    type="text"
-                                                                    danger
-                                                                    size="small"
-                                                                    icon={<DeleteOutlined className="text-[10px]" />}
-                                                                    onClick={() => handleRemoveScopeItem(idx)}
-                                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
-                                                                />
-                                                            </div>
+                                                {addressOptions.length > 1 && (
+                                                    <div className="pt-1 flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-[10px] text-slate-500 font-bold">Alternate Saved Addresses:</span>
+                                                        {addressOptions.map((opt, idx) => (
+                                                            <Button
+                                                                key={idx}
+                                                                size="small"
+                                                                onClick={() => handleAddressSelect(opt.value)}
+                                                                className="text-[10px] h-5 px-1.5 bg-slate-100 text-slate-700 border-slate-300"
+                                                            >
+                                                                Addr #{idx + 1}
+                                                            </Button>
                                                         ))}
                                                     </div>
                                                 )}
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        placeholder="Enter scope item point (press Enter or click Add)"
-                                                        value={newScopeInput}
-                                                        onChange={(e) => setNewScopeInput(e.target.value)}
-                                                        onPressEnter={(e) => {
-                                                            e.preventDefault();
-                                                            handleAddScopeItem();
-                                                        }}
-                                                        className="rounded-xl border-slate-200 h-10 text-xs font-semibold"
-                                                    />
-                                                    <Button
-                                                        type="primary"
-                                                        ghost
-                                                        icon={<PlusOutlined />}
-                                                        onClick={handleAddScopeItem}
-                                                        className="rounded-xl font-bold border-blue-500 text-blue-600 h-10 px-4 text-xs"
-                                                    >
-                                                        Add Point
-                                                    </Button>
+                                            </div>
+                                        </Col>
+
+                                        <Col xs={24} md={12}>
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                                        Kind Attention
+                                                    </label>
+                                                    <Form.Item name="kind_attention" noStyle>
+                                                        <Input
+                                                            prefix={<UserOutlined className="text-slate-400 mr-1" />}
+                                                            placeholder="Mr. Rajesh Sharma, General Manager"
+                                                            className="text-xs rounded-none border border-slate-900"
+                                                            onChange={(e) => form.setFieldsValue({ alternate_contact_details: e.target.value })}
+                                                        />
+                                                    </Form.Item>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">SCOPE ATTACHMENTS & DOCUMENTS</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-3">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="text-[10px] text-slate-500 block leading-tight">
-                                                        Upload technical specs, drawings, or annexures to consider as Proposal document attachments.
-                                                    </span>
-                                                    <Upload
-                                                        beforeUpload={(file) => {
-                                                            setScopeAttachments((prev) => [...prev, file]);
-                                                            return false;
-                                                        }}
-                                                        showUploadList={false}
-                                                        multiple
-                                                    >
-                                                        <Button
-                                                            size="small"
-                                                            type="primary"
-                                                            ghost
-                                                            icon={<UploadOutlined />}
-                                                            className="rounded-xl text-xs border-blue-500 text-blue-600 font-bold"
-                                                        >
-                                                            Attach Files
-                                                        </Button>
-                                                    </Upload>
-                                                </div>
-                                                {scopeAttachments.length > 0 && (
-                                                    <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-                                                        {scopeAttachments.map((file, idx) => (
-                                                            <div key={`${file.name}-${idx}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-blue-600">
-                                                                <PaperClipOutlined className="text-slate-400 text-xs" />
-                                                                <span className="max-w-[200px] truncate">{file.name}</span>
-                                                                <span
-                                                                    onClick={() => setScopeAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                                                                    className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold"
-                                                                >
-                                                                    ✕
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+
+                                                <Row gutter={[8, 8]}>
+                                                    <Col span={14}>
+                                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                                            Email Address
+                                                        </label>
+                                                        <Form.Item name="email_to" noStyle>
+                                                            <Input
+                                                                prefix={<MailOutlined className="text-slate-400 mr-1" />}
+                                                                placeholder="rajesh@bel.co.in"
+                                                                className="text-xs rounded-none border border-slate-900"
+                                                                onChange={(e) => form.setFieldsValue({ email: e.target.value })}
+                                                            />
+                                                        </Form.Item>
+                                                    </Col>
+                                                    <Col span={10}>
+                                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                                            Phone No.
+                                                        </label>
+                                                        <Form.Item name="phone" noStyle>
+                                                            <Input
+                                                                prefix={<PhoneOutlined className="text-slate-400 mr-1" />}
+                                                                placeholder="9845012345"
+                                                                className="text-xs rounded-none border border-slate-900"
+                                                                onChange={(e) => form.setFieldsValue({ phone_no: e.target.value })}
+                                                            />
+                                                        </Form.Item>
+                                                    </Col>
+                                                </Row>
+                                            </div>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]} className="pt-2 border-t border-slate-200">
+                                        <Col xs={24} md={12}>
+                                            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                                Proposal Subject / Title <span className="text-red-500">*</span>
+                                            </label>
+                                            <Form.Item name="subject" noStyle rules={[{ required: true, message: 'Subject is required' }]}>
+                                                <Input
+                                                    prefix={<FileTextOutlined className="text-slate-400 mr-1" />}
+                                                    placeholder="Proposal for Precision Machining and Testing of Titanium Components"
+                                                    className="text-xs rounded-none border border-slate-900 font-semibold"
+                                                    onChange={(e) => form.setFieldsValue({ quote_description: e.target.value })}
+                                                />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} md={12}>
+                                            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                                Customer Enquiry Reference
+                                            </label>
+                                            <Form.Item name="reference" noStyle>
+                                                <Input
+                                                    prefix={<InfoCircleOutlined className="text-slate-400 mr-1" />}
+                                                    placeholder="BEL/PUR/2026/048 dated 15-08-2026"
+                                                    className="text-xs rounded-none border border-slate-900"
+                                                    onChange={(e) => form.setFieldsValue({ quote_reference: e.target.value, email_reference: e.target.value })}
+                                                />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+                                </div>
                             </div>
 
-                            {/* Card 5: Payment Terms and Conditions */}
-                            <div className="border border-slate-900 bg-white mb-6">
+                            {/* Section 3: Scope of Work & Deliverables */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>5. Payment Terms and Conditions</span>
-                                    <span className="bg-slate-800 text-slate-200 border border-slate-700 rounded-full font-mono text-[10px] font-bold px-2 py-0.5">
-                                        {termsItems.length} CLAUSES
-                                    </span>
+                                    <span>3. Scope of Work & Key Deliverables</span>
+                                    <span className="text-[10px] text-slate-400 font-normal">{scopeItems.length} Bullet Points</span>
                                 </div>
-                                <table className="w-full border-collapse text-xs">
-                                    <tbody>
-                                        <tr className="bg-slate-50 border-b border-slate-900">
-                                            <td className="p-2 font-bold uppercase tracking-wider text-slate-700 text-left">TERMS & CONDITIONS (NUMBERED LIST)</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-3 bg-slate-50/50">
-                                                {termsItems.length === 0 ? (
-                                                    <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-400 text-xs mb-3">
-                                                        No terms & conditions added yet. Type a term below and click Add Clause.
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-2 mb-3">
-                                                        {termsItems.map((item, idx) => (
-                                                            <div key={idx} className="flex items-start justify-between p-2.5 bg-white border border-slate-250 rounded-xl hover:bg-slate-50/50 transition-colors shadow-3xs">
-                                                                <Text className="text-slate-800 text-xs leading-relaxed flex-1 mr-3 font-semibold">
-                                                                    <span className="font-bold text-amber-600 mr-2">{idx + 1}.</span>
-                                                                    {item}
-                                                                </Text>
-                                                                <Button
-                                                                    type="text"
-                                                                    danger
-                                                                    size="small"
-                                                                    icon={<DeleteOutlined className="text-[10px]" />}
-                                                                    onClick={() => handleRemoveTermItem(idx)}
-                                                                    className="hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500"
-                                                                />
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        placeholder="Enter commercial or delivery clause"
-                                                        value={newTermInput}
-                                                        onChange={(e) => setNewTermInput(e.target.value)}
-                                                        onPressEnter={(e) => {
-                                                            e.preventDefault();
-                                                            handleAddTermItem();
-                                                        }}
-                                                        className="rounded-xl border-slate-200 h-10 text-xs font-semibold"
-                                                    />
-                                                    <Button
-                                                        type="primary"
-                                                        ghost
-                                                        icon={<PlusOutlined />}
-                                                        onClick={handleAddTermItem}
-                                                        className="rounded-xl font-bold border-amber-500 text-amber-600 h-10 px-4 text-xs"
-                                                    >
-                                                        Add Clause
-                                                    </Button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
+                                    Outline the technical scope of work, activities, and milestones.
+                                </div>
+
+                                <div className="p-3 space-y-3">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                            Introductory Scope Paragraph:
+                                        </label>
+                                        <Form.Item name="scope_intro" noStyle>
+                                            <TextArea
+                                                rows={2}
+                                                placeholder="With reference to your enquiry, CMTI proposes to undertake the following technical scope of work..."
+                                                className="text-xs rounded-none border border-slate-900"
+                                            />
+                                        </Form.Item>
+                                    </div>
+
+                                    {/* Scope items list */}
+                                    <div className="space-y-2">
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                                            Scope Activities / Bullet Points:
+                                        </label>
+                                        {scopeItems.map((item, idx) => (
+                                            <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2 border border-slate-300 text-xs">
+                                                <span className="font-bold text-blue-600 w-6">#{idx + 1}</span>
+                                                <span className="flex-1 text-slate-800">{item}</span>
+                                                <Button
+                                                    type="text"
+                                                    danger
+                                                    size="small"
+                                                    icon={<DeleteOutlined />}
+                                                    onClick={() => handleRemoveScopeItem(idx)}
+                                                />
+                                            </div>
+                                        ))}
+
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <Input
+                                                value={newScopeInput}
+                                                onChange={(e) => setNewScopeInput(e.target.value)}
+                                                onPressEnter={handleAddScopeItem}
+                                                placeholder="Add new scope deliverable bullet point..."
+                                                className="text-xs rounded-none border border-slate-900"
+                                            />
+                                            <Button
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={handleAddScopeItem}
+                                                className="rounded-none border border-slate-900 bg-blue-600 hover:bg-blue-700 font-bold text-xs h-8 px-3"
+                                            >
+                                                Add Item
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Card 6: Pricing & Cost Break-Up Tables */}
-                            <div className="border border-slate-900 bg-white mb-6">
+                            {/* Section 4: Commercial Pricing Tables */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>6. Pricing & Cost Break-Up Tables</span>
-                                    <Button
-                                        type="primary"
-                                        size="small"
-                                        icon={<PlusOutlined className="text-[10px]" />}
-                                        onClick={handleAddTable}
-                                        className="rounded-lg font-bold bg-slate-800 hover:bg-slate-700 border-none text-[10px] h-7 px-2.5 text-white"
-                                    >
-                                        Add Table
-                                    </Button>
+                                    <span>4. Commercial Pricing & Cost Tables</span>
+                                    <div className="flex items-center gap-2">
+                                        {grandPricingTotal > 0 && (
+                                            <span className="bg-emerald-500 text-white font-mono px-2 py-0.5 text-[10px] rounded-sm font-bold">
+                                                Total: ₹{grandPricingTotal.toLocaleString('en-IN')}
+                                            </span>
+                                        )}
+                                        <Button
+                                            size="small"
+                                            icon={<PlusOutlined />}
+                                            onClick={handleAddTable}
+                                            className="rounded-none bg-blue-600 hover:bg-blue-700 text-white border-none text-[10px] font-bold h-6"
+                                        >
+                                            Add Pricing Table
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="p-3">
+                                <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
+                                    Configure itemized deliverables, quantities, rates, and amounts.
+                                </div>
+
+                                <div className="p-3 space-y-4">
                                     {tables.length === 0 ? (
-                                        <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/30">
-                                            No breakdown tables attached. Click <strong>Add Table</strong> to insert a cost summary table.
+                                        <div className="text-center py-4 text-xs text-slate-400 border border-dashed border-slate-300">
+                                            No pricing tables added yet. Click <strong>Add Pricing Table</strong> above to add cost itemization.
                                         </div>
                                     ) : (
-                                        tables.map((tbl, tIdx) => (
-                                            <div key={tIdx} className="mb-6 p-4 border border-slate-300 bg-slate-50/50 rounded-xl space-y-4">
-                                                <div className="flex items-center justify-between gap-4">
+                                        tables.map((t, tIndex) => (
+                                            <div key={tIndex} className="border border-slate-900 p-3 bg-slate-50/60 space-y-2">
+                                                <div className="flex items-center justify-between gap-2">
                                                     <Input
-                                                        prefix={<Text className="font-extrabold text-slate-550 text-xs uppercase mr-1">Table Title:</Text>}
-                                                        value={tbl.title}
-                                                        onChange={(e) => handleTableTitleChange(tIdx, e.target.value)}
-                                                        placeholder="e.g. Cost Break-Up Summary"
-                                                        className="font-bold text-slate-800 rounded-lg border-slate-200 h-9 text-xs"
+                                                        value={t.title}
+                                                        onChange={(e) => handleTableTitleChange(tIndex, e.target.value)}
+                                                        placeholder="Table Title (e.g. Schedule of Deliverables & Commercial Terms)"
+                                                        className="text-xs font-bold rounded-none border border-slate-900 w-2/3"
                                                     />
-                                                    <Popconfirm
-                                                        title="Delete Table"
-                                                        description="Are you sure you want to remove this pricing table?"
-                                                        onConfirm={() => handleRemoveTable(tIdx)}
-                                                        okText="Yes"
-                                                        cancelText="No"
-                                                    >
-                                                        <Button danger type="text" size="small" icon={<DeleteOutlined />} className="rounded-lg text-xs hover:bg-red-50">
-                                                            Remove
-                                                        </Button>
-                                                    </Popconfirm>
-                                                </div>
-
-                                                {/* Column Headers setup */}
-                                                <div className="space-y-1.5">
-                                                    <Text className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                                                        Column Headers ({tbl.headers.length})
-                                                    </Text>
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        {tbl.headers.map((h, hIdx) => (
-                                                            <div key={hIdx} className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-3xs">
-                                                                <Input
-                                                                    variant="borderless"
-                                                                    size="small"
-                                                                    value={h}
-                                                                    onChange={(e) => handleHeaderChange(tIdx, hIdx, e.target.value)}
-                                                                    className="w-24 text-[11px] font-bold text-slate-800 p-0"
-                                                                />
-                                                                <Button
-                                                                    type="text"
-                                                                    size="small"
-                                                                    danger
-                                                                    icon={<DeleteOutlined style={{ fontSize: '9px' }} />}
-                                                                    onClick={() => handleRemoveHeaderColumn(tIdx, hIdx)}
-                                                                    className="p-0.5 flex items-center justify-center"
-                                                                />
-                                                            </div>
-                                                        ))}
+                                                    <div className="flex items-center gap-1.5">
                                                         <Button
-                                                            type="dashed"
                                                             size="small"
-                                                            icon={<PlusOutlined />}
-                                                            onClick={() => handleAddHeaderColumn(tIdx)}
-                                                            className="rounded-lg text-[10px] font-bold h-6"
+                                                            onClick={() => handleAddHeaderColumn(tIndex)}
+                                                            className="text-[10px] border-slate-400 font-medium"
                                                         >
-                                                            Add Col
+                                                            + Column
                                                         </Button>
+                                                        <Button
+                                                            size="small"
+                                                            onClick={() => handleAddTableRow(tIndex)}
+                                                            className="text-[10px] border-slate-400 font-medium"
+                                                        >
+                                                            + Row
+                                                        </Button>
+                                                        <Button
+                                                            size="small"
+                                                            danger
+                                                            icon={<DeleteOutlined />}
+                                                            onClick={() => handleRemoveTable(tIndex)}
+                                                        />
                                                     </div>
                                                 </div>
 
-                                                {/* Rows Data Matrix */}
-                                                <div className="space-y-1.5 overflow-x-auto">
-                                                    <Text className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                                                        Row Data Items ({tbl.rows.length})
-                                                    </Text>
-                                                    <table className="w-full border-collapse bg-white rounded-xl overflow-hidden border border-slate-200 text-xs">
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full border-collapse border border-slate-900 text-xs bg-white">
                                                         <thead>
-                                                            <tr className="bg-slate-100 border-b border-slate-250">
-                                                                {tbl.headers.map((h, hIdx) => (
-                                                                    <th key={hIdx} className="p-2 text-left font-bold text-slate-700">
-                                                                        {h || `Col ${hIdx + 1}`}
+                                                            <tr className="bg-slate-100 border-b border-slate-900">
+                                                                {t.headers.map((h, hIndex) => (
+                                                                    <th key={hIndex} className="border-r border-slate-900 p-1 font-bold text-slate-800">
+                                                                        <div className="flex items-center justify-between gap-1">
+                                                                            <Input
+                                                                                value={h}
+                                                                                onChange={(e) => handleHeaderChange(tIndex, hIndex, e.target.value)}
+                                                                                variant="borderless"
+                                                                                className="p-0 text-xs font-bold"
+                                                                            />
+                                                                            {t.headers.length > 1 && (
+                                                                                <span
+                                                                                    onClick={() => handleRemoveHeaderColumn(tIndex, hIndex)}
+                                                                                    className="text-slate-400 hover:text-red-500 cursor-pointer text-[10px] px-1 font-mono"
+                                                                                >
+                                                                                    ✕
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </th>
                                                                 ))}
-                                                                <th className="p-2 text-center w-10 font-bold text-slate-700">Action</th>
+                                                                <th className="p-1 w-8 text-center text-slate-400">#</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            {tbl.rows.map((row, rIdx) => (
-                                                                <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                                                    {row.map((cell, cIdx) => (
-                                                                        <td key={cIdx} className="p-1">
+                                                            {t.rows.map((row, rIndex) => (
+                                                                <tr key={rIndex} className="border-b border-slate-200">
+                                                                    {row.map((cell, cIndex) => (
+                                                                        <td key={cIndex} className="border-r border-slate-200 p-1">
                                                                             <Input
-                                                                                size="small"
                                                                                 value={cell}
-                                                                                onChange={(e) => handleCellChange(tIdx, rIdx, cIdx, e.target.value)}
-                                                                                className="rounded-lg text-[11px] font-semibold border-slate-200"
+                                                                                onChange={(e) => handleCellChange(tIndex, rIndex, cIndex, e.target.value)}
+                                                                                variant="borderless"
+                                                                                className="p-0 text-xs"
                                                                             />
                                                                         </td>
                                                                     ))}
                                                                     <td className="p-1 text-center">
-                                                                        <Button
-                                                                            type="text"
-                                                                            danger
-                                                                            size="small"
-                                                                            icon={<DeleteOutlined />}
-                                                                            onClick={() => handleRemoveTableRow(tIdx, rIdx)}
-                                                                        />
+                                                                        <span
+                                                                            onClick={() => handleRemoveTableRow(tIndex, rIndex)}
+                                                                            className="text-slate-300 hover:text-red-500 cursor-pointer text-xs"
+                                                                        >
+                                                                            ✕
+                                                                        </span>
                                                                     </td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
                                                     </table>
-                                                    <Button
-                                                        type="dashed"
-                                                        block
-                                                        icon={<PlusOutlined />}
-                                                        onClick={() => handleAddTableRow(tIdx)}
-                                                        className="mt-2 rounded-xl text-[11px] font-bold h-8"
-                                                    >
-                                                        Add Row to {tbl.title || 'Table'}
-                                                    </Button>
                                                 </div>
                                             </div>
                                         ))
@@ -1584,497 +1694,469 @@ export default function DocumentGenerate({ onAddToProposals, projectId }) {
                                 </div>
                             </div>
 
-                            {/* Card 7: Internal Cost Estimation */}
-                            <div className="border border-slate-900 bg-white mb-6">
+                            {/* Section 5: Signatories & Terms */}
+                            <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>7. Internal Cost Estimation</span>
+                                    <span>5. Terms & Signatories</span>
                                     <Button
-                                        type="primary"
-                                        icon={<EditOutlined className="text-[10px]" />}
-                                        onClick={() => setCostModalOpen(true)}
-                                        className="rounded-lg font-bold bg-slate-800 hover:bg-slate-700 border-none text-[10px] h-7 px-2.5 text-white"
+                                        size="small"
+                                        icon={<PlusOutlined />}
+                                        onClick={handleAddSignatory}
+                                        className="rounded-none bg-slate-800 text-white border-slate-700 text-[10px] h-6"
                                     >
-                                        {internalCostTables.length === 0 ? "Add Cost ↗" : "Edit Cost ↗"}
+                                        + Signatory
                                     </Button>
                                 </div>
-                                <div className="p-3">
-                                    <CostEstimationModal
-                                        open={costModalOpen}
-                                        onClose={() => setCostModalOpen(false)}
-                                        projectId={projectId || null}
-                                        hideGenerateWord={true}
-                                        initialHeaders={rawStudioHeaders}
-                                        onApply={(studioHeaders) => {
-                                            setRawStudioHeaders(studioHeaders);
-                                            const formattedTables = convertHeadersToDocumentTables(studioHeaders);
-                                            if (formattedTables && formattedTables.length > 0) {
-                                                setInternalCostTables(formattedTables);
-                                            }
-                                        }}
-                                        title={formValues.subject || "Internal Cost Estimation"}
-                                    />
 
-                                    {internalCostTables.length === 0 ? (
-                                        <div className="p-5 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200 space-y-2">
-                                            <Text className="text-xs text-slate-500 block">No internal cost breakdown attached to this proposal.</Text>
+                                <div className="p-3 space-y-4">
+                                    {/* Terms items */}
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                            Payment Terms & Conditions:
+                                        </label>
+                                        {termsItems.map((item, idx) => (
+                                            <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2 border border-slate-300 text-xs mb-1.5">
+                                                <span className="font-bold text-slate-500 w-6">#{idx + 1}</span>
+                                                <span className="flex-1 text-slate-800">{item}</span>
+                                                <Button
+                                                    type="text"
+                                                    danger
+                                                    size="small"
+                                                    icon={<DeleteOutlined />}
+                                                    onClick={() => handleRemoveTermItem(idx)}
+                                                />
+                                            </div>
+                                        ))}
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                value={newTermInput}
+                                                onChange={(e) => setNewTermInput(e.target.value)}
+                                                onPressEnter={handleAddTermItem}
+                                                placeholder="Add payment / delivery term point..."
+                                                className="text-xs rounded-none border border-slate-900"
+                                            />
                                             <Button
-                                                type="primary"
                                                 size="small"
                                                 icon={<PlusOutlined />}
-                                                onClick={() => setCostModalOpen(true)}
-                                                className="rounded-xl font-bold bg-purple-600 hover:bg-purple-700 text-[11px] shadow-xs text-white"
+                                                onClick={handleAddTermItem}
+                                                className="rounded-none border border-slate-900 bg-slate-100 text-xs font-semibold h-8"
                                             >
-                                                Add Cost Breakdown ↗
+                                                Add Term
                                             </Button>
                                         </div>
-                                    ) : (
-                                        <div className="space-y-2.5">
-                                            <div className="flex items-center justify-between">
-                                                <Text className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                                                    Cost Summary ({internalCostTables.length} {internalCostTables.length === 1 ? 'Section' : 'Sections'})
-                                                </Text>
-                                                <Popconfirm
-                                                    title="Clear Internal Cost Breakdown?"
-                                                    description="This will remove all internal cost tables attached to this proposal draft."
-                                                    onConfirm={() => {
-                                                        setInternalCostTables([]);
-                                                        setRawStudioHeaders([]);
-                                                    }}
-                                                    okText="Clear"
-                                                    cancelText="Cancel"
-                                                    okButtonProps={{ danger: true, size: "small" }}
-                                                >
-                                                    <Button danger type="text" size="small" icon={<DeleteOutlined style={{ fontSize: 10 }} />} className="text-xs font-semibold">
-                                                        Clear
-                                                    </Button>
-                                                </Popconfirm>
-                                            </div>
+                                    </div>
 
-                                            <div className="overflow-hidden border border-slate-200/90 rounded-xl bg-white shadow-3xs">
-                                                <table className="w-full text-left text-xs">
-                                                    <thead className="bg-slate-50 border-b border-slate-200">
-                                                        <tr>
-                                                            <th className="py-2 px-3 font-bold text-slate-600">Ref</th>
-                                                            <th className="py-2 px-3 font-bold text-slate-600">Cost Section Category</th>
-                                                            <th className="py-2 px-3 font-bold text-slate-600 text-center">Items</th>
-                                                            <th className="py-2 px-3 font-bold text-slate-600 text-right">Subtotal (₹)</th>
-                                                            <th className="py-2 px-3 font-bold text-slate-600 text-center w-16">Action</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {internalCostTables.map((tbl, idx) => {
-                                                            const letter = String.fromCharCode(65 + idx);
-                                                            const subtotal = getTableSubtotal(tbl);
-                                                            return (
-                                                                <tr key={idx} className="hover:bg-slate-50/50">
-                                                                    <td className="py-2 px-3 font-bold text-purple-700">Section {letter}</td>
-                                                                    <td className="py-2 px-3 font-semibold text-slate-800">{tbl.title || `Section ${letter}`}</td>
-                                                                    <td className="py-2 px-3 text-center font-medium text-slate-500">{tbl.rows?.length || 0}</td>
-                                                                    <td className="py-2 px-3 text-right font-bold text-slate-900">
-                                                                        ₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                    </td>
-                                                                    <td className="py-2 px-3 text-center">
-                                                                        <Button
-                                                                            type="link"
-                                                                            size="small"
-                                                                            icon={<EditOutlined style={{ fontSize: 10 }} />}
-                                                                            onClick={() => setCostModalOpen(true)}
-                                                                            className="text-purple-600 hover:text-purple-800 p-0 text-xs font-bold"
-                                                                        >
-                                                                            Edit
-                                                                        </Button>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                    <tfoot className="bg-slate-50 border-t border-slate-200">
-                                                        <tr>
-                                                            <td colSpan={3} className="py-2 px-3 font-bold text-slate-700 text-right">
-                                                                Grand Total Estimated Cost:
-                                                            </td>
-                                                            <td className="py-2 px-3 text-right font-extrabold text-purple-700 text-[13px]">
-                                                                ₹ {grandInternalTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                            </td>
-                                                            <td />
-                                                        </tr>
-                                                    </tfoot>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* Signatories */}
+                                    <div className="pt-2 border-t border-slate-200">
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                                            Authorized Signatories:
+                                        </label>
+                                        <Row gutter={[12, 12]}>
+                                            {signatories.map((sig, idx) => (
+                                                <Col xs={24} sm={12} key={idx}>
+                                                    <div className="border border-slate-900 p-2.5 bg-slate-50 space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[11px] font-bold text-slate-700">Signatory #{idx + 1}</span>
+                                                            {signatories.length > 1 && (
+                                                                <Button
+                                                                    type="text"
+                                                                    danger
+                                                                    size="small"
+                                                                    icon={<DeleteOutlined />}
+                                                                    onClick={() => handleRemoveSignatory(idx)}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <Input
+                                                            value={sig.name}
+                                                            onChange={(e) => handleSignatoryChange(idx, 'name', e.target.value)}
+                                                            placeholder="Signatory Full Name"
+                                                            className="text-xs rounded-none border border-slate-400 font-semibold"
+                                                        />
+                                                        <TextArea
+                                                            rows={2}
+                                                            value={sig.lines_raw}
+                                                            onChange={(e) => handleSignatoryChange(idx, 'lines_raw', e.target.value)}
+                                                            placeholder="Scientist-E&#10;Centre for Precision Machining&#10;CMTI, Bengaluru"
+                                                            className="text-[11px] rounded-none border border-slate-400"
+                                                        />
+                                                    </div>
+                                                </Col>
+                                            ))}
+                                        </Row>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Card 8: Signatories & Approvals */}
-                            <div className="border border-slate-900 bg-white mb-6">
-                                <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>8. Signatories & Approvals</span>
-                                    <Button
-                                        type="primary"
-                                        size="small"
-                                        icon={<PlusOutlined className="text-[10px]" />}
-                                        onClick={handleAddSignatory}
-                                        className="rounded-lg font-bold bg-slate-800 hover:bg-slate-700 border-none text-[10px] h-7 px-2.5 text-white"
-                                    >
-                                        Add Signatory
-                                    </Button>
-                                </div>
-                                <div className="p-3">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {signatories.map((sig, sIdx) => (
-                                            <div key={sIdx} className="p-4 bg-slate-50/50 rounded-xl border border-slate-200 space-y-3 shadow-3xs">
-                                                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                                                    <span className="font-extrabold text-slate-700 text-[10px] uppercase tracking-wider">
-                                                        Signatory #{sIdx + 1}
-                                                    </span>
-                                                    <Space size="small">
-                                                        <Button
-                                                            type="link"
-                                                            size="small"
-                                                            icon={<ReloadOutlined style={{ fontSize: 10 }} />}
-                                                            onClick={() => {
-                                                                try {
-                                                                    const rawUser = window.localStorage.getItem('ppm_user');
-                                                                    if (rawUser) {
-                                                                        const parsedUser = JSON.parse(rawUser);
-                                                                        const desig = getUserDesignation();
-                                                                        const center = getUserCenter();
-                                                                        const lines = [desig, center, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
-                                                                        const updated = [...signatories];
-                                                                        updated[sIdx] = {
-                                                                            name: parsedUser.name || updated[sIdx].name,
-                                                                            lines_raw: lines,
-                                                                        };
-                                                                        setSignatories(updated);
-                                                                        message.info('Populated signatory details from logged-in account');
-                                                                    }
-                                                                } catch (e) {
-                                                                    message.warning('Could not read user account details');
-                                                                }
-                                                            }}
-                                                            className="p-0 text-[11px] font-bold text-blue-600 hover:text-blue-800"
-                                                        >
-                                                            Fill My Profile
-                                                        </Button>
-                                                        {signatories.length > 1 && (
-                                                            <Button
-                                                                type="text"
-                                                                danger
-                                                                size="small"
-                                                                icon={<DeleteOutlined className="text-[10px]" />}
-                                                                onClick={() => handleRemoveSignatory(sIdx)}
-                                                                className="hover:bg-red-50 rounded-lg"
-                                                            />
-                                                        )}
-                                                    </Space>
-                                                </div>
-
-                                                <div>
-                                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">
-                                                        Signatory Name
-                                                    </span>
-                                                    <Input
-                                                        placeholder="e.g. Dr. Rajesh Kumar"
-                                                        value={sig.name}
-                                                        onChange={(e) => handleSignatoryChange(sIdx, 'name', e.target.value)}
-                                                        className="rounded-lg border-slate-200 h-9 text-xs font-semibold"
-                                                    />
-                                                </div>
-
-                                                <div>
-                                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">
-                                                        Designation Line(s) (One per line)
-                                                    </span>
-                                                    <TextArea
-                                                        rows={2}
-                                                        placeholder="Scientist-D&#10;C-SMPM&#10;CMTI, Bengaluru"
-                                                        value={sig.lines_raw}
-                                                        onChange={(e) => handleSignatoryChange(sIdx, 'lines_raw', e.target.value)}
-                                                        className="rounded-lg border-slate-200 text-xs font-medium p-2"
-                                                    />
-                                                </div>
-                                            </div>
-                                        ))}
+                            {/* SECTION 6: PROPOSAL SUBMISSION & MANUAL ENTRY DETAILS */}
+                            <div className="border-2 border-blue-600 bg-white mb-6 shadow-[4px_4px_0px_0px_rgba(37,99,235,1)]">
+                                <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-blue-900 text-white p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircleOutlined className="text-lg text-emerald-400" />
+                                        <div>
+                                            <span className="font-extrabold text-sm uppercase tracking-wider block">
+                                                6. Proposal Submission & Manual Entry Details
+                                            </span>
+                                            <span className="text-[11px] text-blue-200 font-normal">
+                                                These fields are automatically synchronized with Document Studio. Complete and verify below before final submission.
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div className="mt-4 flex justify-end gap-3 select-none border-t border-slate-100 pt-3">
-                                        <Button
-                                            size="large"
-                                            icon={<DownloadOutlined />}
-                                            loading={loading && !addToProposalsLoading}
-                                            onClick={() => {
-                                                setActionType('download');
-                                                form.submit();
+                                    <Tag color="green" className="font-bold border-none px-3 py-1 text-xs">
+                                        Auto-Synced
+                                    </Tag>
+                                </div>
+
+                                <div className="p-4 sm:p-5 space-y-4">
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} sm={12} md={6}>
+                                            <Form.Item
+                                                name="customer_type"
+                                                label={<span className="font-bold text-xs text-slate-800">Customer Type</span>}
+                                                rules={[{ required: true, message: 'Please select customer type' }]}
+                                            >
+                                                <Select placeholder="Customer Type" className="w-full">
+                                                    {CUSTOMER_TYPE_OPTIONS.map((opt) => (
+                                                        <Select.Option key={opt} value={opt}>{opt}</Select.Option>
+                                                    ))}
+                                                </Select>
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12} md={6}>
+                                            <Form.Item
+                                                name="request_type"
+                                                label={<span className="font-bold text-xs text-slate-800">Request Type</span>}
+                                                rules={[{ required: true, message: 'Please select request type' }]}
+                                            >
+                                                <Select placeholder="Request Type" className="w-full">
+                                                    {REQUEST_TYPE_OPTIONS.map((opt) => (
+                                                        <Select.Option key={opt} value={opt}>{opt}</Select.Option>
+                                                    ))}
+                                                </Select>
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12} md={6}>
+                                            <Form.Item
+                                                name="quote_amount"
+                                                label={<span className="font-bold text-xs text-slate-800">Quote Amount (₹)</span>}
+                                            >
+                                                <Input
+                                                    placeholder={grandPricingTotal > 0 ? String(grandPricingTotal) : (grandInternalTotal > 0 ? String(grandInternalTotal) : '0')}
+                                                    prefix={<span className="text-slate-400 font-bold">₹</span>}
+                                                    className="font-mono font-semibold"
+                                                />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12} md={6}>
+                                            <Form.Item
+                                                name="proposal_status"
+                                                label={<span className="font-bold text-xs text-slate-800">Proposal Status</span>}
+                                            >
+                                                <Select mode="tags" placeholder="Proposal Status" className="w-full">
+                                                    <Select.Option value="Submitted">Submitted</Select.Option>
+                                                    <Select.Option value="Accepted">Accepted</Select.Option>
+                                                    <Select.Option value="Rejected">Rejected</Select.Option>
+                                                    <Select.Option value="Awaiting">Awaiting</Select.Option>
+                                                </Select>
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    {/* Tender specifics if selected */}
+                                    {isTenderSelected && (
+                                        <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-lg space-y-3">
+                                            <div className="font-bold text-blue-900 text-xs flex items-center gap-2">
+                                                <Tag color="blue">Tender Details</Tag>
+                                                <span>Make In India & Tender Image Uploads</span>
+                                            </div>
+
+                                            <Form.Item name="make_in_india" label={<span className="text-xs font-semibold text-slate-700">Make In India Details</span>}>
+                                                <TextArea rows={2} placeholder="Enter Make In India percentage/details..." />
+                                            </Form.Item>
+
+                                            <Form.Item label={<span className="text-xs font-semibold text-slate-700">Tender Images (Multiple)</span>}>
+                                                <Upload
+                                                    listType="picture-card"
+                                                    multiple
+                                                    accept="image/*"
+                                                    fileList={tenderFileList}
+                                                    beforeUpload={() => false}
+                                                    onChange={({ fileList }) => setTenderFileList(fileList)}
+                                                >
+                                                    <div>
+                                                        <PlusOutlined />
+                                                        <div className="text-xs mt-1">Upload</div>
+                                                    </div>
+                                                </Upload>
+                                            </Form.Item>
+                                        </div>
+                                    )}
+
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} sm={12}>
+                                            <Form.Item
+                                                name="customer_name"
+                                                label={<span className="font-bold text-xs text-slate-800">Customer Name</span>}
+                                                rules={[{ required: true, message: 'Customer Name is required' }]}
+                                            >
+                                                <Input placeholder="Customer or Company Name" className="font-semibold" />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12}>
+                                            <Form.Item
+                                                name="alternate_contact_details"
+                                                label={<span className="font-bold text-xs text-slate-800">Alternate Contact / Kind Attention</span>}
+                                            >
+                                                <Input placeholder="Contact Person / Alternate Details" />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} sm={12}>
+                                            <Form.Item
+                                                name="email"
+                                                label={<span className="font-bold text-xs text-slate-800">Email Reference / Address</span>}
+                                            >
+                                                <Input placeholder="customer@domain.com" />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12}>
+                                            <Form.Item
+                                                name="phone_no"
+                                                label={<span className="font-bold text-xs text-slate-800">Phone Number</span>}
+                                            >
+                                                <Input placeholder="Phone / Mobile No." />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} sm={12}>
+                                            <Form.Item
+                                                name="quote_reference"
+                                                label={<span className="font-bold text-xs text-slate-800">Quote / Enquiry Reference</span>}
+                                            >
+                                                <Input placeholder="Ref Number / Inquiry ID" />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12}>
+                                            <Form.Item
+                                                name="quote_description"
+                                                label={<span className="font-bold text-xs text-slate-800">Quote Description / Project Title</span>}
+                                                rules={[{ required: true, message: 'Quote description is required' }]}
+                                            >
+                                                <Input placeholder="Project Activity or Description" className="font-semibold" />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    <Row gutter={[16, 16]}>
+                                        <Col xs={24} sm={12} md={8}>
+                                            <Form.Item
+                                                name="quotation_given_by_name"
+                                                label={<span className="font-bold text-xs text-slate-800">Quotation Given By / Coordinator</span>}
+                                                rules={[{ required: true, message: 'Coordinator Name is required' }]}
+                                            >
+                                                <Input placeholder="Scientist Name" />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12} md={8}>
+                                            <Form.Item
+                                                name="center"
+                                                label={<span className="font-bold text-xs text-slate-800">Centre / Department</span>}
+                                            >
+                                                <Input placeholder="Centre / Dept" />
+                                            </Form.Item>
+                                        </Col>
+
+                                        <Col xs={24} sm={12} md={8}>
+                                            <Form.Item
+                                                name="group"
+                                                label={<span className="font-bold text-xs text-slate-800">Group</span>}
+                                            >
+                                                <Input placeholder="Group Name" />
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+
+                                    {/* Additional Supporting File Attachments */}
+                                    <div className="pt-2 border-t border-slate-200">
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                                            Attach Additional Supporting Documents (PDFs, Drawings, Excel, Specs):
+                                        </label>
+                                        <Dragger
+                                            multiple
+                                            fileList={additionalAttachments.map((f, i) => ({ uid: `${i}`, name: f.name, status: 'done' }))}
+                                            beforeUpload={(file) => {
+                                                setAdditionalAttachments((prev) => [...prev, file]);
+                                                message.success(`Attached ${file.name}`);
+                                                return false;
                                             }}
-                                            className="rounded-xl h-11 px-5 text-xs font-bold border-slate-350 text-slate-700 hover:text-blue-600 hover:border-blue-500"
-                                        >
-                                            Export DOCX
-                                        </Button>
-                                        <Button
-                                            type="primary"
-                                            size="large"
-                                            icon={<PlusOutlined />}
-                                            loading={addToProposalsLoading}
-                                            onClick={() => {
-                                                setActionType('addToProposals');
-                                                form.submit();
+                                            onRemove={(file) => {
+                                                setAdditionalAttachments((prev) => prev.filter((f) => f.name !== file.name));
                                             }}
-                                            className="bg-[#16A34A] hover:bg-[#15803D] border-none rounded-xl h-11 px-5 text-xs font-bold text-white shadow-sm"
+                                            className="p-3 bg-slate-50 border-slate-300"
                                         >
-                                            Add to Proposals
-                                        </Button>
+                                            <p className="ant-upload-drag-icon text-slate-400 mb-1">
+                                                <InboxOutlined className="text-2xl text-blue-500" />
+                                            </p>
+                                            <p className="ant-upload-text text-xs font-semibold text-slate-700">
+                                                Click or drag supporting documents to attach to this proposal
+                                            </p>
+                                            <p className="ant-upload-hint text-[11px] text-slate-400">
+                                                Supports technical drawings, datasheets, PDFs, and spreadsheets.
+                                            </p>
+                                        </Dragger>
+                                    </div>
+
+                                    {/* Final Action Submission Bar */}
+                                    <div className="pt-4 border-t border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl">
+                                        <div className="text-xs text-slate-500">
+                                            Clicking <strong>Submit Proposal</strong> will automatically generate the <code>.docx</code> proposal document, create the proposal record, and upload all files.
+                                        </div>
+
+                                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                                            <Button
+                                                icon={<DownloadOutlined />}
+                                                loading={loading}
+                                                onClick={handleExportDocx}
+                                                className="rounded-xl border-slate-400 text-slate-800 font-semibold h-11 px-4"
+                                            >
+                                                Export DOCX
+                                            </Button>
+
+                                            <Button
+                                                type="primary"
+                                                icon={<CheckCircleOutlined />}
+                                                loading={submitProposalLoading}
+                                                onClick={handleSubmitProposal}
+                                                className="rounded-xl bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white font-extrabold text-sm h-11 px-8 shadow-md hover:shadow-lg transition-all border-none"
+                                            >
+                                                Submit Proposal
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </Col>
 
-                        {/* Right Column: Live A4 Document Preview & Quick Export Sidebar (9 Cols on desktop) */}
+                        {/* Right Column: Live A4 Document Preview */}
                         {previewVisible && (
-                            <Col xs={24} lg={9} xl={9} className="space-y-6">
-                            <div className="sticky top-6 space-y-6">
-
-                                {/* Document Preview Toolbar & Container */}
-                                <Card
-                                    title={
-                                        <div className="flex items-center justify-between py-1">
-                                            <Space className="text-slate-900 font-bold text-base">
-                                                <EyeOutlined className="text-blue-600" /> Live Document Preview
-                                            </Space>
-                                            <Space size="xs">
-                                                <Tooltip title="Zoom Out">
-                                                    <Button
-                                                        type="text"
-                                                        size="small"
-                                                        icon={<CompressOutlined />}
-                                                        onClick={() => setPreviewZoom(Math.max(70, previewZoom - 10))}
-                                                        className="hover:bg-slate-200/60 rounded-lg"
-                                                    />
-                                                </Tooltip>
-                                                <Text className="text-xs font-mono font-bold text-slate-600 px-1">{previewZoom}%</Text>
-                                                <Tooltip title="Zoom In">
-                                                    <Button
-                                                        type="text"
-                                                        size="small"
-                                                        icon={<ExpandOutlined />}
-                                                        onClick={() => setPreviewZoom(Math.min(130, previewZoom + 10))}
-                                                        className="hover:bg-slate-200/60 rounded-lg"
-                                                    />
-                                                </Tooltip>
-                                            </Space>
-                                        </div>
-                                    }
-                                    className="shadow-xl rounded-2xl border border-slate-200/90 bg-slate-900/5 backdrop-blur-xs overflow-hidden"
-                                    styles={{ body: { padding: '16px' } }}
-                                >
-                                    {/* Simulated A4 Paper Card */}
-                                    <div
-                                        className="bg-white rounded-xl p-8 shadow-2xl border border-slate-200/90 transition-transform duration-200 overflow-y-auto max-h-[calc(100vh-220px)] min-h-[580px] space-y-5 font-sans text-xs text-slate-800 select-none"
-                                        style={{
-                                            transform: `scale(${previewZoom / 100})`,
-                                            transformOrigin: 'top center',
-                                        }}
+                            <Col xs={24} lg={9} xl={9}>
+                                <div className="sticky top-6 space-y-4">
+                                    <Card
+                                        className="shadow-2xl rounded-2xl border border-slate-300 bg-white overflow-hidden"
+                                        styles={{ body: { padding: '24px' } }}
                                     >
-                                        {/* Document Right Header */}
-                                        <div className="text-right text-slate-600 space-y-1 border-b border-slate-100 pb-3.5">
-                                            <div className="font-bold text-xs text-slate-900">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
-                                            {formValues.dept && <div className="font-bold text-blue-700 text-xs">Dept: {formValues.dept}</div>}
+                                        <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+                                            <span className="font-extrabold text-xs text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                                <PrinterOutlined className="text-blue-600" />
+                                                Live A4 Document Preview
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 font-mono">
+                                                Zoom: {previewZoom}%
+                                            </span>
                                         </div>
 
-                                        {/* Emails */}
-                                        {(formValues.email_to || formValues.email_cc) && (
-                                            <div className="space-y-1 bg-slate-50/90 p-3 rounded-xl border border-slate-200/80 font-mono text-[11px]">
-                                                {formValues.email_to && (
-                                                    <div>
-                                                        <strong className="text-slate-700">Email: </strong>
-                                                        <span className="text-blue-600 font-semibold">{formValues.email_to}</span>
-                                                    </div>
-                                                )}
-                                                {formValues.email_cc && (
-                                                    <div>
-                                                        <strong className="text-slate-700">Cc: </strong>
-                                                        <span className="text-blue-600 font-semibold">{formValues.email_cc}</span>
-                                                    </div>
-                                                )}
+                                        {/* A4 Paper Mock */}
+                                        <div
+                                            className="bg-white border border-slate-300 p-6 shadow-md rounded font-serif text-xs leading-relaxed space-y-4 max-h-[750px] overflow-y-auto"
+                                            style={{
+                                                transform: `scale(${previewZoom / 100})`,
+                                                transformOrigin: 'top center',
+                                            }}
+                                        >
+                                            {/* Header */}
+                                            <div className="text-right text-slate-600 space-y-0.5 border-b border-slate-100 pb-2">
+                                                <div className="font-bold text-xs text-slate-900">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
+                                                {formValues.dept && <div className="font-bold text-blue-700 text-xs">Dept: {formValues.dept}</div>}
                                             </div>
-                                        )}
 
-                                        {/* Heading */}
-                                        <div className="text-center font-black text-sm text-slate-900 tracking-wider uppercase py-1.5 border-b-2 border-slate-900">
-                                            PROPOSAL INFORMATION
-                                        </div>
-
-                                        {/* Customer Information */}
-                                        {formValues.customer_raw && (
-                                            <div>
-                                                <div className="font-bold text-slate-900 text-xs mb-1">Customer:</div>
-                                                <div className="whitespace-pre-line text-slate-700 pl-3 border-l-2 border-blue-500 font-sans leading-relaxed">
-                                                    {formValues.customer_raw}
+                                            {/* Customer block */}
+                                            {formValues.customer_raw && (
+                                                <div>
+                                                    <div className="font-bold text-slate-900 text-xs mb-0.5">To:</div>
+                                                    <div className="whitespace-pre-line text-slate-700 pl-2 border-l-2 border-blue-500 font-sans text-[11px] leading-snug">
+                                                        {formValues.customer_raw}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {formValues.kind_attention && (
-                                            <div className="flex items-start gap-1">
-                                                <span className="font-bold text-slate-900 shrink-0">Kind Attention: </span>
-                                                <span className="text-slate-700 font-medium whitespace-pre-line">{formValues.kind_attention}</span>
-                                            </div>
-                                        )}
+                                            {formValues.subject && (
+                                                <div className="font-bold text-slate-900 text-xs border-y border-slate-200 py-1">
+                                                    Sub: {formValues.subject}
+                                                </div>
+                                            )}
 
-                                        {formValues.reference && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">Reference: </span>
-                                                <span className="text-slate-700 font-medium">{formValues.reference}</span>
-                                            </div>
-                                        )}
-
-                                        {formValues.subject && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">Subject: </span>
-                                                <span className="text-slate-900 font-bold">{formValues.subject}</span>
-                                            </div>
-                                        )}
-
-                                        {formValues.sac_code && (
-                                            <div>
-                                                <span className="font-bold text-slate-900">SAC Code: </span>
-                                                <span className="text-slate-700 font-medium">{formValues.sac_code}</span>
-                                            </div>
-                                        )}
-
-                                        {/* Scope of Work */}
-                                        {(formValues.scope_intro || scopeItems.length > 0) && (
-                                            <div className="space-y-2 pt-3 border-t border-slate-200">
-                                                <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Scope of Work:</div>
-                                                {formValues.scope_intro && (
-                                                    <p className="text-slate-700 leading-relaxed italic m-0">{formValues.scope_intro}</p>
-                                                )}
-                                                {scopeItems.length > 0 && (
-                                                    <ul className="list-disc list-inside space-y-1.5 text-slate-700 pl-1">
+                                            {/* Scope */}
+                                            {(formValues.scope_intro || scopeItems.length > 0) && (
+                                                <div className="space-y-1 text-[11px]">
+                                                    <div className="font-bold text-slate-900">Scope of Work:</div>
+                                                    {formValues.scope_intro && <p className="italic text-slate-600 mb-1">{formValues.scope_intro}</p>}
+                                                    <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
                                                         {scopeItems.map((item, i) => (
-                                                            <li key={i} className="leading-relaxed">{item}</li>
+                                                            <li key={i}>{item}</li>
                                                         ))}
                                                     </ul>
-                                                )}
-                                            </div>
-                                        )}
+                                                </div>
+                                            )}
 
-                                        {/* Terms & Conditions */}
-                                        {termsItems.length > 0 && (
-                                            <div className="space-y-2 pt-3 border-t border-slate-200">
-                                                <div className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Payment Terms & Conditions:</div>
-                                                <ol className="list-decimal list-inside space-y-1.5 text-slate-700 pl-1">
-                                                    {termsItems.map((item, i) => (
-                                                        <li key={i} className="leading-relaxed">{item}</li>
-                                                    ))}
-                                                </ol>
-                                            </div>
-                                        )}
-
-                                        {/* Cost Tables Preview */}
-                                        {tables.length > 0 && (
-                                            <div className="space-y-3 pt-3 border-t border-slate-200">
-                                                {tables.map((t, idx) => (
-                                                    <div key={idx} className="space-y-1.5">
-                                                        {t.title && <div className="font-bold text-slate-800 text-xs">{t.title}</div>}
-                                                        <table className="w-full border-collapse border border-slate-300 text-[10px]">
-                                                            <thead>
-                                                                <tr className="bg-slate-100">
-                                                                    {t.headers.map((h, hIdx) => (
-                                                                        <th key={hIdx} className="border border-slate-300 p-1.5 font-bold text-slate-900 text-left">
-                                                                            {h}
-                                                                        </th>
-                                                                    ))}
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {t.rows.map((r, rIdx) => (
-                                                                    <tr key={rIdx}>
-                                                                        {r.map((cell, cIdx) => (
-                                                                            <td key={cIdx} className="border border-slate-300 p-1.5 text-slate-700 font-medium">
-                                                                                {cell}
-                                                                            </td>
+                                            {/* Tables */}
+                                            {tables.length > 0 && (
+                                                <div className="space-y-2 pt-2 border-t border-slate-200">
+                                                    {tables.map((t, idx) => (
+                                                        <div key={idx} className="space-y-1">
+                                                            {t.title && <div className="font-bold text-slate-800 text-[11px]">{t.title}</div>}
+                                                            <table className="w-full border-collapse border border-slate-300 text-[10px]">
+                                                                <thead>
+                                                                    <tr className="bg-slate-100">
+                                                                        {t.headers.map((h, hIdx) => (
+                                                                            <th key={hIdx} className="border border-slate-300 p-1 text-left font-bold">{h}</th>
                                                                         ))}
                                                                     </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {/* Signatories Footer */}
-                                        {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
-                                            <div className="pt-8 border-t border-slate-300">
-                                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-right">
-                                                    {signatories.map((sig, i) => (
-                                                        <div key={i} className="space-y-0.5">
-                                                            {sig.name && <div className="font-extrabold text-slate-900 text-xs">{sig.name},</div>}
-                                                            {sig.lines_raw && (
-                                                                <div className="whitespace-pre-line text-slate-600 text-[11px] leading-snug">
-                                                                    {sig.lines_raw}
-                                                                </div>
-                                                            )}
+                                                                </thead>
+                                                                <tbody>
+                                                                    {t.rows.map((r, rIdx) => (
+                                                                        <tr key={rIdx}>
+                                                                            {r.map((cell, cIdx) => (
+                                                                                <td key={cIdx} className="border border-slate-300 p-1 text-slate-700">{cell}</td>
+                                                                            ))}
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
                                                         </div>
                                                     ))}
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </Card>
+                                            )}
 
-                                {/* Action Floating CTA Panel */}
-                                <Card
-                                    className="shadow-xl rounded-2xl border border-slate-200/90 bg-white overflow-hidden"
-                                    styles={{ body: { padding: '20px' } }}
-                                >
-                                    <div className="space-y-3">
-                                        <Row gutter={[12, 12]}>
-                                            <Col xs={24} sm={12}>
-                                                <Button
-                                                    type="primary"
-                                                    size="large"
-                                                    block
-                                                    icon={<DownloadOutlined />}
-                                                    loading={loading && !addToProposalsLoading}
-                                                    onClick={() => {
-                                                        setActionType('download');
-                                                        form.submit();
-                                                    }}
-                                                    className="bg-[#2563EB] hover:bg-[#1E40AF] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
-                                                >
-                                                    Generate DOCX
-                                                </Button>
-                                            </Col>
-                                            <Col xs={24} sm={12}>
-                                                <Button
-                                                    type="primary"
-                                                    size="large"
-                                                    block
-                                                    icon={<PlusOutlined />}
-                                                    loading={addToProposalsLoading}
-                                                    onClick={() => {
-                                                        setActionType('addToProposals');
-                                                        form.submit();
-                                                    }}
-                                                    className="bg-[#16A34A] hover:bg-[#15803D] rounded-xl h-12 text-sm font-extrabold shadow-md hover:shadow-lg transition-all duration-200 border-none"
-                                                >
-                                                    Add to Proposals
-                                                </Button>
-                                            </Col>
-                                        </Row>
-
-                                        <Text className="text-center block text-slate-400 text-xs">
-                                            Streams official <code className="text-slate-600 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">.docx</code> directly or auto-fills into Proposal entry.
-                                        </Text>
-                                    </div>
-                                </Card>
-                            </div>
-                        </Col>
+                                            {/* Signatories Footer */}
+                                            {signatories.some((s) => s.name.trim() || s.lines_raw.trim()) && (
+                                                <div className="pt-4 border-t border-slate-300 text-right space-y-1">
+                                                    {signatories.map((sig, i) => (
+                                                        <div key={i}>
+                                                            {sig.name && <div className="font-bold text-slate-900 text-xs">{sig.name}</div>}
+                                                            {sig.lines_raw && <div className="whitespace-pre-line text-slate-600 text-[10px] leading-snug">{sig.lines_raw}</div>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Card>
+                                </div>
+                            </Col>
                         )}
                     </Row>
-                </Form>
-            </div>
+                </div>
+            </Form>
         </div>
     );
 }

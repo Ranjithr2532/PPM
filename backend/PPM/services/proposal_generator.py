@@ -319,6 +319,9 @@ def build_proposal_document(data: dict) -> Document:
         add_email_field(document, "Email", email_to)
     if email_cc:
         add_email_field(document, "Cc", email_cc)
+    phone = data.get("phone") or data.get("phone_number") or ""
+    if phone:
+        add_email_field(document, "Phone", [phone] if isinstance(phone, str) else phone)
 
     # Quotation Information Block
     p_qinfo = document.add_paragraph()
