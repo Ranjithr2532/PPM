@@ -25,6 +25,7 @@ import ProjectPlan from './projectplan.jsx';
 import Sqap from './sqap.jsx';
 import Bom from './bom.jsx';
 import DrawingRegister from './drawingregister.jsx';
+import InspectionReport from './inspectionreport.jsx';
 import GenericIsoForm from './GenericIsoForm.jsx';
 
 const getDocTypeKey = (doc) => {
@@ -40,6 +41,7 @@ const getDocTypeKey = (doc) => {
     if (docNo === '053' || name.includes('PLAN')) return 'PROJECT_PLAN';
     if (docNo === '063' || name.includes('BOM') || name.includes('BILL OF MATERIALS')) return 'BOM';
     if (docNo === '064' || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) return 'DRAWING_REGISTER';
+    if (docNo === '085' || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) return 'INSPECTION_REPORT';
     return name.replace(/\s+/g, '_');
 };
 
@@ -300,6 +302,15 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     />
                 ) : activeFormState.docTypeKey === 'DRAWING_REGISTER' ? (
                     <DrawingRegister
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'INSPECTION_REPORT' ? (
+                    <InspectionReport
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
                         onBack={() => {
