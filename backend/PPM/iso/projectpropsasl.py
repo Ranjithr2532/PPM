@@ -351,6 +351,7 @@ def create_project_proposal_document(
     recurring_budget = recurring_budget or []
     non_recurring_budget = non_recurring_budget or []
     equipment_details = equipment_details or []
+    project_leader = (project_leader or prepared_by or "").strip()
 
     border_format = {"val": "single", "sz": 4, "color": "000000"}
 
