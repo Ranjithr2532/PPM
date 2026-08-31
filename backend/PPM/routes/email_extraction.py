@@ -1,9 +1,9 @@
 import json
 import re
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import requests
 
 router = APIRouter(tags=["AI Email Extraction"])
@@ -50,15 +50,114 @@ class ProposalExtraction(BaseModel):
 
     missing_information: Optional[List[str]] = Field(default_factory=list)
 
+    @field_validator(
+        "customer_name", "kind_attention", "customer_address", "phone_number",
+        "reference", "proposal_subject", "introductory_paragraph", "implementation_timeline",
+        mode="before"
+    )
+    @classmethod
+    def coerce_string_fields(cls, v):
+        if isinstance(v, list):
+            items = [str(item).strip() for item in v if item is not None and str(item).strip()]
+            return ", ".join(items) if items else None
+        elif v is not None:
+            s = str(v).strip()
+            return s if s else None
+        return None
+
+    @field_validator(
+        "email_to", "email_cc", "scope_of_work", "objectives",
+        "technical_requirements", "commercial_requirements",
+        "additional_requirements", "attachments", "missing_information",
+        mode="before"
+    )
+    @classmethod
+    def coerce_list_fields(cls, v):
+        if isinstance(v, str):
+            lines = [l.strip() for l in v.splitlines() if l.strip()]
+            return lines if lines else ([v.strip()] if v.strip() else [])
+        elif isinstance(v, list):
+            return [str(item).strip() for item in v if item is not None and str(item).strip()]
+        return []
+
 
 # ============================================================
-# HELPER PARSING FUNCTIONS
+# HELPER PARSING & CLEANING FUNCTIONS
 # ============================================================
+
+def clean_to_english_only(text: Optional[str]) -> str:
+    """
+    Cleans non-English characters (Devanagari, Indic scripts, Arabic, East Asian, etc.)
+    and resolves bilingual slash/hyphen pairs (e.g. 'आर. भारतीदासन/ Bharathidasan R' -> 'Bharathidasan R').
+    Preserves valid ASCII/Latin English text, digits, punctuation, and layout.
+    """
+    if not text:
+        return ""
+    
+    cleaned_lines = []
+    for raw_line in str(text).splitlines():
+        line = raw_line.strip()
+        if not line:
+            cleaned_lines.append("")
+            continue
+        
+        # If line contains comma separated items like "पीएमपी/PMP, ब्लैक बेल्ट-सिक्स सिग्मा/Black Belt-Six Sigma"
+        comma_items = [c.strip() for c in line.split(',') if c.strip()]
+        cleaned_comma_items = []
+        
+        for item in comma_items:
+            # If item contains slash e.g. "पीएमपी/PMP" or "आर. भारतीदासन/ Bharathidasan R"
+            if '/' in item:
+                slash_parts = [s.strip() for s in item.split('/') if s.strip()]
+                # Extract English parts (must contain ASCII letters)
+                eng_parts = []
+                for p in slash_parts:
+                    ascii_val = re.sub(r'[^\x00-\x7F]+', '', p).strip(' /,-')
+                    if re.search(r'[a-zA-Z0-9]', ascii_val):
+                        eng_parts.append(ascii_val)
+                if eng_parts:
+                    cleaned_comma_items.append(" / ".join(eng_parts) if len(eng_parts) > 1 else eng_parts[0])
+            else:
+                # Remove non-ascii
+                ascii_val = re.sub(r'[^\x00-\x7F]+', '', item).strip(' /,-')
+                if re.search(r'[a-zA-Z0-9]', ascii_val):
+                    cleaned_comma_items.append(ascii_val)
+        
+        if cleaned_comma_items:
+            cleaned_lines.append(", ".join(cleaned_comma_items))
+        else:
+            # Entire line was non-English (e.g. 'भारत इलेक्ट्रॉनिक्स लिमिटेड/')
+            ascii_line = re.sub(r'[^\x00-\x7F]+', '', line).strip(' /,-')
+            if re.search(r'[a-zA-Z0-9]', ascii_line):
+                cleaned_lines.append(ascii_line)
+                
+    return "\n".join(cleaned_lines)
+
+
+def sanitize_english_field(value: Any) -> Any:
+    """Recursively cleans non-English text from extracted strings or lists."""
+    if isinstance(value, str):
+        cleaned = clean_to_english_only(value)
+        return cleaned.strip() if cleaned.strip() else None
+    elif isinstance(value, list):
+        clean_list = []
+        for item in value:
+            if isinstance(item, str):
+                c = clean_to_english_only(item).strip()
+                if c:
+                    clean_list.append(c)
+            elif item is not None:
+                clean_list.append(item)
+        return clean_list
+    elif isinstance(value, dict):
+        return {k: sanitize_english_field(v) for k, v in value.items()}
+    return value
+
 
 def clean_reference_subject(text: Optional[str]) -> Optional[str]:
     if not text:
         return None
-    cleaned = text.strip()
+    cleaned = clean_to_english_only(str(text)).strip()
     cleaned = re.sub(r'^(?:(?:re|fwd|fw)\s*:\s*)+', '', cleaned, flags=re.IGNORECASE).strip()
     return cleaned if cleaned else None
 
@@ -72,18 +171,48 @@ def clean_json_text(text: str) -> str:
     return cleaned
 
 
+def clean_string_field(ai_val: Any, fallback_val: Optional[str] = None) -> Optional[str]:
+    """Safely converts string/list inputs to a single trimmed English string."""
+    if isinstance(ai_val, list):
+        items = [str(item).strip() for item in ai_val if item is not None and str(item).strip()]
+        val = ", ".join(items).strip()
+        if val:
+            return val
+    elif isinstance(ai_val, str):
+        val = ai_val.strip()
+        if val:
+            return val
+    if isinstance(fallback_val, list):
+        items = [str(item).strip() for item in fallback_val if item is not None and str(item).strip()]
+        val = ", ".join(items).strip()
+        return val if val else None
+    elif isinstance(fallback_val, str):
+        val = fallback_val.strip()
+        return val if val else None
+    return None
+
+
 def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) -> dict:
     """
     Robust rule-based and NLP parsing engine to reliably extract all proposal
-    parameters from raw email threads, complementing Ollama LLM extraction.
+    parameters from raw email threads strictly in English, complementing Ollama LLM extraction.
     """
-    email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
-    all_emails = re.findall(email_pattern, text)
+    if ai_data is None:
+        ai_data = {}
 
-    # 1. Emails: To, CC, From (support multi-line headers with line breaks or < >)
-    to_block = re.search(r'(?:To|to):\s*([\s\S]*?)(?=(?:\n\s*(?:Cc|CC|cc|Subject|subject|Date|date|From|from|Sent|sent):)|\n\s*\n|\Z)', text)
-    cc_block = re.search(r'(?:Cc|CC|cc):\s*([\s\S]*?)(?=(?:\n\s*(?:Subject|subject|Date|date|From|from|To|to|Sent|sent):)|\n\s*\n|\Z)', text)
-    from_block = re.search(r'(?:From|from):\s*([\s\S]*?)(?=(?:\n\s*(?:To|to|Cc|cc|Subject|subject|Date|date|Sent|sent):)|\n\s*\n|\Z)', text)
+    # Sanitize AI data to remove non-English tokens
+    ai_data = sanitize_english_field(ai_data)
+
+    # Convert entire raw input to clean English
+    clean_text = clean_to_english_only(text)
+
+    email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+    all_emails = re.findall(email_pattern, clean_text)
+
+    # 1. Emails: To, CC, From
+    to_block = re.search(r'(?:To|to):\s*([\s\S]*?)(?=(?:\n\s*(?:Cc|CC|cc|Subject|subject|Date|date|From|from|Sent|sent):)|\n\s*\n|\Z)', clean_text)
+    cc_block = re.search(r'(?:Cc|CC|cc):\s*([\s\S]*?)(?=(?:\n\s*(?:Subject|subject|Date|date|From|from|To|to|Sent|sent):)|\n\s*\n|\Z)', clean_text)
+    from_block = re.search(r'(?:From|from):\s*([\s\S]*?)(?=(?:\n\s*(?:To|to|Cc|cc|Subject|subject|Date|date|Sent|sent):)|\n\s*\n|\Z)', clean_text)
 
     email_to = []
     if to_block:
@@ -100,7 +229,7 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
         email_from = list(dict.fromkeys(re.findall(email_pattern, from_block.group(1))))
 
     # 2. Subject & Reference
-    subject_match = re.search(r'(?:Subject|subject):\s*([^\n\r]+)', text)
+    subject_match = re.search(r'(?:Subject|subject):\s*([^\n\r]+)', clean_text)
     raw_subject = subject_match.group(1).strip() if subject_match else ""
     cleaned_ref = clean_reference_subject(raw_subject)
     reference = cleaned_ref if cleaned_ref else None
@@ -110,7 +239,6 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
     if reference:
         if re.search(r'techno|proposal|project|quotation', reference, re.IGNORECASE):
             cleaned_title = re.sub(r'^(?:request\s+to\s+send\s+|request\s+for\s+)', '', reference, flags=re.IGNORECASE).strip()
-            # Clean hyphens with spaces: "techno - commercial" -> "Techno-Commercial"
             cleaned_title = re.sub(r'\btechno\s*-\s*commercial\b', 'Techno-Commercial', cleaned_title, flags=re.IGNORECASE)
             proposal_subject = cleaned_title.title()
             if not proposal_subject.lower().startswith('techno-commercial'):
@@ -118,9 +246,9 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
         else:
             proposal_subject = f"Techno-Commercial Proposal for {reference}".strip()
 
-    # 3. Signature & Customer details
+    # 3. Signature & Contact details
     sender_name_from_header = None
-    from_match = re.search(r'From:\s*([^\n\r<]+)(?:<([^\n\r>]+)>)?', text, re.IGNORECASE)
+    from_match = re.search(r'From:\s*([^\n\r<]+)(?:<([^\n\r>]+)>)?', clean_text, re.IGNORECASE)
     if from_match:
         raw_name = from_match.group(1).strip().strip('"').strip("'")
         if '@' not in raw_name and len(raw_name) > 2:
@@ -134,12 +262,12 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
                 sender_name_from_header = user_clean.title()
 
     sig_patterns = [
-        r'(?:सादर\s*/\s*Regards|Regards|Warm\s+regards|Sincerely|Thanks\s+&?\s+Regards|Thanks\s+and\s+Regards|Thank\s+you|Thanks)[,\s\n:]+([\s\S]*?)(?=(?:\n\s*(?:On\s+\d{4}|From:|-{3,}|Confidentiality\s+Notice|\d{1,2}/\d{1,2}/\d{2,4}|https?://)|\Z))',
+        r'(?:Regards|Warm\s+regards|Sincerely|Thanks\s+&?\s+Regards|Thanks\s+and\s+Regards|Thank\s+you|Thanks)[,\s\n:]+([\s\S]*?)(?=(?:\n\s*(?:On\s+\d{4}|From:|-{3,}|Confidentiality\s+Notice|\d{1,2}/\d{1,2}/\d{2,4}|https?://)|\Z))',
     ]
 
     sig_lines = []
     for pat in sig_patterns:
-        m = re.search(pat, text, re.IGNORECASE)
+        m = re.search(pat, clean_text, re.IGNORECASE)
         if m:
             raw_lines = [
                 l.strip() for l in m.group(1).splitlines()
@@ -149,49 +277,75 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
                 sig_lines = raw_lines
                 break
 
+    if not sig_lines:
+        sig_lines = [
+            l.strip() for l in clean_text.splitlines()
+            if l.strip() and not l.strip().lower().startswith(('subject:', 'from:', 'to:', 'cc:', 'date:', 'sent:'))
+        ]
+
     customer_name = None
     person_name = None
     designations = []
-    customer_address = None
     address_parts = []
 
-    for idx, line in enumerate(sig_lines):
-        clean_latin = re.sub(r'[^\x00-\x7F]+', '', line).strip(' /,-')
-        if not clean_latin:
+    org_keywords = [
+        'College', 'Institute', 'University', 'Pvt', 'Ltd', 'Limited', 'Technologies',
+        'Corporation', 'Inc', 'Autonomous', 'Hospital', 'Organization', 'Bharat Electronics',
+        'BEL', 'BHEL', 'HAL', 'ISRO', 'DRDO', 'Tata Power', 'TPREL', 'Tata', 'Infosys', 'Wipro', 'Toyota', 'TIEI'
+    ]
+
+    designation_keywords = [
+        'engineer', 'engineering', 'manager', 'professor', 'dean', 'director', 'scientist', 'head',
+        'lead', 'executive', 'officer', 'department', 'fabrication', 'components',
+        'dgm', 'gm', 'agm', 'pmp', 'six sigma', 'black belt', 'quality', 'assurance',
+        'ece', 'cse', 'mech', 'eee', 'civil'
+    ]
+
+    city_keywords = [
+        'KADAPA', 'BANGALORE', 'BENGALURU', 'HYDERABAD', 'CHENNAI', 'DELHI', 'MUMBAI',
+        'PUNE', 'ANDHRA', 'KARNATAKA', 'TAMIL NADU', 'TELANGANA', 'JALAHALLI', 'ELECTRONIC CITY', 'HOSUR ROAD'
+    ]
+
+    for idx, raw_line_eval in enumerate(sig_lines):
+        line_eval = raw_line_eval
+
+        # Check if line has company prefix like "TPREL - BENGALURU, 43(P)..."
+        comp_prefix_match = re.match(r'^(TPREL|BEL|BHEL|HAL|ISRO|DRDO|TATA\s+POWER|TATA)\s*[-–]\s*(.*)$', line_eval, re.IGNORECASE)
+        if comp_prefix_match:
+            if not customer_name:
+                customer_name = comp_prefix_match.group(1).strip()
+            line_eval = comp_prefix_match.group(2).strip()
+
+        # Ignore lines that are purely employee codes or contact markers unless they contain addresses
+        if re.search(r'^(?:Phone|Cell|Tel|Mob|Email|Emp\.Code|Mobile No)', line_eval, re.IGNORECASE) and not any(c in line_eval.upper() for c in city_keywords):
             continue
 
-        line_eval = clean_latin
-
         # Check for Address (PIN code or city names)
-        if re.search(r'\d{6}', line_eval) or any(c in line_eval.upper() for c in ['KADAPA', 'BANGALORE', 'BENGALURU', 'HYDERABAD', 'CHENNAI', 'DELHI', 'MUMBAI', 'PUNE', 'ANDHRA', 'KARNATAKA', 'TAMIL NADU', 'TELANGANA', 'JALAHALLI']):
-            if "CMTI" not in line_eval.upper() and not re.search(r'(?:College|Institute|University|Limited|Ltd|Corporation|Enterprises)', line_eval, re.IGNORECASE):
-                address_parts.append(line_eval)
+        if (re.search(r'\b\d{6}\b', line_eval) or any(c in line_eval.upper() for c in city_keywords)) and not any(re.search(rf'\b{kw}\b', line_eval, re.IGNORECASE) for kw in ['College', 'Institute', 'University', 'Limited', 'Ltd', 'Corporation', 'Enterprises', 'Bharat Electronics', 'BEL', 'BHEL', 'HAL']):
+            if "CMTI" not in line_eval.upper():
+                clean_addr_line = re.sub(r'\|\s*(?:Mobile No|Phone|Email|Emp\.Code).*$', '', line_eval, flags=re.IGNORECASE)
+                clean_addr_line = re.sub(r'(?:Phone|Cell|Tel|Mob|Email|Emp\.Code|Mobile No)[:\s].*$', '', clean_addr_line, flags=re.IGNORECASE).strip(' ,/-')
+                if clean_addr_line:
+                    address_parts.append(clean_addr_line)
                 continue
 
         # Check for Organization / Customer Name
-        if re.search(r'(?:College|Institute|University|Pvt|Ltd|Limited|Technologies|Corporation|Inc|Autonomous|Hospital|Organization|Bharat Electronics|BEL|BHEL|HAL|ISRO|DRDO|Tata|Infosys|Wipro)', line_eval, re.IGNORECASE):
+        if any(re.search(rf'\b{re.escape(kw)}\b', line_eval, re.IGNORECASE) for kw in org_keywords):
             if "CMTI" not in line_eval.upper():
                 if not customer_name:
-                    customer_name = line_eval
+                    clean_org = re.sub(r'[,/]\s*(?:43\(P\)|Electronic City|Hosur Road|Bangalore|Bengaluru|Jalahalli).*$', '', line_eval, flags=re.IGNORECASE).strip(' /,-')
+                    customer_name = clean_org or line_eval
                 continue
 
-        # Check for Person Name or Designation
+        # Check for Person Name
         if re.search(r'^(?:Dr|Prof|Mr|Mrs|Ms|Er)\.?\s+', line_eval, re.IGNORECASE):
             person_name = line_eval
-        elif len(line_eval) <= 45 and not any(w in line_eval.lower() for w in ['thank you', 'greetings', 'continued', 'support', 'progressing', 'addition', 'dear', 'cooperation']) and any(k in line_eval.lower() for k in ['engineer', 'manager', 'professor', 'dean', 'director', 'scientist', 'head', 'lead', 'executive', 'officer', 'department', 'fabrication', 'components', 'ece', 'cse', 'mech', 'eee', 'civil', 'quality', 'assurance']):
-            designations.append(line_eval)
-        elif not person_name and idx == 0 and len(line_eval.split()) <= 4:
+        # Check for Designation
+        elif any(k in line_eval.lower() for k in designation_keywords) and len(line_eval) <= 80:
+            if not any(w in line_eval.lower() for w in ['thank you', 'greetings', 'continued', 'support', 'progressing', 'addition', 'dear', 'cooperation']):
+                designations.append(line_eval)
+        elif not person_name and len(line_eval.split()) <= 4 and not re.search(r'[@\d:]', line_eval):
             person_name = line_eval
-
-    if not person_name:
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
-        for i in range(len(lines) - 1, -1, -1):
-            l = lines[i]
-            if any(cl in l.lower() for cl in ["thank you", "thanks", "regards", "sincerely", "greetings", "dear", "cooperation", "support", "continued"]):
-                continue
-            if len(l.split()) <= 4 and not re.search(r'[@\d]', l) and len(l) > 2:
-                person_name = l
-                break
 
     if not person_name and sender_name_from_header:
         person_name = sender_name_from_header
@@ -206,7 +360,6 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
 
     kind_attention = "\n".join(kind_attention_parts) if kind_attention_parts else person_name
     
-    # Deduplicate address parts
     clean_addr_parts = []
     for a in address_parts:
         if a and a not in clean_addr_parts:
@@ -215,15 +368,14 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
 
     # 4. Objectives / Numbered Scope items
     objectives = []
-    # Match numbered items or explicit bullets first
-    list_matches = re.findall(r'^\s*(?:\d+[.]|\d+[)]|[-*•])\s+([^\n\r]+)', text, flags=re.MULTILINE)
+    list_matches = re.findall(r'^\s*(?:\d+[.]|\d+[)]|[-*•])\s+([^\n\r]+)', clean_text, flags=re.MULTILINE)
     for item in list_matches:
         item_clean = item.strip()
         if len(item_clean) > 3 and not any(dp in item_clean.lower() for dp in ['subject:', 'date:', 'from:', 'to:']):
             objectives.append(item_clean)
 
     if not objectives:
-        obj_match = re.search(r'(?:Objective|Objectives|Goal|Goals|Scope)[:\s\n]+([\s\S]*?)(?=(?:I confirm|Please send|Thank you|Regards|\n\s*\n\s*[A-Z]|\Z))', text, re.IGNORECASE)
+        obj_match = re.search(r'(?:Objective|Objectives|Goal|Goals|Scope)[:\s\n]+([\s\S]*?)(?=(?:I confirm|Please send|Thank you|Regards|\n\s*\n\s*[A-Z]|\Z))', clean_text, re.IGNORECASE)
         if obj_match:
             obj_text = obj_match.group(1).strip()
             for line in obj_text.splitlines():
@@ -233,23 +385,16 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
                     if cleaned_obj and len(cleaned_obj) > 3:
                         objectives.append(cleaned_obj)
 
-    if not objectives:
-        list_matches = re.findall(r'^\s*(?:\d+[.]|\d+[)]|[-*•])\s+([^\n\r]+)', text, flags=re.MULTILINE)
-        for item in list_matches:
-            item_clean = item.strip()
-            if len(item_clean) > 3 and not any(dp in item_clean.lower() for dp in ['subject:', 'date:', 'from:', 'to:']):
-                objectives.append(item_clean)
-
     # 5. Introductory Paragraph
     introductory_paragraph = None
-    intro_match = re.search(r'(?:As we are progressing|In reference to|With reference to|This has reference|We would like to|Please find|We are pleased to|Milk quality|Regarding)[\s\S]*?(?=(?:\n\s*\d+[.]|\n\s*\d+[)]|\n\s*[-*]|\n\s*\n|Thank you|Regards|\Z))', text, re.IGNORECASE)
+    intro_match = re.search(r'(?:As we are progressing|In reference to|With reference to|This has reference|We would like to|Please find|We are pleased to|Milk quality|Regarding)[\s\S]*?(?=(?:\n\s*\d+[.]|\n\s*\d+[)]|\n\s*[-*]|\n\s*\n|Thank you|Regards|\Z))', clean_text, re.IGNORECASE)
     if intro_match:
         intro_text = intro_match.group(0).strip()
         if intro_text:
             introductory_paragraph = " ".join([l.strip() for l in intro_text.splitlines() if l.strip()])
     
     if not introductory_paragraph:
-        body_match = re.search(r'(?:Dear\s+sir|Dear\s+madam|Good\s+morning|Hello|Hi)[,\s\n]+([\s\S]*?)(?=(?:Objective|Scope|addition\s+of|I confirm|Thank you|Regards))', text, re.IGNORECASE)
+        body_match = re.search(r'(?:Dear\s+sir|Dear\s+madam|Good\s+morning|Hello|Hi)[,\s\n]+([\s\S]*?)(?=(?:Objective|Scope|addition\s+of|I confirm|Thank you|Regards))', clean_text, re.IGNORECASE)
         if body_match:
             intro_text = body_match.group(1).strip()
             intro_text = re.sub(r'^(?:Good morning|Good afternoon|Dear sir|Dear madam|Greetings!|Thank you for your continued support\.)[,\s\n]+', '', intro_text, flags=re.IGNORECASE).strip()
@@ -273,7 +418,7 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
         "microcontroller", "spectroscopy", "hardware", "software", "accuracy",
         "testing", "measurement"
     ]
-    for sentence in re.split(r'[.\n]', text):
+    for sentence in re.split(r'[.\n]', clean_text):
         s_clean = sentence.strip()
         if any(k in s_clean.lower() for k in tech_keywords) and len(s_clean) > 15:
             if not any(s_clean.lower().startswith(p) for p in ['dear', 'subject', 'to:', 'from:', 'date:', '3/']):
@@ -282,35 +427,48 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
 
     # 8. Commercial Requirements
     commercial_requirements = []
-    if re.search(r'resource\s+person\s+charges', text, re.IGNORECASE):
+    if re.search(r'resource\s+person\s+charges', clean_text, re.IGNORECASE):
         commercial_requirements.append("Resource person charges")
-    if re.search(r'experimentation\s+charges', text, re.IGNORECASE):
+    if re.search(r'experimentation\s+charges', clean_text, re.IGNORECASE):
         commercial_requirements.append("Experimentation charges")
-    if re.search(r'quotation|commercial\s+proposal|cost\s+estimate', text, re.IGNORECASE):
+    if re.search(r'quotation|commercial\s+proposal|cost\s+estimate', clean_text, re.IGNORECASE):
         commercial_requirements.append("Techno-commercial proposal & quotation")
-    if not commercial_requirements and re.search(r'proposal', text, re.IGNORECASE):
+    if not commercial_requirements and re.search(r'proposal', clean_text, re.IGNORECASE):
         commercial_requirements.append("Techno-commercial quotation")
 
     # 9. Implementation Timeline
     implementation_timeline = None
-    timeline_match = re.search(r'(?:during\s+the\s+summer|within\s+\d+\s+(?:months|weeks|days)|\d+\s+to\s+\d+\s+months|\d+\s+months)', text, re.IGNORECASE)
+    timeline_match = re.search(r'(?:during\s+the\s+summer|within\s+\d+\s+(?:months|weeks|days)|\d+\s+to\s+\d+\s+months|\d+\s+months)', clean_text, re.IGNORECASE)
     if timeline_match:
         implementation_timeline = timeline_match.group(0).strip()
 
     # 10. Additional Requirements
     additional_requirements = []
-    student_match = re.search(r'([^.\n]*?(?:students\s+can\s+join|interns|training|internship)[^.\n]*)', text, re.IGNORECASE)
+    student_match = re.search(r'([^.\n]*?(?:students\s+can\s+join|interns|training|internship)[^.\n]*)', clean_text, re.IGNORECASE)
     if student_match:
         additional_requirements.append(student_match.group(1).strip())
 
     # 11. Attachments
     attachments = []
-    att_matches = re.findall(r'[\w\-.]+\.(?:pdf|docx|doc|xlsx|csv|pptx|png|jpg)', text, re.IGNORECASE)
+    att_matches = re.findall(r'[\w\-.]+\.(?:pdf|docx|doc|xlsx|csv|pptx|png|jpg)', clean_text, re.IGNORECASE)
     if att_matches:
         attachments = list(dict.fromkeys(att_matches))
 
+    # Helper to check if an AI-extracted item is actually grounded in the source text
+    def is_grounded_in_text(item: str, source_text: str) -> bool:
+        if not item or not source_text:
+            return False
+        stopwords = {"a", "an", "the", "and", "or", "of", "to", "in", "for", "with", "on", "at", "by", "from", "is", "are", "was", "were", "new", "this", "that", "all", "our", "we"}
+        words = [w.lower() for w in re.findall(r'[a-zA-Z]{3,}', item) if w.lower() not in stopwords]
+        if not words:
+            return True
+        src_lower = source_text.lower()
+        matched_words = [w for w in words if w in src_lower]
+        match_ratio = len(matched_words) / len(words)
+        return match_ratio >= 0.35
+
     # Helper to clean list fields from AI hallucinations and dummy placeholders
-    def clean_list_field(ai_val, fallback_val=None):
+    def clean_list_field(ai_val, fallback_val=None, check_grounding=True):
         dummy_phrases = ["array of", "list of", "none", "null", "n/a", "not mentioned", "[]", "dummy"]
         candidates = []
         if isinstance(ai_val, list):
@@ -318,7 +476,8 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
                 if item is not None:
                     s = str(item).strip()
                     if len(s) > 2 and not any(dp in s.lower() for dp in dummy_phrases):
-                        candidates.append(s)
+                        if not check_grounding or is_grounded_in_text(s, clean_text):
+                            candidates.append(s)
         elif isinstance(ai_val, str):
             s = ai_val.strip()
             if len(s) > 2 and not any(dp in s.lower() for dp in dummy_phrases):
@@ -326,14 +485,17 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
                     for line in s.splitlines():
                         cleaned = re.sub(r'^[•\-\*\d\.\s]+', '', line).strip()
                         if len(cleaned) > 2 and not any(dp in cleaned.lower() for dp in dummy_phrases):
-                            candidates.append(cleaned)
+                            if not check_grounding or is_grounded_in_text(cleaned, clean_text):
+                                candidates.append(cleaned)
                 elif "," in s and len(s) > 10:
                     for part in s.split(","):
                         cleaned = part.strip()
                         if len(cleaned) > 2 and not any(dp in cleaned.lower() for dp in dummy_phrases):
-                            candidates.append(cleaned)
+                            if not check_grounding or is_grounded_in_text(cleaned, clean_text):
+                                candidates.append(cleaned)
                 elif len(s) > 5:
-                    candidates.append(s)
+                    if not check_grounding or is_grounded_in_text(s, clean_text):
+                        candidates.append(s)
 
         if candidates:
             return list(dict.fromkeys(candidates))
@@ -376,7 +538,7 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
 
     # Ensure customer_name (organization) is found from text/signature if not yet set
     if not customer_name:
-        org_m = re.search(r'([^\n\r,]+(?:Limited|Ltd|Pvt\s+Ltd|College|University|Institute|Corporation|Technologies|Industries|Enterprises|Hospital|Autonomous|Bharat Electronics|BEL|BHEL|HAL|ISRO|DRDO|Tata|Infosys|Wipro|Toyota|TIEI)[^\n\r,]*)', text, re.IGNORECASE)
+        org_m = re.search(r'([^\n\r,]+(?:Limited|Ltd|Pvt\s+Ltd|College|University|Institute|Corporation|Technologies|Industries|Enterprises|Hospital|Autonomous|Bharat Electronics|BEL|BHEL|HAL|ISRO|DRDO|Tata|Infosys|Wipro|Toyota|TIEI)[^\n\r,]*)', clean_text, re.IGNORECASE)
         if org_m and "CMTI" not in org_m.group(1).upper():
             customer_name = org_m.group(1).strip().strip(' /,-')
 
@@ -444,7 +606,7 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
     # 12. Phone number
     phone_number = None
     phone_matches = []
-    for m in re.finditer(r'(?:Phone\s*\([^)]+\)|Phone|Cell(?:\s*no)?|Mobile|Tel|Mob|Contact)[:\s]+([+\d\s\-(),/.]+)', text, re.IGNORECASE):
+    for m in re.finditer(r'(?:Phone\s*\([^)]+\)|Phone|Cell(?:\s*no)?|Mobile(?:\s*No)?|Tel|Mob|Contact)[:\s]+([+\d\s\-(),/.]+)', clean_text, re.IGNORECASE):
         raw_val = m.group(0).strip()
         val = raw_val.splitlines()[0].strip().rstrip(' -.,;/')
         if val:
@@ -460,7 +622,7 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
                 clean_phones.append(p)
 
     if not clean_phones:
-        mob_matches = re.findall(r'(?:\+91[\s\-]?)?[6-9]\d{9}', text)
+        mob_matches = re.findall(r'(?:\+91[\s\-]?)?[6-9]\d{9}', clean_text)
         for m in mob_matches:
             digits = re.sub(r'\D', '', m)
             if digits not in digit_set:
@@ -470,21 +632,28 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
     if clean_phones:
         phone_number = ", ".join(clean_phones)
 
+    raw_timeline = ai_data.get("implementation_timeline")
+    final_timeline = None
+    if raw_timeline and "stated timeline" not in str(raw_timeline).lower():
+        final_timeline = clean_string_field(raw_timeline, implementation_timeline)
+    else:
+        final_timeline = clean_string_field(implementation_timeline)
+
     final_data = {
         "email_to": clean_email_list(ai_data.get("email_to"), email_to),
         "email_cc": clean_email_list(ai_data.get("email_cc"), email_cc),
-        "customer_name": final_cust,
-        "kind_attention": final_kind,
-        "customer_address": final_addr,
-        "phone_number": phone_number,
-        "reference": clean_reference_subject(ai_ref or reference),
-        "proposal_subject": ai_data.get("proposal_subject") or proposal_subject,
-        "introductory_paragraph": ai_intro or introductory_paragraph,
+        "customer_name": clean_string_field(final_cust),
+        "kind_attention": clean_string_field(final_kind),
+        "customer_address": clean_string_field(final_addr),
+        "phone_number": clean_string_field(phone_number),
+        "reference": clean_string_field(clean_reference_subject(ai_ref or reference)),
+        "proposal_subject": clean_string_field(ai_data.get("proposal_subject"), proposal_subject),
+        "introductory_paragraph": clean_string_field(ai_intro or introductory_paragraph),
         "scope_of_work": clean_list_field(ai_data.get("scope_of_work"), scope_of_work),
         "objectives": clean_list_field(ai_data.get("objectives"), objectives),
         "technical_requirements": clean_list_field(ai_data.get("technical_requirements"), technical_requirements),
         "commercial_requirements": clean_list_field(ai_data.get("commercial_requirements"), commercial_requirements),
-        "implementation_timeline": ai_data.get("implementation_timeline") if ai_data.get("implementation_timeline") and "stated timeline" not in str(ai_data.get("implementation_timeline")).lower() else implementation_timeline,
+        "implementation_timeline": final_timeline,
         "additional_requirements": clean_list_field(ai_data.get("additional_requirements"), additional_requirements),
         "attachments": clean_list_field(ai_data.get("attachments"), attachments),
         "missing_information": []
@@ -515,27 +684,35 @@ def extract_proposal_from_raw_text(text: str, ai_data: Optional[dict] = None) ->
 )
 def extract_email(data: EmailRequest):
 
+    # Pre-clean input text for Ollama LLM to English only
+    english_email_text = clean_to_english_only(data.email_text)
+
     prompt = f"""Read this customer email and extract proposal details into JSON.
 
 Email:
 \"\"\"
-{data.email_text}
+{english_email_text}
 \"\"\"
 
-Extract these JSON keys accurately:
-- customer_name: organization/college name (e.g. KSRM College of Engineering)
-- kind_attention: person name & designation
-- customer_address: city/state/pincode
+CRITICAL INSTRUCTIONS:
+- ZERO HALLUCINATION RULE: Only extract information that is explicitly stated in the text.
+- If the text is ONLY a contact signature, address, or business card with NO project requirements or deliverables stated, you MUST return [] (empty array) for scope_of_work, objectives, technical_requirements, commercial_requirements, additional_requirements, and null for implementation_timeline and proposal_subject.
+- NEVER invent, assume, or hallucinate manufacturing, construction, installation, or implementation tasks.
+- Always extract strictly in English. If bilingual or regional text is present (e.g., 'आर. भारतीदासन/ Bharathidasan R'), extract ONLY the English portion.
+- customer_name: organization / company name (e.g. Bharat Electronics Limited, TPREL, KSRM College of Engineering)
+- kind_attention: person name, designation, and department (e.g. Bharathidasan R, Sr DGM, Fabrication Components)
+- customer_address: office address, city, state, pincode (e.g. Jalahalli, Bangalore- 560013)
+- phone_number: contact phone/mobile numbers
 - reference: original subject without Re/Fwd
-- proposal_subject: title like "Techno-Commercial Proposal for ..."
-- introductory_paragraph: background text
-- scope_of_work: array of work activities
-- objectives: array of objectives
-- technical_requirements: array of technical specifications
-- commercial_requirements: array of quotation/cost requirements
-- implementation_timeline: stated timeline
-- additional_requirements: array of other requests
-- attachments: array of filenames
+- proposal_subject: title like "Techno-Commercial Proposal for ..." (or null if none)
+- introductory_paragraph: background text (or null if none)
+- scope_of_work: array of work activities explicitly mentioned in text (or [] if none)
+- objectives: array of objectives explicitly mentioned in text (or [] if none)
+- technical_requirements: array of technical specifications explicitly mentioned in text (or [] if none)
+- commercial_requirements: array of quotation/cost requirements (or [] if none)
+- implementation_timeline: stated timeline (or null if none)
+- additional_requirements: array of other requests (or [] if none)
+- attachments: array of filenames (or [] if none)
 - email_to: array of recipient emails
 - email_cc: array of cc emails
 
