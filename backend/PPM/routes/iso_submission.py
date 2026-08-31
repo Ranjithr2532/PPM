@@ -325,6 +325,26 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
         )
         filename = f"ISO_Drawing_Issue_Register_{doc_no.replace('/', '_')}.docx"
 
+    elif doc_type in ["INSPECTION_REPORT", "085"]:
+        from iso.Inspection_report import create_inspection_report_document
+        doc = create_inspection_report_document(
+            report_no=f_data.get("report_no", ""),
+            date=f_data.get("date", ""),
+            project_no=f_data.get("project_no", ""),
+            type=f_data.get("type", ""),
+            drawing_no=f_data.get("drawing_no", ""),
+            drawing_name=f_data.get("drawing_name", ""),
+            quantity=f_data.get("quantity", ""),
+            rows=f_data.get("rows"),
+            prepared_by=prepared_by,
+            approved_by=approved_by,
+            group_name=group_name,
+            centre_dept=centre_dept,
+            doc_no=doc_no,
+            doc_date=date_str
+        )
+        filename = f"ISO_Inspection_Report_{doc_no.replace('/', '_')}.docx"
+
     else:
         from iso.generic_iso import create_generic_iso_document
         clean_name = doc_type.replace('_', ' ').title()

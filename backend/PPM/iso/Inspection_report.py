@@ -257,7 +257,7 @@ def create_inspection_report_document(
              font_size=9, italic=True, alignment=WD_ALIGN_PARAGRAPH.RIGHT)
 
     # ---------- Table 1: Measurement table (dynamic rows) ----------
-    row_list = rows if rows else [{} for _ in range(DEFAULT_ROW_COUNT)]
+    row_list = rows if rows else []
     total_rows = 1 + len(row_list)  # +1 for the header row
 
     data_table = doc.add_table(rows=total_rows, cols=6)
