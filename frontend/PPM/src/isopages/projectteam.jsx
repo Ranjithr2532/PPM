@@ -153,27 +153,81 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
 
                 const finalCentreId = matchedCentre ? matchedCentre.id : targetCentreId;
 
-                // 4. Fetch staff specifically for this centre
+                // 4. Fetch staff specifically for this centre (or all staff as fallback)
+                let fetchedStaff = [];
                 if (finalCentreId) {
-                    const res = await axios.get(`${API_BASE_URL}/staff/center/${finalCentreId}`, { headers: authHeaders });
+                    const res = await axios.get(`${API_BASE_URL}/staff/center/${finalCentreId}`, { headers: authHeaders }).catch(() => ({ data: [] }));
                     if (res.data && Array.isArray(res.data)) {
-                        setStaffList(res.data);
-                        return;
+                        fetchedStaff = res.data;
+                    }
+                }
+                if (fetchedStaff.length === 0) {
+                    const allStaffRes = await axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders }).catch(() => ({ data: [] }));
+                    if (allStaffRes.data && Array.isArray(allStaffRes.data)) {
+                        if (matchedCentre) {
+                            fetchedStaff = allStaffRes.data.filter(s => s.centre_id === matchedCentre.id);
+                        } else if (targetCentreName) {
+                            const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
+                            fetchedStaff = allStaffRes.data.filter(s => (s.centre_name || '').toLowerCase().includes(cleanTarget));
+                        } else {
+                            fetchedStaff = allStaffRes.data;
+                        }
                     }
                 }
 
-                // Fallback: If no specific centre matched, filter all staff by centre if name is available
-                const allStaffRes = await axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders });
-                if (allStaffRes.data && Array.isArray(allStaffRes.data)) {
-                    if (matchedCentre) {
-                        setStaffList(allStaffRes.data.filter(s => s.centre_id === matchedCentre.id));
-                    } else if (targetCentreName) {
+                // 5. Fetch registered users to combine with staff
+                let fetchedUsers = [];
+                const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] }));
+                if (usersRes.data && Array.isArray(usersRes.data)) {
+                    fetchedUsers = usersRes.data;
+                    if (targetCentreName) {
                         const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
-                        setStaffList(allStaffRes.data.filter(s => (s.centre_name || '').toLowerCase().includes(cleanTarget)));
-                    } else {
-                        setStaffList(allStaffRes.data);
+                        fetchedUsers = fetchedUsers.filter(u => {
+                            const uCenter = (u.center || u.centre || '').toLowerCase().replace(/^c-/, '').trim();
+                            return !uCenter || uCenter === cleanTarget;
+                        });
                     }
                 }
+
+                // Merge staff and users into a unified list uniquely by name
+                const combinedMap = new Map();
+
+                fetchedStaff.forEach(s => {
+                    if (s.name && s.name.trim()) {
+                        const key = s.name.trim().toLowerCase();
+                        combinedMap.set(key, {
+                            name: s.name.trim(),
+                            designation: s.designation || '',
+                            type: s.type || '',
+                            role: s.role || ''
+                        });
+                    }
+                });
+
+                fetchedUsers.forEach(u => {
+                    if (u.name && u.name.trim()) {
+                        const key = u.name.trim().toLowerCase();
+                        if (combinedMap.has(key)) {
+                            const existing = combinedMap.get(key);
+                            combinedMap.set(key, {
+                                ...existing,
+                                designation: existing.designation || u.designation || '',
+                                type: existing.type || u.type || '',
+                                role: existing.role || u.role || ''
+                            });
+                        } else {
+                            combinedMap.set(key, {
+                                name: u.name.trim(),
+                                designation: u.designation || '',
+                                type: u.type || '',
+                                role: u.role || ''
+                            });
+                        }
+                    }
+                });
+
+                const mergedList = Array.from(combinedMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+                setStaffList(mergedList);
             } catch (err) {
                 console.error('Failed to load centre staff list for auto-fill:', err);
             }

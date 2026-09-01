@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import CreateLogin from './pages/CreateLogin'
 import Sidebar from './components/Sidebar'
+import ProfileCompletionModal from './components/ProfileCompletionModal'
 import './App.css'
 
 // Lazy-loaded Page Components for Bundle Optimization & Code Splitting
@@ -103,6 +104,7 @@ function RoleProtectedLayout({ basePath }) {
   return (
     <Layout className="min-h-screen flex flex-col lg:flex-row">
       <Sidebar />
+      <ProfileCompletionModal />
       <Layout
         className="bg-slate-100 min-h-screen transition-all duration-200 lg:ml-[260px] ml-0 flex-1 w-full max-w-full overflow-x-hidden"
       >

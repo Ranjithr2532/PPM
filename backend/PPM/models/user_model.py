@@ -12,3 +12,4 @@ class User(Base):
     group = Column(String, nullable=True)
     designation = Column(String, nullable=True)
     password = Column(String, nullable=False)
+    type = Column(String, nullable=True)

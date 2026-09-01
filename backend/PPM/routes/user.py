@@ -166,6 +166,7 @@ def create_user(request: UserCreate, db: Session = Depends(get_db)):
         center=request.center,
         group=request.group,
         designation=request.designation,
+        type=request.type,
         password=get_password_hash(request.password)
     )
 
@@ -218,6 +219,7 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
             "center": user.center,
             "group": user.group,
             "designation": user.designation,
+            "type": user.type,
         },
         "id": user.id,
         "name": user.name,
@@ -226,6 +228,7 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
         "center": user.center,
         "group": user.group,
         "designation": user.designation,
+        "type": user.type,
         "message": "Login successful"
     }
 
@@ -267,6 +270,7 @@ class UserUpdate(BaseModel):
     center: Optional[str] = None
     group: Optional[str] = None
     designation: Optional[str] = None
+    type: Optional[str] = None
     password: Optional[str] = None
 
     class Config:
