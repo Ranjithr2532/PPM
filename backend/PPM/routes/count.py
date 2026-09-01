@@ -1,3 +1,5 @@
+from datetime import date, datetime
+import re
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -7,6 +9,40 @@ from db import get_db
 from models.model import Proposal
 
 router = APIRouter(prefix="/count", tags=["Counts"])
+
+
+def extract_year(date_val) -> Optional[str]:
+    """Robustly extracts 4-digit year from date, datetime, or string date values."""
+    if not date_val:
+        return None
+    if isinstance(date_val, (date, datetime)):
+        return str(date_val.year)
+    s = str(date_val).strip()
+    if not s or s.lower() in ("none", "null", "unknown", "nan", "-"):
+        return None
+    
+    # Check if string starts with 4-digit year (e.g. 2024-05-12 or 2024/05/12)
+    m = re.match(r"^(\d{4})[-/]", s)
+    if m:
+        return m.group(1)
+    
+    # Check if string ends with 4-digit year (e.g. 12-05-2024 or 12/05/2024 or 12.05.2024)
+    m = re.search(r"[-/.](\d{4})$", s)
+    if m:
+        return m.group(1)
+    
+    # Check for any 4-digit year like 19xx or 20xx
+    m = re.search(r"\b(19\d{2}|20\d{2})\b", s)
+    if m:
+        return m.group(1)
+    
+    # Try parsing with strptime
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d.%m.%Y", "%Y"):
+        try:
+            return str(datetime.strptime(s[:10], fmt).year)
+        except Exception:
+            pass
+    return None
 
 
 @router.get("/")
@@ -112,35 +148,21 @@ def get_yearly_proposal_counts(
     if centre:
         filters.append(func.lower(Proposal.center) == centre.lower())
 
-    # Fast SQL grouping by year using coalesce across enquiry_date, quote_date, created_at
-    from sqlalchemy import case
+    rows = db.query(Proposal.id, Proposal.enquiry_date, Proposal.quote_date).filter(*filters).all()
 
-    year_expr = case(
-        (Proposal.enquiry_date.isnot(None), func.to_char(Proposal.enquiry_date, 'YYYY')),
-        (Proposal.quote_date.isnot(None), func.to_char(Proposal.quote_date, 'YYYY')),
-        else_=None
-    )
-
-    results = (
-        db.query(year_expr.label("year"), func.count(Proposal.id).label("count"))
-        .filter(*filters)
-        .group_by(year_expr)
-        .all()
-    )
-
-    yearly_counts = []
+    counts_by_year = {}
     total_records = 0
-    for r in results:
-        if not r.year or str(r.year).strip() in ("", "Unknown", "None"):
-            continue
-        c = r.count or 0
-        yearly_counts.append({"year": str(r.year), "count": c})
-        total_records += c
 
-    sorted_result = sorted(yearly_counts, key=lambda y: (y["year"] if y["year"] != "Unknown" else "9999"))
+    for p_id, enq_date, q_date in rows:
+        yr = extract_year(enq_date) or extract_year(q_date)
+        if yr:
+            counts_by_year[yr] = counts_by_year.get(yr, 0) + 1
+            total_records += 1
+
+    yearly_counts = [{"year": str(yr), "count": c} for yr, c in sorted(counts_by_year.items())]
 
     return {
-        "yearly_counts": sorted_result,
+        "yearly_counts": yearly_counts,
         "total": total_records
     }
 
@@ -171,34 +193,23 @@ def get_unknown_year_proposals(
     if centre:
         filters.append(func.lower(Proposal.center) == centre.lower())
 
-    from sqlalchemy import case
-
-    year_expr = case(
-        (Proposal.enquiry_date.isnot(None), func.to_char(Proposal.enquiry_date, 'YYYY')),
-        (Proposal.quote_date.isnot(None), func.to_char(Proposal.quote_date, 'YYYY')),
-        else_=None
-    )
-
-    results = (
-        db.query(Proposal, year_expr.label("year"))
-        .filter(*filters)
-        .all()
-    )
+    proposals = db.query(Proposal).filter(*filters).all()
 
     unknown_list = []
-    for prop, yr in results:
-        if not yr or str(yr).strip() == "" or yr == "Unknown":
+    for prop in proposals:
+        yr = extract_year(prop.enquiry_date) or extract_year(prop.quote_date)
+        if not yr:
             unknown_list.append({
                 "id": prop.id,
                 "activity": prop.activity or prop.quote_description or "",
                 "customer_name": prop.customer_name or "",
                 "quote_reference": prop.quote_reference or "",
                 "quote_description": prop.quote_description or "",
-                "enquiry_date": prop.enquiry_date or "",
-                "quote_date": prop.quote_date or "",
+                "enquiry_date": str(prop.enquiry_date) if prop.enquiry_date else "",
+                "quote_date": str(prop.quote_date) if prop.quote_date else "",
                 "center": prop.center or "",
                 "project_co_ordinator": prop.project_co_ordinator or "",
-                "created_at": prop.created_at.strftime("%Y-%m-%d %H:%M:%S") if prop.created_at else ""
+                "created_at": prop.created_at.strftime("%Y-%m-%d %H:%M:%S") if getattr(prop, "created_at", None) else ""
             })
 
     return {

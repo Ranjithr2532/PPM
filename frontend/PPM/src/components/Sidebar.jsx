@@ -61,9 +61,11 @@ function Sidebar() {
                             ? 'document-generate'
                             : section === 'iso-generation'
                               ? 'iso-generation'
-                              : section === 'ai-proposal' || section === 'create-proposal'
-                                ? 'ai-proposal'
-                                : 'proposals'
+                              : section === 'team-members'
+                                ? 'team-members'
+                                : section === 'ai-proposal' || section === 'create-proposal'
+                                  ? 'ai-proposal'
+                                  : 'proposals'
 
   let userName = ''
   let userRole = ''
@@ -91,6 +93,7 @@ function Sidebar() {
   const isGuest = basePath === 'guest'
   // Treat Scientist as same as GH
   const isGHOrScientist = basePath === 'gh' || basePath === 'scientist'
+  const isScientistOrCoordinator = basePath === 'scientist' || userRole === 'scientist' || userRole === 'coordinator' || userRole === 'project coordinator' || userRole === 'project_coordinator' || userRole === 'pi'
 
   // Determine role-specific User Manual PDF URL
   const activeRole = (basePath || userRole || '').toLowerCase()
@@ -266,6 +269,7 @@ function Sidebar() {
             else if (info.key === 'chats') navigate(`${prefix}/chats`)
             else if (info.key === 'document-generate') navigate(`${prefix}/document-generate`)
             else if (info.key === 'iso-generation') navigate(`${prefix}/iso-generation`)
+            else if (info.key === 'team-members') navigate(`${prefix}/team-members`)
             else if (info.key === 'ai-proposal') navigate(`${prefix}/ai-proposal`)
 
             else navigate(`${prefix}/proposals`)
@@ -299,6 +303,7 @@ function Sidebar() {
             }] : []),
             ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
             { key: 'iso-generation', icon: <FileWordOutlined />, label: 'ISO Generation' },
+            ...(isScientistOrCoordinator ? [{ key: 'team-members', icon: <TeamOutlined />, label: 'Team Members' }] : []),
 
             ...(isGHOrScientist
               ? [

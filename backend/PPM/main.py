@@ -1,4 +1,5 @@
 from routes.manpower import router as manpower_router
+from routes.staff import router as staff_router
 from routes.iso_submission import router as iso_submission_router
 from routes.iso_document_list import router as iso_document_list_router
 from routes.team_members import router as team_members_router
@@ -141,4 +142,5 @@ app.include_router(groupchat_router, dependencies=jwt_auth)
 app.include_router(count_router, dependencies=jwt_auth)
 app.include_router(manpower_router, dependencies=jwt_auth)
 app.include_router(team_members_router, dependencies=jwt_auth)
+app.include_router(staff_router, dependencies=jwt_auth)
 

@@ -5,6 +5,49 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------
+# PAYMENT RESPONSE
+# ---------------------------------------------------------
+class PaymentResponse(BaseModel):
+    id: int
+    invoice_no: Optional[str] = None
+    invoice_date: Optional[Union[date, str]] = None
+    gross_amount: Optional[str] = None
+    get_amount: Optional[str] = None
+    amount_claimed: Optional[str] = None
+    amount_recieved: Optional[str] = None
+    recieved_date: Optional[Union[date, str]] = None
+    tds: Optional[str] = None
+    get_tds: Optional[str] = None
+    ld: Optional[str] = None
+    bal: Optional[str] = None
+    follow_up_status: Optional[str] = None
+    full_stage_payment: Optional[str] = None
+    project_id: Optional[int] = None
+    stage_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    updated_by: Optional[str] = None
+    description: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------
+# STAGE RESPONSE
+# ---------------------------------------------------------
+class StageResponse(BaseModel):
+    id: int
+    name: Optional[str] = None
+    position: int
+    access: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------
 # PROPOSAL RESPONSE
 # ---------------------------------------------------------
 class ProposalResponse(BaseModel):
@@ -74,52 +117,11 @@ class ProposalResponse(BaseModel):
     make_in_india: Optional[str] = None
     tender_images: Optional[str] = None
     if_not_reason: Optional[str] = None
-    payments: Optional[List[dict]] = None
+    payments: Optional[List[Union[PaymentResponse, dict]]] = None
 
     class Config:
         from_attributes = True
         populate_by_name = True
-
-
-class StageResponse(BaseModel):
-    id: int
-    name: Optional[str] = None
-    position: int
-    access: Optional[str] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-
-# ---------------------------------------------------------
-# PAYMENT RESPONSE
-# ---------------------------------------------------------
-class PaymentResponse(BaseModel):
-    id: int
-    invoice_no: Optional[str] = None
-    invoice_date: Optional[Union[date, str]] = None
-    gross_amount: Optional[str] = None
-    get_amount: Optional[str] = None
-    amount_claimed: Optional[str] = None
-    amount_recieved: Optional[str] = None
-    recieved_date: Optional[Union[date, str]] = None
-    tds: Optional[str] = None
-    get_tds: Optional[str] = None
-    ld: Optional[str] = None
-    bal: Optional[str] = None
-    follow_up_status: Optional[str] = None
-    full_stage_payment: Optional[str] = None
-    project_id: Optional[int] = None
-    stage_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
-    updated_by: Optional[str] = None
-    description: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
 
 
 # ---------------------------------------------------------

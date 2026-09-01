@@ -14,6 +14,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
+import { AutoComplete } from 'antd';
 
 
 
@@ -99,6 +100,86 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
     // Lists of team and review members (empty by default as requested)
     const [teamMembers, setTeamMembers] = useState([]);
     const [reviewMembers, setReviewMembers] = useState([]);
+    const [staffList, setStaffList] = useState([]);
+
+    // Fetch staff list specifically for the current user's centre (or proposal's centre)
+    useEffect(() => {
+        async function loadCentreStaff() {
+            try {
+                const token = localStorage.getItem('token');
+                const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+                // 1. Fetch centres list to resolve numeric centre_id
+                const centresRes = await axios.get(`${API_BASE_URL}/centres/`, { headers: authHeaders }).catch(() => ({ data: [] }));
+                const centresList = Array.isArray(centresRes.data) ? centresRes.data : [];
+
+                // 2. Identify centre name / id from logged-in user or selected proposal
+                let targetCentreName = '';
+                let targetCentreId = null;
+
+                const rawUser = window.localStorage.getItem('ppm_user');
+                if (rawUser) {
+                    try {
+                        const parsedUser = JSON.parse(rawUser);
+                        targetCentreName = (parsedUser.center || parsedUser.centre || '').trim();
+                        if (parsedUser.center_id) targetCentreId = parsedUser.center_id;
+                    } catch (e) {
+                        console.error('Failed to parse ppm_user', e);
+                    }
+                }
+
+                // If proposal is selected and has center info, fallback if user center is not set
+                if (!targetCentreName && !targetCentreId && selectedProposalId) {
+                    const currentProp = proposals.find(p => String(p.id) === String(selectedProposalId));
+                    if (currentProp) {
+                        targetCentreName = (currentProp.center || currentProp.centre || currentProp.centre_name || '').trim();
+                        if (currentProp.centre_id) targetCentreId = currentProp.centre_id;
+                    }
+                }
+
+                // 3. Match centre from centres list
+                let matchedCentre = null;
+                if (targetCentreId) {
+                    matchedCentre = centresList.find(c => c.id === targetCentreId);
+                }
+                if (!matchedCentre && targetCentreName) {
+                    const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
+                    matchedCentre = centresList.find(c => {
+                        const cName = (c.name || '').toLowerCase().replace(/^c-/, '').trim();
+                        const cCode = (c.code || '').toLowerCase().replace(/^c-/, '').trim();
+                        return cName === cleanTarget || cCode === cleanTarget;
+                    });
+                }
+
+                const finalCentreId = matchedCentre ? matchedCentre.id : targetCentreId;
+
+                // 4. Fetch staff specifically for this centre
+                if (finalCentreId) {
+                    const res = await axios.get(`${API_BASE_URL}/staff/center/${finalCentreId}`, { headers: authHeaders });
+                    if (res.data && Array.isArray(res.data)) {
+                        setStaffList(res.data);
+                        return;
+                    }
+                }
+
+                // Fallback: If no specific centre matched, filter all staff by centre if name is available
+                const allStaffRes = await axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders });
+                if (allStaffRes.data && Array.isArray(allStaffRes.data)) {
+                    if (matchedCentre) {
+                        setStaffList(allStaffRes.data.filter(s => s.centre_id === matchedCentre.id));
+                    } else if (targetCentreName) {
+                        const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
+                        setStaffList(allStaffRes.data.filter(s => (s.centre_name || '').toLowerCase().includes(cleanTarget)));
+                    } else {
+                        setStaffList(allStaffRes.data);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load centre staff list for auto-fill:', err);
+            }
+        }
+        loadCentreStaff();
+    }, [selectedProposalId, proposals]);
 
     // Check props or URL parameters to load existing submission
     useEffect(() => {
@@ -240,13 +321,14 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         const coordName = prop.project_co_ordinator;
                         if (coordName) {
                             const coordClean = coordName.replace(/\s+/g, ' ').trim().toLowerCase();
+                            const coordStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
                             const coordUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
                             initialTeam.push({
                                 sl_no: slNo++,
                                 name: coordName,
-                                designation: coordUser ? (coordUser.designation || '') : '',
-                                member_type: '',
-                                roles: '',
+                                designation: coordStaff?.designation || coordUser?.designation || '',
+                                member_type: coordStaff?.type || '',
+                                roles: coordStaff?.role || 'Project Co-ordinator',
                                 signature: ''
                             });
                         }
@@ -258,13 +340,14 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                                 return;
                             }
                             const mClean = mName.replace(/\s+/g, ' ').trim().toLowerCase();
+                            const mStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
                             const mUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
                             initialTeam.push({
                                 sl_no: slNo++,
                                 name: mName,
-                                designation: mUser ? (mUser.designation || '') : '',
-                                member_type: '',
-                                roles: '',
+                                designation: mStaff?.designation || mUser?.designation || '',
+                                member_type: mStaff?.type || '',
+                                roles: mStaff?.role || '',
                                 signature: ''
                             });
                         });
@@ -324,13 +407,14 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                 const coordName = prop.project_co_ordinator;
                 if (coordName) {
                     const coordClean = coordName.replace(/\s+/g, ' ').trim().toLowerCase();
+                    const coordStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
                     const coordUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
                     initialTeam.push({
                         sl_no: slNo++,
                         name: coordName,
-                        designation: coordUser ? (coordUser.designation || '') : '',
-                        member_type: '',
-                        roles: '',
+                        designation: coordStaff?.designation || coordUser?.designation || '',
+                        member_type: coordStaff?.type || '',
+                        roles: coordStaff?.role || 'Project Co-ordinator',
                         signature: ''
                     });
                 }
@@ -342,13 +426,14 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         return;
                     }
                     const mClean = mName.replace(/\s+/g, ' ').trim().toLowerCase();
+                    const mStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
                     const mUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
                     initialTeam.push({
                         sl_no: slNo++,
                         name: mName,
-                        designation: mUser ? (mUser.designation || '') : '',
-                        member_type: '',
-                        roles: '',
+                        designation: mStaff?.designation || mUser?.designation || '',
+                        member_type: mStaff?.type || '',
+                        roles: mStaff?.role || '',
                         signature: ''
                     });
                 });
@@ -388,6 +473,33 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
         setTeamMembers(prev => {
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: value };
+            return updated;
+        });
+    };
+
+    // Auto-fill designation, type, and roles when selecting/typing staff name
+    const handleStaffNameChange = (index, value) => {
+        const cleanVal = (value || '').trim().toLowerCase();
+        const matched = staffList.find(
+            s => s.name && s.name.trim().toLowerCase() === cleanVal
+        );
+
+        setTeamMembers(prev => {
+            const updated = [...prev];
+            if (matched) {
+                updated[index] = {
+                    ...updated[index],
+                    name: matched.name,
+                    designation: matched.designation || updated[index]?.designation || '',
+                    member_type: matched.type || updated[index]?.member_type || '',
+                    roles: matched.role || updated[index]?.roles || ''
+                };
+            } else {
+                updated[index] = {
+                    ...updated[index],
+                    name: value
+                };
+            }
             return updated;
         });
     };
@@ -875,13 +987,27 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                                     </td>
                                     <td className="border border-slate-800 p-2 font-semibold text-slate-900">
                                         {isReadOnly ? (member.name || '--') : (
-                                            <input
-                                                type="text"
+                                            <AutoComplete
+                                                options={staffList.map((s, sIdx) => ({
+                                                    value: s.name,
+                                                    label: `${s.name} ${s.designation ? `— ${s.designation}` : ''} ${s.type ? `(${s.type})` : ''} ${s.role ? `[${s.role}]` : ''}`
+                                                }))}
                                                 value={member.name}
-                                                onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
-                                                placeholder="Enter name..."
-                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-800 font-medium"
-                                            />
+                                                onChange={(val) => handleStaffNameChange(index, val)}
+                                                popupClassName="bg-white"
+                                                popupMatchSelectWidth={false}
+                                                dropdownMatchSelectWidth={false}
+                                                style={{ width: '100%' }}
+                                                filterOption={(inputValue, option) =>
+                                                    option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                                }
+                                            >
+                                                <input
+                                                    type="text"
+                                                    placeholder="Select or enter staff name..."
+                                                    className="w-full bg-white outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-800 font-medium"
+                                                />
+                                            </AutoComplete>
                                         )}
                                     </td>
                                     <td className="border border-slate-800 p-2 text-slate-700">
@@ -932,6 +1058,7 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                             ))}
                         </tbody>
                     </table>
+
                 </div>
 
 

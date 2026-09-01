@@ -258,6 +258,24 @@ class Group(Base):
     centre = relationship("Centre", back_populates="groups")
 
 
+# -------------------------------------------------
+# STAFF TABLE
+# -------------------------------------------------
+class Staff(Base):
+    __tablename__ = "staff"
+
+    pf_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    centre_id = Column(Integer, ForeignKey("centres.id", ondelete="CASCADE"), nullable=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String, nullable=False)
+    designation = Column(String, nullable=True)
+    type = Column(String, nullable=True)
+    role = Column(String, nullable=True)
+
+    centre = relationship("Centre")
+    group = relationship("Group")
+
+
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -488,4 +506,4 @@ class TeamMember(Base):
 
     proposal = relationship("Proposal", back_populates="team_members")
 
-
+

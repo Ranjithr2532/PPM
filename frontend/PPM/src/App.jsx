@@ -23,6 +23,7 @@ const CustomersPremium = lazy(() => import('./pages/CustomersPremium'))
 const DocumentGenerate = lazy(() => import('./pages/Document_genrate'))
 const Isogenration = lazy(() => import('./pages/isogenration'))
 const CreateProposalAI = lazy(() => import('./ollam/ai'))
+const TeamMembersPage = lazy(() => import('./pages/TeamMembersPage'))
 
 const { Content } = Layout
 
@@ -131,6 +132,7 @@ function RoleProtectedLayout({ basePath }) {
               <Route path='document-generate' element={<DocumentGenerate />} />
               <Route path='documents-generate' element={<DocumentGenerate />} />
               <Route path='iso-generation' element={<Isogenration />} />
+              <Route path='team-members' element={<TeamMembersPage />} />
               <Route path='ai-proposal' element={<CreateProposalAI />} />
               <Route path='create-proposal' element={<CreateProposalAI />} />
 
