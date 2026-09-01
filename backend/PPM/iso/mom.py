@@ -12,7 +12,7 @@ from fastapi import APIRouter, status, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from db import get_db
-from models.model import Proposal
+from models.model import Proposal, ISODocumentList
 from iso.header import add_header_table
 from iso.finalfooter import add_footer_table
 
@@ -46,6 +46,7 @@ class MomRequest(BaseModel):
     doc_date: Optional[str] = ""
     prepared_by: Optional[str] = ""
     approved_by: Optional[str] = ""
+    doc_code: Optional[str] = ""
     filename: Optional[str] = "CMTI_Minutes_of_Meeting.docx"
 
 
@@ -106,19 +107,19 @@ def set_cell_width(cell, width_inches):
     tcW.set(qn("w:type"), "dxa")
 
 
-def set_row_height(row, height_inches):
-    """Set fixed row height."""
+def set_row_height(row, height_inches, rule="exact"):
+    """Set row height with fixed or min rule."""
     trPr = row._tr.get_or_add_trPr()
     trHeight = OxmlElement("w:trHeight")
     trHeight.set(qn("w:val"), str(int(height_inches * 1440)))
-    trHeight.set(qn("w:hRule"), "atLeast")
+    trHeight.set(qn("w:hRule"), rule)
     trPr.append(trHeight)
 
 
 def add_text(
     cell,
     text,
-    font_size=9,
+    font_size=10,
     bold=False,
     alignment=WD_ALIGN_PARAGRAPH.LEFT,
     font_name="Arial",
@@ -130,18 +131,47 @@ def add_text(
     paragraph.paragraph_format.space_after = Pt(0)
     paragraph.paragraph_format.line_spacing = 1.0
 
-    run = paragraph.add_run(text)
-    run.bold = bold
-    run.font.name = font_name
-    run.font.size = Pt(font_size)
-    if isinstance(color, str):
-        run.font.color.rgb = RGBColor.from_string(color)
-    elif isinstance(color, RGBColor):
-        run.font.color.rgb = color
+    lines = str(text).split("\n")
+    for idx, line in enumerate(lines):
+        if idx > 0:
+            paragraph.add_run("\n")
+        run = paragraph.add_run(line)
+        run.bold = bold
+        run.font.name = font_name
+        run.font.size = Pt(font_size)
+        if isinstance(color, str):
+            run.font.color.rgb = RGBColor.from_string(color)
+        elif isinstance(color, RGBColor):
+            run.font.color.rgb = color
+        run._element.rPr.rFonts.set(qn("w:ascii"), font_name)
+        run._element.rPr.rFonts.set(qn("w:hAnsi"), font_name)
 
-    run._element.rPr.rFonts.set(qn("w:ascii"), font_name)
-    run._element.rPr.rFonts.set(qn("w:hAnsi"), font_name)
-    return run
+    return paragraph.runs[0] if paragraph.runs else None
+
+
+def format_mom_doc_code(group_name: str = "", doc_no: str = "037") -> str:
+    """
+    Constructs document code following the pattern:
+    CMTI-QMS-<group>-<doc_no>/Rev00
+    e.g., if document_no is 037 and logged-in user group is SPMA -> CMTI-QMS-SPMA-037/Rev00
+    """
+    raw_no = str(doc_no or "037").strip()
+    clean_no = raw_no.zfill(3) if raw_no.isdigit() else raw_no
+    
+    clean_group = str(group_name or "").strip().upper()
+    if clean_group.startswith("C-") or clean_group.startswith("G-"):
+        clean_group = clean_group[2:]
+    
+    # If a full legacy code string was passed, extract just the group token
+    if "CMTI" in clean_group:
+        parts = [
+            p for p in clean_group.replace("/", "-").split("-")
+            if p.upper() not in ("CMTI", "QMS", "REV", "REV00", "REV0", "037", "37", "")
+        ]
+        clean_group = parts[0].upper() if parts else ""
+    
+    group_str = clean_group if clean_group else "      "
+    return f"CMTI-QMS-{group_str}-{clean_no}/Rev00"
 
 
 # ============================================================
@@ -157,12 +187,13 @@ def create_mom_document(
     agenda: str = "Project kick off meeting",
     summary_points: Optional[List[SummaryPointRequest]] = None,
     conclusion: str = "Clearance was given for design of fixtures and electrical design.",
-    centre_dept: str = "SMPM",
-    group_name: str = "SMPM",
-    doc_no: str = "037/001",
+    centre_dept: str = "",
+    group_name: str = "",
+    doc_no: str = "",
     doc_date: str = "",
     prepared_by: str = "",
-    approved_by: str = ""
+    approved_by: str = "",
+    doc_code: str = ""
 ) -> Document:
     doc = Document()
 
@@ -174,21 +205,26 @@ def create_mom_document(
     section.right_margin = Inches(1.0)
     section.different_first_page_header_footer = False
 
+    clean_doc_no = str(doc_no or "037").strip()
+    if clean_doc_no.isdigit():
+        clean_doc_no = clean_doc_no.zfill(3)
+
     # Header & Footer Tables
     add_header_table(
         section,
         title="MINUTES OF MEETING",
         page_str="1 of 1",
         centre_dept=centre_dept,
-        doc_no=doc_no,
+        doc_no=clean_doc_no,
         date_str=doc_date
     )
+    final_doc_code = doc_code or format_mom_doc_code(group_name=group_name, doc_no=clean_doc_no)
     add_footer_table(
         section,
         prepared_name=prepared_by,
         approved_name=approved_by,
         group_name=group_name,
-        doc_code="037"
+        doc_code=final_doc_code
     )
 
     border_fmt = {"val": "single", "sz": 4, "color": "000000"}
@@ -249,9 +285,8 @@ def create_mom_document(
     # 4. Summary of Meeting Table
     if not summary_points:
         summary_points = [
-            SummaryPointRequest(sl_no=1, points_discussed="", responsibility="")
+            SummaryPointRequest(sl_no=1, points_discussed="", responsibility=prepared_by or "")
         ]
-
 
     t4 = doc.add_table(rows=2 + len(summary_points), cols=3)
     t4.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -287,7 +322,7 @@ def create_mom_document(
         add_text(t4.cell(row_idx, 0), str(pt.sl_no), font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
         pt_text = f"• {pt.points_discussed}" if pt.points_discussed else "• "
         add_text(t4.cell(row_idx, 1), pt_text, font_size=9)
-        add_text(t4.cell(row_idx, 2), pt.responsibility, font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        add_text(t4.cell(row_idx, 2), pt.responsibility or "", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
@@ -312,6 +347,21 @@ def create_mom_document(
 
 @router.post("/mom/generate-word")
 def generate_mom_word(req: MomRequest, db: Session = Depends(get_db)):
+    # Fetch document number from ISODocumentList database table if not provided
+    iso_doc = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "037") | 
+        (ISODocumentList.document_no == "37") |
+        (ISODocumentList.name.ilike("%minutes%")) |
+        (ISODocumentList.name.ilike("%mom%"))
+    ).first()
+
+    db_doc_no = iso_doc.document_no if (iso_doc and iso_doc.document_no) else "037"
+    resolved_doc_no = req.doc_no or db_doc_no
+    if resolved_doc_no and resolved_doc_no.strip().isdigit():
+        resolved_doc_no = resolved_doc_no.strip().zfill(3)
+
+    resolved_doc_code = req.doc_code or format_mom_doc_code(group_name=req.group_name, doc_no=resolved_doc_no)
+
     doc = create_mom_document(
         meeting_date_time=req.meeting_date_time,
         meeting_location=req.meeting_location,
@@ -323,17 +373,21 @@ def generate_mom_word(req: MomRequest, db: Session = Depends(get_db)):
         conclusion=req.conclusion,
         centre_dept=req.centre_dept,
         group_name=req.group_name,
-        doc_no=req.doc_no or "037/001",
+        doc_no=resolved_doc_no,
         doc_date=req.doc_date or "",
         prepared_by=req.prepared_by or "",
-        approved_by=req.approved_by or ""
+        approved_by=req.approved_by or "",
+        doc_code=resolved_doc_code
     )
 
     file_stream = io.BytesIO()
     doc.save(file_stream)
     file_stream.seek(0)
 
-    filename = req.filename if req.filename.endswith(".docx") else f"{req.filename}.docx"
+    filename = req.filename or "CMTI_Minutes_of_Meeting.docx"
+    if not filename.endswith(".docx"):
+        filename += ".docx"
+
     return StreamingResponse(
         file_stream,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

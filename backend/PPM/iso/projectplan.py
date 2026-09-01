@@ -117,6 +117,25 @@ class ProjectPlanRequest(BaseModel):
 DEFAULT_TASKS = []
 
 
+def format_project_plan_doc_code(group_name: str = "", doc_no: str = "053") -> str:
+    raw_no = str(doc_no or "053").strip()
+    clean_no = raw_no.zfill(3) if raw_no.isdigit() else raw_no
+    
+    clean_group = str(group_name or "").strip().upper()
+    if clean_group.startswith("C-") or clean_group.startswith("G-"):
+        clean_group = clean_group[2:]
+    
+    if "CMTI" in clean_group:
+        parts = [
+            p for p in clean_group.replace("/", "-").split("-")
+            if p.upper() not in ("CMTI", "QMS", "REV", "REV00", "REV0", "053", "53", "")
+        ]
+        clean_group = parts[0].upper() if parts else ""
+    
+    group_str = clean_group if clean_group else "      "
+    return f"CMTI-QMS-{group_str}-{clean_no}/Rev00"
+
+
 def create_project_plan_document(
     project_title: str = "",
     schedule_title: str = "",
@@ -132,7 +151,8 @@ def create_project_plan_document(
     group_name: str = "",
     centre_dept: str = "",
     doc_no: str = "053",
-    doc_date: str = ""
+    doc_date: str = "",
+    doc_code: str = ""
 ) -> Document:
     doc = Document()
 
@@ -145,21 +165,26 @@ def create_project_plan_document(
         section.page_width = Inches(11.69) # A4 Landscape width
         section.page_height = Inches(8.27) # A4 Landscape height
 
-    header_group = (group_name or centre_dept or "SMPM").upper()
+    header_group = (group_name or centre_dept or "").upper()
     if header_group.startswith("G-"):
         header_group = header_group[2:]
     elif header_group.startswith("C-"):
         header_group = header_group[2:]
 
-    doc_code = f"CMTI-SMC-QMS-053/Rev00"
+    final_doc_no = str(doc_no or "053").strip()
+    if final_doc_no.isdigit():
+        final_doc_no = final_doc_no.zfill(3)
+
+    final_doc_code = doc_code or format_project_plan_doc_code(group_name=header_group, doc_no=final_doc_no)
 
     # Add Standard ISO Header Table
+    title_suffix = f"-{header_group}" if header_group else ""
     add_header_table(
         doc.sections[0],
-        title=f"PROJECT PLAN-{header_group}",
+        title=f"PROJECT PLAN{title_suffix}",
         page_str="1 of 1",
         centre_dept=centre_dept,
-        doc_no=doc_no or "053",
+        doc_no=final_doc_no,
         date_str=doc_date
     )
 
@@ -294,13 +319,12 @@ def create_project_plan_document(
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # Add ISO Footer Block Table
-    doc_code_footer = f"CMTI-{header_group}-QMS-{doc_no}/Rev00"
     add_footer_table(
         doc,
         prepared_name=prepared_by,
         approved_name=approved_by,
         group_name=header_group,
-        doc_code=doc_code_footer,
+        doc_code=final_doc_code,
         in_body=True
     )
 

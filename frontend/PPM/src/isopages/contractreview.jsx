@@ -83,16 +83,16 @@ const REVIEW_ITEMS_TEMPLATES = [
     { sl_no: 15, checklist: "Any Other Requirements(Specify)", key_q: "q15_val", key_p: "p15_val", key_d: "d15_val" }
 ];
 
-export default function ContractReview({ proposalId: propProposalId, submissionId: propSubmissionId, onBack }) {
+export default function ContractReview({ proposalId: propProposalId, submissionId: propSubmissionId, onBack, docInfo }) {
     const [proposals, setProposals] = useState([]);
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [readingQuotation, setReadingQuotation] = useState(false);
     const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
+    const [projectNumber, setProjectNumber] = useState('');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
-
 
     // Details state
     const [quoteNo, setQuoteNo] = useState('');
@@ -103,15 +103,43 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const [selectType, setSelectType] = useState('Quotation'); // 'Quotation' | 'Tender' | 'Proposal'
     const [filename, setFilename] = useState('Customer_Contract_Review_Checklist.docx');
     const loggedCentreDept = getLoggedUserCentreDept();
-    const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('051'));
-    const [docNo, setDocNo] = useState('');
+    const [docNo, setDocNo] = useState(() => docInfo?.document_no || '051');
+    const [revisionCode, setRevisionCode] = useState(() => getDefaultRevisionCode(docInfo?.document_no || '051'));
     const [docDate, setDocDate] = useState(getTodayDateString());
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
 
+    // Checklist values (defaulting Item 3 to 'No' and Item 9 to 'NIL' as requested)
+    const [reviewValues, setReviewValues] = useState({ q3_val: 'No', q9_val: 'NIL' });
 
-    // Checklist values (defaulting to completely empty as requested)
-    const [reviewValues, setReviewValues] = useState({});
+    useEffect(() => {
+        if (docInfo) {
+            const num = docInfo.document_no || '051';
+            setDocNo(num);
+            setRevisionCode(getDefaultRevisionCode(num));
+        }
+    }, [docInfo]);
+
+    // Fetch document number dynamically from ISODocumentList database table
+    useEffect(() => {
+        axios.get(`${API_BASE_URL}/iso-document-list/`)
+            .then(res => {
+                if (Array.isArray(res.data)) {
+                    const match = res.data.find(
+                        d => (d.name || '').toUpperCase().includes('CONTRACT') ||
+                             (d.name || '').toUpperCase().includes('ORDER REVIEW') ||
+                             (d.document_no || '').startsWith('051') ||
+                             d.document_no === '51'
+                    );
+                    if (match) {
+                        const num = docInfo?.document_no || match.document_no || '051';
+                        setDocNo(num);
+                        setRevisionCode(getDefaultRevisionCode(num));
+                    }
+                }
+            })
+            .catch(err => console.error('Error fetching ISO document list for Contract Review:', err));
+    }, []);
 
     // Check props or URL parameters to load existing submission
     useEffect(() => {
@@ -148,12 +176,12 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                         if (fData.quote_date) setQuoteDate(fData.quote_date);
 
                         const rList = fData.review_points || [];
-                        const updatedValues = { ...reviewValues };
+                        const updatedValues = { q3_val: 'No', q9_val: 'NIL' };
                         rList.forEach((pt, idx) => {
                             const template = REVIEW_ITEMS_TEMPLATES[idx];
                             if (template) {
-                                updatedValues[template.key_q] = pt.quotation_clause || pt.yes_no_na || pt.response || '';
-                                updatedValues[template.key_p] = pt.po_clause || pt.details || '';
+                                updatedValues[template.key_q] = pt.quotation_clause !== undefined ? pt.quotation_clause : (pt.yes_no_na || pt.response || '');
+                                updatedValues[template.key_p] = pt.po_clause !== undefined ? pt.po_clause : (pt.details || '');
                                 updatedValues[template.key_d] = pt.deviations || '';
                             }
                         });
@@ -166,8 +194,83 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             }
             loadSubmission();
         }
-    }, []);
+    }, [propSubmissionId, propProposalId]);
 
+    // Read and load quotation details from backend quotation reader
+    const handleLoadQuotationData = useCallback(async (proposalIdToLoad = null) => {
+        const pId = proposalIdToLoad || selectedProposalId;
+        if (!pId) return;
+
+        setReadingQuotation(true);
+        try {
+            const res = await axios.get(`${API_BASE_URL}/iso/quotation-reader/proposal-quotation/${pId}`);
+            if (res.data) {
+                const data = res.data;
+                if (data.company_name) setCustomerName(data.company_name);
+                if (data.quote_reference || data.quotation_no || data.quote_no) {
+                    setQuoteNo(data.quote_reference || data.quotation_no || data.quote_no);
+                }
+                if (data.date) setQuoteDate(data.date);
+
+                const addr = data.company_address || data.address || '';
+                setReviewValues(prev => ({
+                    ...prev,
+                    q1_val: data.company_name || prev.q1_val || '',
+                    q2_val: data.subject || prev.q2_val || '',
+                    q4_val: addr || prev.q4_val || '',
+                    q5_val: addr || prev.q5_val || '',
+                    q6_val: data.delivery_period || prev.q6_val || '',
+                    q10_val: data.payment_terms || prev.q10_val || ''
+                }));
+            }
+        } catch (err) {
+            console.error('Quotation reader load error:', err);
+        } finally {
+            setReadingQuotation(false);
+        }
+    }, [selectedProposalId]);
+
+    // Apply proposal details to form state
+    const applyProposalData = useCallback((prop) => {
+        if (!prop) return;
+        if (prop.id) setSelectedProposalId(String(prop.id));
+        if (prop.project_number) setProjectNumber(prop.project_number);
+        if (prop.customer_name) setCustomerName(prop.customer_name);
+        if (prop.quote_reference) setQuoteNo(prop.quote_reference);
+
+        if (prop.quote_date) {
+            const parts = prop.quote_date.split('-');
+            if (parts.length === 3) {
+                setQuoteDate(`${parts[2]}.${parts[1]}.${parts[0]}`);
+            } else {
+                setQuoteDate(prop.quote_date);
+            }
+        }
+
+        if (prop.order_number) setPoNumber(prop.order_number);
+
+        if (prop.order_date) {
+            const parts = prop.order_date.split('-');
+            if (parts.length === 3) {
+                setPoDate(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            } else {
+                setPoDate(prop.order_date);
+            }
+        }
+
+        const reqType = (prop.request_type || '').toLowerCase();
+        if (reqType.includes('tender')) {
+            setSelectType('Tender');
+        } else if (reqType.includes('proposal')) {
+            setSelectType('Proposal');
+        } else {
+            setSelectType('Quotation');
+        }
+
+        if (prop.id) {
+            handleLoadQuotationData(prop.id);
+        }
+    }, [handleLoadQuotationData]);
 
     // Fetch user details and load proposals
     const fetchProposals = useCallback(async () => {
@@ -189,7 +292,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                 else if (path.includes('/ch')) role = 'ch';
             }
 
-            if (!name) return;
+            if (!name && !group && !center) return;
 
             let url = '';
             if (role === 'gh') {
@@ -215,95 +318,34 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
         fetchProposals();
     }, [fetchProposals]);
 
-    // Handle proposal selection
-    const handleProposalChange = (e) => {
-        const value = e.target.value;
-        setSelectedProposalId(value);
-        const prop = proposals.find(p => String(p.id) === String(value));
-        if (prop) {
-            setQuoteNo(prop.quote_reference || '');
+    // Auto-select first proposal if not already selected
+    useEffect(() => {
+        if (proposals.length > 0 && !selectedProposalId) {
+            setSelectedProposalId(String(proposals[0].id));
+        }
+    }, [proposals, selectedProposalId]);
 
-            // Format proposal date safely (YYYY-MM-DD to DD.MM.YYYY)
-            if (prop.quote_date) {
-                const parts = prop.quote_date.split('-');
-                if (parts.length === 3) {
-                    setQuoteDate(`${parts[2]}.${parts[1]}.${parts[0]}`);
-                } else {
-                    setQuoteDate(prop.quote_date);
+    // Automatically pre-populate details when proposal is selected or proposals loaded
+    useEffect(() => {
+        if (!selectedProposalId) return;
+
+        if (proposals.length > 0) {
+            const prop = proposals.find(p => String(p.id) === String(selectedProposalId));
+            if (prop) {
+                applyProposalData(prop);
+                return;
+            }
+        }
+
+        // Direct fetch if proposal not found in current proposals list
+        axios.get(`${API_BASE_URL}/proposals/${selectedProposalId}`)
+            .then(res => {
+                if (res.data) {
+                    applyProposalData(res.data);
                 }
-            } else {
-                setQuoteDate('');
-            }
-
-            setPoNumber(prop.order_number || '');
-
-            // Format order date safely (YYYY-MM-DD to DD-MM-YYYY)
-            if (prop.order_date) {
-                const parts = prop.order_date.split('-');
-                if (parts.length === 3) {
-                    setPoDate(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                } else {
-                    setPoDate(prop.order_date);
-                }
-            } else {
-                setPoDate('');
-            }
-
-            setCustomerName(prop.customer_name || '');
-
-            // Auto-detect selectType based on request type
-            const reqType = (prop.request_type || '').toLowerCase();
-            if (reqType.includes('tender')) {
-                setSelectType('Tender');
-            } else if (reqType.includes('proposal')) {
-                setSelectType('Proposal');
-            } else {
-                setSelectType('Quotation');
-            }
-
-            // Auto-load quotation details for selected proposal
-            handleLoadQuotationData(val);
-        } else {
-            setQuoteNo('');
-            setQuoteDate('');
-            setPoNumber('');
-            setPoDate('');
-            setCustomerName('');
-            setSelectType('Quotation');
-        }
-    };
-
-    // Read and load quotation details from backend quotation reader
-    const handleLoadQuotationData = async (proposalIdToLoad = null) => {
-        const pId = proposalIdToLoad || selectedProposalId;
-        if (!pId) {
-            alert('Please select a proposal first, or upload a quotation file.');
-            return;
-        }
-
-        setReadingQuotation(true);
-        try {
-            const res = await axios.get(`${API_BASE_URL}/iso/quotation-reader/proposal-quotation/${pId}`);
-            if (res.data) {
-                const data = res.data;
-                if (data.company_name) setCustomerName(data.company_name);
-                if (data.enquiry_ref) setQuoteNo(data.enquiry_ref);
-                if (data.date) setQuoteDate(data.date);
-
-                setReviewValues(prev => ({
-                    ...prev,
-                    q1_val: data.company_name || prev.q1_val || '',
-                    q2_val: data.subject || prev.q2_val || '',
-                    q6_val: data.delivery_period || prev.q6_val || '',
-                    q10_val: data.payment_terms || prev.q10_val || ''
-                }));
-            }
-        } catch (err) {
-            console.error('Failed to load quotation data:', err);
-        } finally {
-            setReadingQuotation(false);
-        }
-    };
+            })
+            .catch(err => console.error('Error fetching proposal details for Contract Review:', err));
+    }, [selectedProposalId, proposals, applyProposalData]);
 
     // Direct file upload quotation reader
     const handleQuotationFileUpload = async (event) => {
@@ -322,13 +364,18 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             if (res.data) {
                 const data = res.data;
                 if (data.company_name) setCustomerName(data.company_name);
-                if (data.enquiry_ref) setQuoteNo(data.enquiry_ref);
+                if (data.quote_reference || data.quotation_no || data.quote_no) {
+                    setQuoteNo(data.quote_reference || data.quotation_no || data.quote_no);
+                }
                 if (data.date) setQuoteDate(data.date);
 
+                const addr = data.company_address || data.address || '';
                 setReviewValues(prev => ({
                     ...prev,
                     q1_val: data.company_name || prev.q1_val || '',
                     q2_val: data.subject || prev.q2_val || '',
+                    q4_val: addr || prev.q4_val || '',
+                    q5_val: addr || prev.q5_val || '',
                     q6_val: data.delivery_period || prev.q6_val || '',
                     q10_val: data.payment_terms || prev.q10_val || ''
                 }));
@@ -363,7 +410,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
         setDocDate(getTodayDateString());
         setPreparedBy('');
         setApprovedBy('');
-        setReviewValues({});
+        setReviewValues({ q3_val: 'No', q9_val: 'NIL' });
     };
 
     // Handle value changes in the checklist table cells
@@ -393,12 +440,12 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             params.append('po_date', poDate);
             params.append('customer_name', customerName);
             params.append('select_type', selectType);
-            params.append('group_name', revisionCode);
+            params.append('group_name', getLoggedUserGroup() || '');
 
             // Read user centre fresh from localStorage at generate time
             const freshCentreDept = getLoggedUserCentreDept();
             params.append('centre_dept', freshCentreDept);
-            params.append('doc_no', docNo);
+            params.append('doc_no', docNo || '');
             params.append('doc_date', docDate);
             params.append('prepared_by', preparedBy);
             params.append('approved_by', approvedBy);
@@ -443,14 +490,15 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
 
             const headerData = {
                 documentTitle: 'CUSTOMER CONTRACT REVIEW CHECKLIST',
-                docNo: docNo || '051/001',
+                docNo: docNo || '',
+                code: revisionCode,
                 dateStr: docDate,
                 pageStr: '1 of 1',
-                centreDept: loggedCentreDept || 'SMPM',
-                isoSpec: 'ISO 9001-2015',
+                centreDept: loggedCentreDept || '',
+                isoSpec: '',
                 preparedName: preparedBy,
                 approvedName: approvedBy,
-                groupName: revisionCode,
+                groupName: getLoggedUserGroup() || '',
             };
 
             const reviewPointsList = REVIEW_ITEMS_TEMPLATES.map(pt => ({
@@ -472,7 +520,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
 
             const payload = {
                 doc_type: 'CONTRACT_REVIEW',
-                document_no: docNo || '051/001',
+                document_no: docNo || '',
                 proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
                 header_data: headerData,
                 form_data: formDataPayload,
@@ -585,21 +633,30 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
 
             {/* Top Toolbar Control Bar */}
             <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Load Proposal:</span>
-                    <select
-                        value={selectedProposalId}
-                        onChange={handleProposalChange}
-                        disabled={proposalsLoading || isReadOnly}
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium disabled:opacity-60"
-                    >
-                        <option value="">-- Choose proposal to auto-fill --</option>
-                        {proposals.map(p => (
-                            <option key={p.id} value={p.id}>
-                                {p.project_number || `SL No ${p.id}`} - {p.customer_name || 'No Client'}
-                            </option>
-                        ))}
-                    </select>
+                <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1.5 text-slate-600 hover:text-indigo-600 font-semibold text-xs bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 transition-all"
+                        >
+                            <ArrowLeftOutlined /> Back
+                        </button>
+                    )}
+
+                    {projectNumber && (
+                        <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                            Project: {projectNumber}
+                        </span>
+                    )}
+
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                        'bg-amber-100 text-amber-800'
+                    }`}>
+                        {status}
+                    </span>
 
                     {!isReadOnly && (
                         <>
@@ -623,15 +680,6 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                             </label>
                         </>
                     )}
-
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
-                        'bg-amber-100 text-amber-800'
-                    }`}>
-                        {status}
-                    </span>
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">

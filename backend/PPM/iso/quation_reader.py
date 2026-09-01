@@ -19,6 +19,8 @@ router = APIRouter(prefix="/iso/quotation-reader", tags=["ISO Quotation OCR & Pa
 
 class QuotationExtractionResponse(BaseModel):
     company_name: str = ""
+    company_address: str = ""
+    address: str = ""
     subject: str = ""
     enquiry_ref: str = ""
     date: str = ""
@@ -28,10 +30,11 @@ class QuotationExtractionResponse(BaseModel):
 
 
 def extract_fields_from_text(text: str) -> dict[str, str]:
-
     """Pull out key quotation fields using precision regex patterns."""
     fields = {
         "company_name": "",
+        "company_address": "",
+        "address": "",
         "subject": "",
         "enquiry_ref": "",
         "date": "",
@@ -63,6 +66,34 @@ def extract_fields_from_text(text: str) -> dict[str, str]:
         if comp_fallback:
             fields["company_name"] = comp_fallback.group(1).strip(" ,.")
 
+    # 1b. Company Address Extraction (below company name or labeled)
+    addr_lbl = re.search(
+        r"Address\s*[:\-]\s*(.+?)(?=\n\s*(?:Sub|Ref|Kind|Attn|Date|Dear|GSTIN|PAN)|$)",
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+    if addr_lbl:
+        val = " ".join(addr_lbl.group(1).split())
+        fields["company_address"] = val.strip(" ,.")
+        fields["address"] = fields["company_address"]
+    elif fields["company_name"] and fields["company_name"] in text:
+        post_company = text.split(fields["company_name"], 1)[1]
+        delim = re.split(
+            r"(?:\n\s*\n|\n\s*(?:Kind\s*Attn|Attn|Attention|Sub(?:ject)?|Ref(?:erence)?|Dear|GSTIN|PAN|CIN|Date|Email|Phone|Mobile|Ph\b|Tel\b)[:\s])",
+            post_company,
+            maxsplit=1,
+            flags=re.IGNORECASE
+        )[0]
+        lines = [line.strip(" ,.") for line in delim.splitlines() if line.strip(" ,.")]
+        clean_lines = []
+        for l in lines:
+            if not bool(re.match(r"^(?:To\b|Dear|Attn|Kind\s*Attn|Sub|Ref|Date|GSTIN|PAN|CIN|Email|Ph\b|Tel\b)", l, re.I)):
+                clean_lines.append(l)
+        if clean_lines:
+            addr_str = ", ".join(clean_lines)
+            fields["company_address"] = addr_str
+            fields["address"] = addr_str
+
     # 2. Subject line matching (specifically matches Sub: or Subject:, excluding Ref:)
     sub_match = re.search(
         r"Sub(?:ject)?\s*[:.\-]\s*(.+?)(?=\n\s*(?:Ref|GeM|Dear|Attention|Attn|Sir|Madam)|$)",
@@ -92,7 +123,7 @@ def extract_fields_from_text(text: str) -> dict[str, str]:
 
     # 5. Payment terms matching (supports multiline and punctuation variants like Payment Terms:.)
     pay_match = re.search(
-        r"(?:Payment\s*Terms?|Terms\s*of\s*Payment|Payment)\s*[:.\-\s]*[:.\-]\s*(.+?)(?=\n\s*(?:[0-9]+\.|\w+[:\-])|\n\n|\r\n\r\n|$)",
+        r"(?:Payment\s*Terms?|Terms\s*of\s*Payment|Payment)\s*[:.\-\s]*[:.\-]\s*(.+?)(?=\n\s*(?:[0-9]+\.|\b(?:Delivery|Dispatch|Completion|Validity|Warranty|Price|Taxes|GST|Note|Terms)\b|[A-Za-z\s]{2,25}[:\-])|\n\n|\r\n\r\n|$)",
         text,
         re.IGNORECASE | re.DOTALL
     )
@@ -100,17 +131,16 @@ def extract_fields_from_text(text: str) -> dict[str, str]:
         val = pay_match.group(1).strip().replace("\n", " ")
         fields["payment_terms"] = re.sub(r"\s+", " ", val)
 
-
     # 6. Delivery period matching (captures period descriptions like "06 months from the date of acceptance")
     del_match = re.search(
-        r"(?:Delivery\s*(?:Period|Schedule|Time|Date)?|Dispatch|Completion\s*(?:Period|Time)?)\s*[:.\-]\s*(.+?)(?:\n\n|\n[A-Z]|\r\n\r\n|$)",
+        r"(?:Delivery\s*(?:Period|Schedule|Time|Date)?|Dispatch|Completion\s*(?:Period|Time)?)\s*[:.\-]\s*(.+?)(?=\n\s*(?:[0-9]+\.|\b(?:Payment|Terms|Warranty|Price|Note)\b|[A-Za-z\s]{2,25}[:\-])|\n\n|\r\n\r\n|$)",
         text,
-        re.IGNORECASE
+        re.IGNORECASE | re.DOTALL
     )
     if del_match:
         val = del_match.group(1).strip().replace("\n", " ")
-        val = re.sub(r"\s+", " ", val)
-        fields["delivery_period"] = val
+        val = re.sub(r"^(?:Delivery\s*(?:Period|Schedule|Time|Date)?|Dispatch|Completion)\s*[:.\-]\s*", "", val, flags=re.IGNORECASE)
+        fields["delivery_period"] = re.sub(r"\s+", " ", val).strip()
 
     return fields
 
@@ -205,11 +235,14 @@ async def extract_quotation_details(file: UploadFile = File(...)):
             except Exception as e:
                 extracted_text = ""
 
+        fields = extract_fields_from_text(extracted_text)
         pay_val = fields["payment_terms"] or "80% after completion of the work & 20% after the successful implementation & submission of report."
         del_val = fields["delivery_period"] or "The duration of the work would go up to Two Months & 15 Days."
 
         return QuotationExtractionResponse(
             company_name=fields["company_name"],
+            company_address=fields["company_address"],
+            address=fields["address"],
             subject=fields["subject"],
             enquiry_ref=fields["enquiry_ref"],
             date=fields["date"],
@@ -240,7 +273,7 @@ def get_proposal_quotation_details(proposal_id: int, db: Session = Depends(get_d
         )
 
     extracted_text = ""
-    fields = {"company_name": "", "subject": "", "enquiry_ref": "", "date": "", "payment_terms": "", "delivery_period": ""}
+    fields = {"company_name": "", "company_address": "", "address": "", "subject": "", "enquiry_ref": "", "date": "", "payment_terms": "", "delivery_period": ""}
 
     # 1. Search in documents table for project_id
     pdf_path = None
@@ -304,6 +337,7 @@ def get_proposal_quotation_details(proposal_id: int, db: Session = Depends(get_d
 
     # Only read fields from extracted quotation document text, do NOT fallback to proposal DB table
     comp_name = fields.get("company_name") or ""
+    comp_address = fields.get("company_address") or fields.get("address") or ""
     subject = fields.get("subject") or ""
     enquiry_ref = fields.get("enquiry_ref") or ""
 
@@ -316,6 +350,8 @@ def get_proposal_quotation_details(proposal_id: int, db: Session = Depends(get_d
 
     return QuotationExtractionResponse(
         company_name=comp_name,
+        company_address=comp_address,
+        address=comp_address,
         subject=subject,
         enquiry_ref=enquiry_ref,
         date=date_str,

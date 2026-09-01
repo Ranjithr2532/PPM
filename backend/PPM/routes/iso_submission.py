@@ -187,6 +187,7 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
                         )
                     )
 
+        doc_code = h_data.get("code") or group_name or ""
         doc = create_mom_document(
             meeting_date_time=f_data.get("meeting_date_time", ""),
             meeting_location=f_data.get("meeting_location", ""),
@@ -201,7 +202,8 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
             doc_no=doc_no,
             doc_date=date_str,
             prepared_by=prepared_by,
-            approved_by=approved_by
+            approved_by=approved_by,
+            doc_code=doc_code
         )
         filename = f"ISO_MOM_{doc_no.replace('/', '_')}.docx"
 
@@ -675,3 +677,13 @@ def export_submission_word(sub_id: int, db: Session = Depends(get_db)):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.delete("/{sub_id}")
+def delete_iso_submission(sub_id: int, db: Session = Depends(get_db)):
+    rec = db.query(ISOSubmission).filter(ISOSubmission.id == sub_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Submission record not found")
+    db.delete(rec)
+    db.commit()
+    return {"message": "Submission deleted successfully", "id": sub_id}

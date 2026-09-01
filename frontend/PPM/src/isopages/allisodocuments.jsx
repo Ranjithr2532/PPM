@@ -11,6 +11,7 @@ import {
     ArrowLeftOutlined,
     UploadOutlined,
     PaperClipOutlined,
+    DeleteOutlined,
 } from '@ant-design/icons';
 import { Modal, Tag, Button, Spin, Empty, Input, message, Popconfirm, Upload } from 'antd';
 import axios from 'axios';
@@ -211,6 +212,20 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
         }
     };
 
+    const handleDeleteSubmission = async (subId) => {
+        setActionLoading(true);
+        try {
+            await isoSubmissionService.deleteSubmission(subId);
+            message.success('ISO Document record deleted successfully');
+            fetchData();
+        } catch (err) {
+            console.error('Delete error:', err);
+            message.error('Failed to delete ISO document');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     // If a form is selected for editing or creation, render that form in full view
     if (activeFormState) {
         return (
@@ -374,6 +389,217 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                 <div className="space-y-3.5 max-h-[65vh] overflow-y-auto pr-1">
                     {docList.map((doc) => {
                         const docTypeKey = getDocTypeKey(doc);
+
+                        // Multi-submission Document: MOM (Minutes of Meeting)
+                        if (docTypeKey === 'MOM') {
+                            const momSubs = submissions.filter(
+                                (s) =>
+                                    (s.doc_type || '').toUpperCase() === 'MOM' ||
+                                    (s.document_no || '').trim().startsWith('037') ||
+                                    (s.document_no || '').trim() === (doc.document_no || '').trim()
+                            );
+
+                            return (
+                                <div
+                                    key={doc.id}
+                                    className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-sm hover:shadow-md transition-all space-y-3"
+                                >
+                                    {/* Main Template Header */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase font-mono">
+                                                    {doc.initial || 'ISO'}
+                                                </span>
+                                                <h4 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                                                    {doc.name}
+                                                </h4>
+                                                <span className="text-xs font-medium text-slate-500 font-mono">
+                                                    (Doc #{doc.document_no || '037'})
+                                                </span>
+                                                {momSubs.length > 0 ? (
+                                                    <Tag color="purple" className="font-bold">
+                                                        {momSubs.length} {momSubs.length === 1 ? 'Meeting' : 'Meetings'} Recorded
+                                                    </Tag>
+                                                ) : (
+                                                    <Tag color="default" className="font-medium">NOT CREATED</Tag>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 font-mono">
+                                                <span>Code: {doc.code || 'N/A'}</span>
+                                                <span className="ml-3 text-slate-400">
+                                                    • Multiple MOMs can be created for project kick-off, progress reviews, and client meetings
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 justify-end flex-wrap">
+                                            <Button
+                                                size="small"
+                                                icon={<UploadOutlined />}
+                                                onClick={() => handleOpenUploadModal(doc)}
+                                                className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                            >
+                                                Upload File
+                                            </Button>
+
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => handleCreateForm('MOM', doc)}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-xs font-bold"
+                                            >
+                                                {momSubs.length > 0 ? '+ New Meeting MOM' : 'Create First MOM'}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* List of Created MOMs */}
+                                    {momSubs.length > 0 && (
+                                        <div className="space-y-2 pt-1 pl-1 sm:pl-3">
+                                            {momSubs.map((sub, idx) => (
+                                                <div
+                                                    key={sub.id}
+                                                    className="bg-slate-50/70 border border-slate-200/70 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 transition"
+                                                >
+                                                    <div className="space-y-1 flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">
+                                                                MOM #{idx + 1}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-800">
+                                                                {sub.form_data?.agenda || 'Minutes of Meeting'}
+                                                            </span>
+                                                            {getStatusBadge(sub.status)}
+                                                        </div>
+
+                                                        <div className="text-[11px] text-slate-500 flex items-center gap-4 flex-wrap">
+                                                            {sub.form_data?.meeting_date_time && (
+                                                                <span>📅 {sub.form_data.meeting_date_time}</span>
+                                                            )}
+                                                            {sub.form_data?.meeting_location && (
+                                                                <span>📍 {sub.form_data.meeting_location}</span>
+                                                            )}
+                                                            <span>
+                                                                Updated: {new Date(sub.updated_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+
+                                                        {sub?.form_data?.is_uploaded && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownload(sub)}
+                                                                className="text-xs text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 font-medium cursor-pointer transition text-left"
+                                                            >
+                                                                <PaperClipOutlined />
+                                                                <span>Uploaded: <strong>{sub.form_data.uploaded_filename || 'MOM_Document.docx'}</strong></span>
+                                                            </button>
+                                                        )}
+
+                                                        {sub?.rejection_comment && (
+                                                            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-1.5 mt-1">
+                                                                <strong>Rejection Comment:</strong> {sub.rejection_comment}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 justify-end flex-wrap">
+                                                        <Button
+                                                            size="small"
+                                                            icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
+                                                            onClick={() => handleEditForm('MOM', sub.id, doc)}
+                                                            className="text-xs font-medium border-slate-300 text-slate-800"
+                                                        >
+                                                            {isAdmin
+                                                                ? 'Edit'
+                                                                : sub.status === 'APPROVED'
+                                                                    ? 'View'
+                                                                    : sub.status === 'SUBMITTED'
+                                                                        ? isApprover ? 'Review' : 'View'
+                                                                        : 'Edit'}
+                                                        </Button>
+
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            icon={<DownloadOutlined />}
+                                                            onClick={() => handleDownload(sub)}
+                                                            className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
+                                                        >
+                                                            {sub.form_data?.is_uploaded ? 'Download' : 'Word'}
+                                                        </Button>
+
+                                                        {isApprover && sub.status === 'SUBMITTED' && (
+                                                            <>
+                                                                <Button
+                                                                    size="small"
+                                                                    type="primary"
+                                                                    icon={<CheckCircleOutlined />}
+                                                                    onClick={() => handleApprove(sub.id)}
+                                                                    loading={actionLoading}
+                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold"
+                                                                >
+                                                                    Approve
+                                                                </Button>
+                                                                <Popconfirm
+                                                                    title="Reject ISO MOM"
+                                                                    description={
+                                                                        <div className="pt-2">
+                                                                            <Input.TextArea
+                                                                                rows={2}
+                                                                                placeholder="Reason for rejection..."
+                                                                                value={rejectComment}
+                                                                                onChange={(e) => setRejectComment(e.target.value)}
+                                                                                className="text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    }
+                                                                    onConfirm={() => handleRejectConfirm(sub.id)}
+                                                                    okText="Reject"
+                                                                    cancelText="Cancel"
+                                                                    okButtonProps={{ danger: true, loading: actionLoading }}
+                                                                >
+                                                                    <Button
+                                                                        size="small"
+                                                                        danger
+                                                                        icon={<CloseCircleOutlined />}
+                                                                        className="text-xs font-semibold"
+                                                                    >
+                                                                        Reject
+                                                                    </Button>
+                                                                </Popconfirm>
+                                                            </>
+                                                        )}
+
+                                                        {(isAdmin || sub.status === 'DRAFT') && (
+                                                            <Popconfirm
+                                                                title="Delete this MOM?"
+                                                                description="Are you sure you want to delete this meeting record?"
+                                                                onConfirm={() => handleDeleteSubmission(sub.id)}
+                                                                okText="Delete"
+                                                                cancelText="Cancel"
+                                                                okButtonProps={{ danger: true }}
+                                                            >
+                                                                <Button
+                                                                    size="small"
+                                                                    type="text"
+                                                                    danger
+                                                                    icon={<DeleteOutlined />}
+                                                                    className="text-xs text-rose-500 hover:text-rose-700"
+                                                                    title="Delete MOM"
+                                                                />
+                                                            </Popconfirm>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+
                         const sub = submissions.find(
                             (s) =>
                                 (s.doc_type || '').toUpperCase() === docTypeKey ||
@@ -511,6 +737,26 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                         </Button>
                                                     </Popconfirm>
                                                 </>
+                                            )}
+
+                                            {(isAdmin || sub.status === 'DRAFT') && (
+                                                <Popconfirm
+                                                    title="Delete this document?"
+                                                    description="Are you sure you want to delete this ISO document submission?"
+                                                    onConfirm={() => handleDeleteSubmission(sub.id)}
+                                                    okText="Delete"
+                                                    cancelText="Cancel"
+                                                    okButtonProps={{ danger: true }}
+                                                >
+                                                    <Button
+                                                        size="small"
+                                                        type="text"
+                                                        danger
+                                                        icon={<DeleteOutlined />}
+                                                        className="text-xs text-rose-500 hover:text-rose-700"
+                                                        title="Delete submission"
+                                                    />
+                                                </Popconfirm>
                                             )}
                                         </>
                                     ) : (

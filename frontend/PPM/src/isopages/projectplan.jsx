@@ -16,6 +16,12 @@ import cmtiLogo from '../assets/waitro-member-cmti.png';
 
 const DEFAULT_PLAN_TASKS = [];
 
+const getDefaultRevisionCode = (docCode) => {
+    const group = getLoggedUserGroup();
+    const groupStr = group ? group : '      ';
+    return `CMTI-QMS-${groupStr}-${docCode}/Rev00`;
+};
+
 const getTodayDateString = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, '0');
@@ -24,7 +30,7 @@ const getTodayDateString = () => {
     return `${dd}.${mm}.${yyyy}`;
 };
 
-export default function ProjectPlan({ proposalId: propProposalId, submissionId: propSubmissionId, onClose, onBack }) {
+export default function ProjectPlan({ proposalId: propProposalId, submissionId: propSubmissionId, onClose, onBack, docInfo }) {
     const [proposals, setProposals] = useState([]);
     const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
@@ -44,6 +50,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
     const [docNo, setDocNo] = useState('053');
+    const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('053'));
     const [docDate, setDocDate] = useState(getTodayDateString());
 
     const userRole = getCurrentUserRole();
@@ -53,7 +60,86 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
     const isSubmitted = status === 'SUBMITTED';
     const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
 
-    // Load Proposal options
+    // Fetch dynamic doc number / code from docInfo or /iso-document-list/
+    useEffect(() => {
+        async function fetchDocDetails() {
+            try {
+                if (docInfo && (docInfo.document_no || docInfo.code)) {
+                    const rawDocNo = (docInfo.document_no || '053').trim();
+                    const cleanDocNo = rawDocNo.padStart(3, '0');
+                    setDocNo(cleanDocNo);
+                    const group = getLoggedUserGroup() || '      ';
+                    setRevisionCode(`CMTI-QMS-${group}-${cleanDocNo}/Rev00`);
+                    return;
+                }
+                const res = await axios.get(`${API_BASE_URL}/iso-document-list/`);
+                if (Array.isArray(res.data)) {
+                    const matched = res.data.find(d => 
+                        (d.document_no && (d.document_no.trim() === '053' || d.document_no.trim() === '53')) ||
+                        (d.name && (d.name.toLowerCase().includes('plan') || d.name.toLowerCase().includes('schedule')))
+                    );
+                    if (matched) {
+                        const rawDocNo = (matched.document_no || '053').trim();
+                        const cleanDocNo = rawDocNo.padStart(3, '0');
+                        setDocNo(cleanDocNo);
+                        const group = getLoggedUserGroup() || '      ';
+                        setRevisionCode(`CMTI-QMS-${group}-${cleanDocNo}/Rev00`);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load ISO doc details for Plan:', err);
+            }
+        }
+        fetchDocDetails();
+    }, [docInfo]);
+
+    // Load URL params & existing submission if present
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlId = propSubmissionId || searchParams.get('id') || searchParams.get('submission_id');
+        const urlPropId = propProposalId || searchParams.get('proposal_id');
+
+        if (urlPropId) setSelectedProposalId(String(urlPropId));
+
+        if (urlId) {
+            async function loadSubmission() {
+                try {
+                    const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
+                    if (res.data) {
+                        const rec = res.data;
+                        setSubmissionId(rec.id);
+                        setStatus(rec.status || 'DRAFT');
+                        if (rec.proposal_id) setSelectedProposalId(String(rec.proposal_id));
+
+                        const fData = rec.form_data || {};
+                        const hData = rec.header_data || {};
+
+                        if (hData.code) setRevisionCode(hData.code);
+                        if (hData.docNo) setDocNo(hData.docNo);
+                        if (hData.dateStr) setDocDate(hData.dateStr);
+
+                        if (fData.project_title) setProjectTitle(fData.project_title);
+                        if (fData.schedule_title) setScheduleTitle(fData.schedule_title);
+                        if (fData.project_no) setProjectNo(fData.project_no);
+                        if (fData.customer_name) setCustomerName(fData.customer_name);
+                        if (fData.commencement_date) setCommencementDate(fData.commencement_date);
+                        if (fData.completion_date) setCompletionDate(fData.completion_date);
+                        if (fData.total_months) setTotalMonths(Number(fData.total_months) || 6);
+                        if (Array.isArray(fData.tasks) && fData.tasks.length > 0) setTasks(fData.tasks);
+                        if (fData.prepared_by) setPreparedBy(fData.prepared_by);
+                        if (fData.approved_by) setApprovedBy(fData.approved_by);
+                        if (fData.doc_no) setDocNo(fData.doc_no);
+                        if (fData.doc_date) setDocDate(fData.doc_date);
+                    }
+                } catch (err) {
+                    console.error('Failed to load submission:', err);
+                }
+            }
+            loadSubmission();
+        }
+    }, [propSubmissionId, propProposalId]);
+
+    // Load proposals list (for fallback matching)
     useEffect(() => {
         const fetchProposals = async () => {
             try {
@@ -68,33 +154,40 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         fetchProposals();
     }, []);
 
-    // Load proposal details & pre-fill Research Tasks & Months from ISO Project Proposal if available
+    // Fetch and auto-fill proposal details directly for the selected proposal
     useEffect(() => {
-        if (!selectedProposalId) return;
-        const p = proposals.find(item => String(item.id) === String(selectedProposalId));
-        if (p) {
-            setProjectTitle(p.title_of_project || p.quote_description || p.project_name || '');
-            setCustomerName(p.customer_name || '');
-            setProjectNo(p.project_number || '');
-            if (p.commencement_date) setCommencementDate(p.commencement_date);
-            if (p.completion_date) setCompletionDate(p.completion_date);
-            if (p.duration || p.duration_months) {
-                const d = Number(p.duration || p.duration_months);
-                if (!isNaN(d) && d > 0) setTotalMonths(d);
-            }
-        }
+        const effectivePropId = propProposalId || selectedProposalId;
+        if (!effectivePropId) return;
 
-        // Fetch associated ISO Project Proposal (Doc 009) to extract research_tasks & dates & total months
-        const loadProposalIso = async () => {
+        const loadProposalDetails = async () => {
             try {
-                const subs = await isoSubmissionService.getSubmissions({ proposal_id: selectedProposalId, doc_type: 'PROJECT_PROPOSAL' });
+                // 1. Fetch proposal details
+                let p = proposals.find(item => String(item.id) === String(effectivePropId));
+                if (!p) {
+                    const pRes = await axios.get(`${API_BASE_URL}/proposals/${effectivePropId}`);
+                    p = pRes.data;
+                }
+                if (p) {
+                    setProjectTitle(prev => prev || p.title_of_project || p.quote_description || p.project_name || p.activity || '');
+                    setCustomerName(prev => prev || p.customer_name || '');
+                    setProjectNo(prev => prev || p.project_number || '');
+                    if (p.commencement_date) setCommencementDate(prev => prev || p.commencement_date);
+                    if (p.completion_date) setCompletionDate(prev => prev || p.completion_date);
+                    if (p.duration || p.duration_months) {
+                        const d = Number(p.duration || p.duration_months);
+                        if (!isNaN(d) && d > 0) setTotalMonths(prev => prev || d);
+                    }
+                }
+
+                // 2. Fetch associated ISO Project Proposal (Doc 009) to extract research_tasks & dates & total months
+                const subs = await isoSubmissionService.getSubmissions({ proposal_id: effectivePropId, doc_type: 'PROJECT_PROPOSAL' });
                 if (Array.isArray(subs) && subs.length > 0) {
                     const latest = subs[0];
                     const fd = latest.form_data || {};
-                    if (fd.title_of_project) setProjectTitle(fd.title_of_project);
-                    if (fd.project_no) setProjectNo(fd.project_no);
-                    if (fd.commencement_date) setCommencementDate(fd.commencement_date);
-                    if (fd.completion_date) setCompletionDate(fd.completion_date);
+                    if (fd.title_of_project) setProjectTitle(prev => prev || fd.title_of_project);
+                    if (fd.project_no) setProjectNo(prev => prev || fd.project_no);
+                    if (fd.commencement_date) setCommencementDate(prev => prev || fd.commencement_date);
+                    if (fd.completion_date) setCompletionDate(prev => prev || fd.completion_date);
 
                     const activeMonthsMap = fd.task_active_months || {};
 
@@ -123,7 +216,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                         }
                     });
 
-                    if (calculatedMonths > 0) setTotalMonths(Math.min(12, calculatedMonths));
+                    if (calculatedMonths > 0) setTotalMonths(prev => prev || Math.min(12, calculatedMonths));
 
                     if (Array.isArray(fd.research_tasks) && fd.research_tasks.length > 0) {
                         const extractedTasks = fd.research_tasks.map((rt, idx) => {
@@ -156,12 +249,12 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                     }
                 }
             } catch (err) {
-                console.error('Error fetching ISO proposal details for plan:', err);
+                console.error('Error fetching proposal details for plan:', err);
             }
         };
 
-        loadProposalIso();
-    }, [selectedProposalId, proposals]);
+        loadProposalDetails();
+    }, [propProposalId, selectedProposalId, proposals]);
 
     // Handle week toggle on task
     const toggleTaskWeek = (taskIndex, weekNumber) => {
@@ -303,11 +396,23 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
             const userId = currentUser.id || currentUser.user_id || currentUser.userId;
 
             const formDataPayload = buildPayload();
+            const headerData = {
+                documentTitle: 'PROJECT PLAN',
+                docNo: docNo || '053',
+                code: revisionCode,
+                dateStr: docDate,
+                pageStr: '1 of 1',
+                centreDept: getLoggedUserGroup() || '',
+                groupName: revisionCode,
+                preparedName: preparedBy || getLoggedUserName(),
+                approvedName: approvedBy,
+            };
 
             const payload = {
                 proposal_id: selectedProposalId ? Number(selectedProposalId) : null,
                 doc_type: 'PROJECT_PLAN',
                 document_no: docNo || '053',
+                header_data: headerData,
                 form_data: formDataPayload,
                 status: targetStatus,
                 created_by: userId
@@ -438,33 +543,16 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                         </div>
                         <div className="col-span-6 text-center border-x border-slate-300 px-2">
                             <h2 className="text-lg font-bold text-slate-900 tracking-wide uppercase">PROJECT PLAN</h2>
-                            <p className="text-xs text-slate-500 font-mono">Document No: CMTI-SMC-QMS-053/Rev00</p>
+                            <p className="text-xs text-slate-500 font-mono">Document No: {revisionCode}</p>
                         </div>
                         <div className="col-span-3 text-right text-xs font-mono text-slate-600 space-y-1">
-                            <div><strong>Ref:</strong> CMTI/QMS/053</div>
+                            <div><strong>Ref:</strong> CMTI/QMS/{docNo || '053'}</div>
                             <div><strong>Page:</strong> 1 of 1</div>
                         </div>
                     </div>
 
-                    {/* Proposal Selector & Metadata */}
+                    {/* Metadata Fields */}
                     <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/50">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Link Proposal</label>
-                            <select
-                                value={selectedProposalId}
-                                onChange={(e) => setSelectedProposalId(e.target.value)}
-                                disabled={isReadOnly}
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
-                            >
-                                <option value="">-- Select Proposal --</option>
-                                {proposals.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.project_number ? `${p.project_number} - ` : ''}{p.quote_description || p.customer_name || `Proposal #${p.id}`}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Project / Customer Title</label>
                             <input
@@ -473,7 +561,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 onChange={(e) => setProjectTitle(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="e.g. BEL Industry 4.0 Pilot Project"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-800"
                             />
                         </div>
 
@@ -485,7 +573,19 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 onChange={(e) => setScheduleTitle(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="e.g. MES Software Development & Implementation Schedule"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Project Number</label>
+                            <input
+                                type="text"
+                                value={projectNo}
+                                onChange={(e) => setProjectNo(e.target.value)}
+                                disabled={isReadOnly}
+                                placeholder="e.g. ISP2504205"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-800"
                             />
                         </div>
 
@@ -495,7 +595,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 value={totalMonths}
                                 onChange={(e) => setTotalMonths(Number(e.target.value))}
                                 disabled={isReadOnly}
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
                             >
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
                                     <option key={m} value={m}>{m} Month{m > 1 ? 's' : ''} ({m * 4} Weeks)</option>
@@ -510,7 +610,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 value={preparedBy}
                                 onChange={(e) => setPreparedBy(e.target.value)}
                                 disabled={isReadOnly}
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
                             />
                         </div>
 
@@ -522,7 +622,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 onChange={(e) => setApprovedBy(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="Approver Name / Center Head"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
                             />
                         </div>
                     </div>
