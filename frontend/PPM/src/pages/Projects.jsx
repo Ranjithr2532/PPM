@@ -262,6 +262,7 @@ function Projects() {
 
   useEffect(() => {
     fetchProjects()
+    fetchTeamProjects()
     fetchStageConfig()
     fetchProjectPaymentStageRows()
   }, [])
@@ -314,6 +315,25 @@ function Projects() {
       setProjectRows([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTeamProjects = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${apiBase}/team-members/my-projects`, {
+        headers: {
+          accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      if (res.ok) {
+        const mappings = await res.json()
+        const ids = (Array.isArray(mappings) ? mappings : []).map((m) => m.proposal_id)
+        setTeamProposalIds(ids)
+      }
+    } catch (err) {
+      console.error('Error fetching team projects:', err)
     }
   }
 
@@ -1223,6 +1243,7 @@ function Projects() {
   const [selectedGroup, setSelectedGroup] = useState(undefined)
   const [selectedCoordinator, setSelectedCoordinator] = useState(undefined)
   const [selectedProjectType, setSelectedProjectType] = useState('ALL')
+  const [teamProposalIds, setTeamProposalIds] = useState([])
 
   const isGHOrScientist = currentUserRole === 'scientist' || currentUserRole === 'gh' || currentUserRole === 'group head'
   const isCH = currentUserRole === 'ch' || currentUserRole === 'center head'
@@ -1314,6 +1335,31 @@ function Projects() {
     })
     return groups
   }, [filteredCards])
+
+  const teamProjects = useMemo(() => {
+    return (projectRows || [])
+      .filter((p) => p?.project_number && teamProposalIds.includes(p.id))
+  }, [projectRows, teamProposalIds])
+
+  const filteredTeamProjects = useMemo(() => {
+    return teamProjects.filter((p) => {
+      const searchLower = searchText.toLowerCase().trim()
+      if (searchLower) {
+        const inNumber = p.project_number?.toString().toLowerCase().includes(searchLower)
+        const inActivity = p.activity?.toLowerCase().includes(searchLower)
+        const inCoord = p.project_co_ordinator?.toLowerCase().includes(searchLower)
+        if (!(inNumber || inActivity || inCoord)) return false
+      }
+      return true
+    })
+  }, [teamProjects, searchText])
+
+  const displayedProjectsCount = useMemo(() => {
+    if (selectedProjectType === 'TEAM_PROJECTS') {
+      return filteredTeamProjects.length
+    }
+    return filteredCards.length
+  }, [selectedProjectType, filteredTeamProjects, filteredCards])
 
   // Project type order and labels
   const projectTypeOrder = ['ISP', 'GSP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'SO', 'Other']
@@ -2914,7 +2960,7 @@ function Projects() {
 
       {/* Show count of filtered projects */}
       <Text type="secondary" className="block mb-4">
-        {filteredCards.length} {filteredCards.length === 1 ? 'project' : 'projects'} found
+        {displayedProjectsCount} {displayedProjectsCount === 1 ? 'project' : 'projects'} found
         {Object.keys(groupedProjects).length > 1 && (
           <span className="ml-2">
             ({Object.entries(groupedProjects).map(([type, items]) => `${items.length} ${type}`).join(', ')})
@@ -2931,6 +2977,12 @@ function Projects() {
             key: 'ALL',
             label: `All (${filteredCards.length})`,
           },
+          ...(currentUserRole === 'scientist' ? [
+            {
+              key: 'TEAM_PROJECTS',
+              label: `Team Projects (${filteredTeamProjects.length})`,
+            }
+          ] : []),
           ...projectTypeOrder
             .filter((type) => (groupedProjects[type]?.length || 0) > 0)
             .map((type) => {
@@ -2943,56 +2995,73 @@ function Projects() {
         ]}
       />
 
-      {filteredCards.length === 0 ? (
+      {displayedProjectsCount === 0 ? (
         <Empty description="No projects match the current filters" />
       ) : (
         <div className="space-y-8">
-          {projectTypeOrder.map((type) => {
-            if (selectedProjectType !== 'ALL' && selectedProjectType !== type) return null
-            const projects = groupedProjects[type]
-            if (!projects || projects.length === 0) return null
-
-            const config = projectTypeConfig[type]
-            const colorClasses = {
-              blue: 'border-blue-200 text-blue-700 bg-blue-100',
-              indigo: 'border-indigo-200 text-indigo-700 bg-indigo-100',
-              emerald: 'border-emerald-200 text-emerald-700 bg-emerald-100',
-              amber: 'border-amber-200 text-amber-700 bg-amber-100',
-              purple: 'border-purple-200 text-purple-700 bg-purple-100',
-              teal: 'border-teal-200 text-teal-700 bg-teal-100',
-              cyan: 'border-cyan-200 text-cyan-700 bg-cyan-100',
-              rose: 'border-rose-200 text-rose-700 bg-rose-100',
-              slate: 'border-slate-200 text-slate-700 bg-slate-100'
-            }
-            const dotColors = {
-              blue: 'bg-blue-500',
-              indigo: 'bg-indigo-500',
-              emerald: 'bg-emerald-500',
-              amber: 'bg-amber-500',
-              purple: 'bg-purple-500',
-              teal: 'bg-teal-500',
-              cyan: 'bg-cyan-500',
-              rose: 'bg-rose-500',
-              slate: 'bg-slate-500'
-            }
-
-            return (
-              <div key={type}>
-                <div className={`flex items-center gap-3 mb-4 pb-2 border-b-2 ${colorClasses[config.color].split(' ')[0]}`}>
-                  <div className={`w-3 h-3 rounded-full ${dotColors[config.color]}`}></div>
-                  <Title level={4} className={`!mb-0 !${colorClasses[config.color].split(' ')[1]}`}>
-                    {config.label}
-                  </Title>
-                  <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${colorClasses[config.color].split(' ')[2]} ${colorClasses[config.color].split(' ')[1]}`}>
-                    {projects.length}
-                  </span>
-                </div>
-                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {projects.map((project) => renderProjectCard(project))}
-                </div>
+          {selectedProjectType === 'TEAM_PROJECTS' ? (
+            <div key="TEAM_PROJECTS">
+              <div className="flex items-center gap-3 mb-4 pb-2 border-b-2 border-indigo-200">
+                <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                <Title level={4} className="!mb-0 !text-indigo-700">
+                  Team Projects
+                </Title>
+                <span className="px-2 py-0.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-700">
+                  {filteredTeamProjects.length}
+                </span>
               </div>
-            )
-          })}
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {filteredTeamProjects.map((project) => renderProjectCard(project))}
+              </div>
+            </div>
+          ) : (
+            projectTypeOrder.map((type) => {
+              if (selectedProjectType !== 'ALL' && selectedProjectType !== type) return null
+              const projects = groupedProjects[type]
+              if (!projects || projects.length === 0) return null
+
+              const config = projectTypeConfig[type]
+              const colorClasses = {
+                blue: 'border-blue-200 text-blue-700 bg-blue-100',
+                indigo: 'border-indigo-200 text-indigo-700 bg-indigo-100',
+                emerald: 'border-emerald-200 text-emerald-700 bg-emerald-100',
+                amber: 'border-amber-200 text-amber-700 bg-amber-100',
+                purple: 'border-purple-200 text-purple-700 bg-purple-100',
+                teal: 'border-teal-200 text-teal-700 bg-teal-100',
+                cyan: 'border-cyan-200 text-cyan-700 bg-cyan-100',
+                rose: 'border-rose-200 text-rose-700 bg-rose-100',
+                slate: 'border-slate-200 text-slate-700 bg-slate-100'
+              }
+              const dotColors = {
+                blue: 'bg-blue-500',
+                indigo: 'bg-indigo-500',
+                emerald: 'bg-emerald-500',
+                amber: 'bg-amber-500',
+                purple: 'bg-purple-500',
+                teal: 'bg-teal-500',
+                cyan: 'bg-cyan-500',
+                rose: 'bg-rose-500',
+                slate: 'bg-slate-500'
+              }
+
+              return (
+                <div key={type}>
+                  <div className={`flex items-center gap-3 mb-4 pb-2 border-b-2 ${colorClasses[config.color].split(' ')[0]}`}>
+                    <div className={`w-3 h-3 rounded-full ${dotColors[config.color]}`}></div>
+                    <Title level={4} className={`!mb-0 !${colorClasses[config.color].split(' ')[1]}`}>
+                      {config.label}
+                    </Title>
+                    <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${colorClasses[config.color].split(' ')[2]} ${colorClasses[config.color].split(' ')[1]}`}>
+                      {projects.length}
+                    </span>
+                  </div>
+                  <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                    {projects.map((project) => renderProjectCard(project))}
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       )}
     </div>

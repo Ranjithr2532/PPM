@@ -1148,16 +1148,11 @@ function Proposals() {
         if (docsRes.ok) {
           const allDocs = await docsRes.json()
           const docsByProject = {}
-            ; (Array.isArray(allDocs) ? allDocs : []).forEach((d) => {
-              const pid = d?.project_id ?? d?.project ?? d?.projectId
-              if (pid == null) return
-              // Only count Enquiry stage documents
-              if (enquiryStageId) {
-                const docStageId = d?.stage_id ?? d?.stage ?? d?.stageId
-                if (docStageId == null || String(docStageId) !== String(enquiryStageId)) return
-              }
-              docsByProject[pid] = (docsByProject[pid] || 0) + 1
-            })
+          ;(Array.isArray(allDocs) ? allDocs : []).forEach((d) => {
+            const pid = d?.project_id ?? d?.project ?? d?.projectId
+            if (pid == null) return
+            docsByProject[pid] = (docsByProject[pid] || 0) + 1
+          })
           normalized.forEach((item) => {
             item._docCount = docsByProject[item.id] || 0
           })
@@ -2739,7 +2734,7 @@ function Proposals() {
     // Add Enquiry Documents column before Actions
     const enquiryDocumentsColumn = {
       key: 'enquiry_documents',
-      title: 'Enquiry Documents',
+      title: 'Uploaded Documents',
       width: 130,
       render: (_, record) => {
         const count = record._docCount
@@ -3874,7 +3869,7 @@ function Proposals() {
                         <Card
                           size="small"
                           styles={{ body: { padding: 14 } }}
-                          title={<span className="font-semibold">Enquiry Documents</span>}
+                          title={<span className="font-semibold">Uploaded Documents</span>}
                         >
                           <Table
                             size="small"
@@ -3968,7 +3963,7 @@ function Proposals() {
                           />
                           {!docsLoading && !projectDocs.length && (
                             <div className="text-center text-gray-500 mt-4">
-                              No enquiry documents uploaded
+                              No documents uploaded
                             </div>
                           )}
                         </Card>
@@ -5874,6 +5869,18 @@ function Proposals() {
                   <TextArea rows={2} placeholder="Enter Signatory Designation" />
                 </Form.Item>
               </Col>
+
+              <Form.Item name="technical_requirements" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="standards" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="billing_address" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="shipping_address" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="delivery_time_date" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="mode_of_delivery" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="supporting_documentation" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="penalty_clause" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="claims" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="legal_requirements" noStyle><Input type="hidden" /></Form.Item>
+              <Form.Item name="other_requirements" noStyle><Input type="hidden" /></Form.Item>
             </Row>
           </Form>
         </div>

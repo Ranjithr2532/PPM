@@ -110,7 +110,18 @@ export const openQuotationModal = async (record, form, setSelectedProposal, setM
     contact_details: '',
     commercial_contact: '',
     signatory_name: '',
-    signatory_designation: ''
+    signatory_designation: '',
+    technical_requirements: '',
+    billing_address: '',
+    shipping_address: '',
+    delivery_time_date: '',
+    mode_of_delivery: '',
+    supporting_documentation: '',
+    standards: '',
+    penalty_clause: '',
+    claims: '',
+    legal_requirements: '',
+    other_requirements: ''
   })
 
   setModalOpen(true)
@@ -193,6 +204,17 @@ export const openQuotationModal = async (record, form, setSelectedProposal, setM
                   commercial_contact: extracted.commercial_contact || form.getFieldValue('commercial_contact') || '',
                   signatory_name: extracted.signatory_name || form.getFieldValue('signatory_name') || '',
                   signatory_designation: extracted.signatory_designation || form.getFieldValue('signatory_designation') || '',
+                  technical_requirements: extracted.technical_requirements || form.getFieldValue('technical_requirements') || '',
+                  billing_address: extracted.billing_address || form.getFieldValue('billing_address') || '',
+                  shipping_address: extracted.shipping_address || form.getFieldValue('shipping_address') || '',
+                  delivery_time_date: extracted.delivery_time_date || form.getFieldValue('delivery_time_date') || '',
+                  mode_of_delivery: extracted.mode_of_delivery || form.getFieldValue('mode_of_delivery') || '',
+                  supporting_documentation: extracted.supporting_documentation || form.getFieldValue('supporting_documentation') || '',
+                  standards: extracted.standards || form.getFieldValue('standards') || '',
+                  penalty_clause: extracted.penalty_clause || form.getFieldValue('penalty_clause') || '',
+                  claims: extracted.claims || form.getFieldValue('claims') || '',
+                  legal_requirements: extracted.legal_requirements || form.getFieldValue('legal_requirements') || '',
+                  other_requirements: extracted.other_requirements || form.getFieldValue('other_requirements') || ''
                 })
               } else {
                 message.destroy('docx_check')
@@ -261,6 +283,19 @@ export const handleQuotationSubmit = async (
       commercial_contact: values.commercial_contact || '',
       signatory_name: values.signatory_name || '',
       signatory_lines: sigLines,
+      // Note: The following essential requirements are generated BEFORE Bank Details (Point 6)
+      // in the backend template, while the Signatory Block remains at the very end of the document.
+      technical_requirements: values.technical_requirements || '',
+      billing_address: values.billing_address || '',
+      shipping_address: values.shipping_address || '',
+      delivery_time_date: values.delivery_time_date || '',
+      mode_of_delivery: values.mode_of_delivery || '',
+      supporting_documentation: values.supporting_documentation || '',
+      standards: values.standards || '',
+      penalty_clause: values.penalty_clause || '',
+      claims: values.claims || '',
+      legal_requirements: values.legal_requirements || '',
+      other_requirements: values.other_requirements || '',
     }
 
     const success = await generateQuotationDocx(payload)

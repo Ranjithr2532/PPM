@@ -526,11 +526,17 @@ def get_proposals_by_name(
         return result
     
     if effective_role == 'scientist':
-        # Scientist users should see proposals assigned to them or created by them
+        # Scientist users should see proposals assigned to them, created by them, or where they are in the team
         import re
         clean_search = re.sub(r'\s+', ' ', name_clean.strip()).lower()
         norm_quotation = func.regexp_replace(func.lower(Proposal.quotation_given_by_name), r'\s+', ' ', 'g')
         norm_coordinator = func.regexp_replace(func.lower(Proposal.project_co_ordinator), r'\s+', ' ', 'g')
+
+        from models.model import TeamMember
+        team_proposals_query = (
+            db.query(TeamMember.proposal_id)
+            .filter(func.regexp_replace(func.lower(TeamMember.team_member_id), r'\s+', ' ', 'g').contains(clean_search))
+        )
 
         proposals_query = (
             db.query(Proposal)
@@ -538,6 +544,7 @@ def get_proposals_by_name(
                 or_(
                     norm_quotation.contains(clean_search),
                     norm_coordinator.contains(clean_search),
+                    Proposal.id.in_(team_proposals_query),
                 ),
                 or_(
                     Proposal.is_acknowledged == True,

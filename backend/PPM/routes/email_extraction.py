@@ -25,7 +25,7 @@ class EmailRequest(BaseModel):
 # ============================================================
 
 class ProposalExtraction(BaseModel):
-    email_to: Optional[List[str]] = Field(default_factory=list)
+    email_to: Optional[List[str]] = Field(default_factory=list) 
     email_cc: Optional[List[str]] = Field(default_factory=list)
 
     customer_name: Optional[str] = None
