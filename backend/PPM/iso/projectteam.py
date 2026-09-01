@@ -366,11 +366,12 @@ def create_project_team_document(
 
     for idx, member in enumerate(review_members):
         row_idx = idx + 1
+        role_val = member.roles if (member.roles and str(member.roles).strip()) else "Project review"
         add_text(rev_table.cell(row_idx, 0), f"{member.sl_no}.", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
         add_text(rev_table.cell(row_idx, 1), member.name, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
         add_text(rev_table.cell(row_idx, 2), member.designation, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
         add_text(rev_table.cell(row_idx, 3), member.member_type, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(rev_table.cell(row_idx, 4), member.roles, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(rev_table.cell(row_idx, 4), role_val, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
         add_text(rev_table.cell(row_idx, 5), member.signature, font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     return doc
@@ -453,7 +454,13 @@ async def generate_project_team_doc_get(
         elif db_po_date:
             db_po_reference = db_po_date
 
-        db_proposal_ref = ""  # Keep empty as requested
+        # Format Proposal / Quotation Date and number
+        db_quote_date = format_db_date(proposal.quote_date, "%d.%m.%Y")
+        db_proposal_ref = f"{proposal.quote_reference or ''}"
+        if db_proposal_ref and db_quote_date:
+            db_proposal_ref += f", {db_quote_date}"
+        elif db_quote_date:
+            db_proposal_ref = db_quote_date
         
         # Build subject from activity or fallback
         activity_title = proposal.activity or proposal.quote_description or ""
@@ -587,7 +594,13 @@ async def generate_project_team_doc_post(
         elif db_po_date:
             db_po_reference = db_po_date
 
-        db_proposal_ref = ""  # Keep empty as requested
+        # Format Proposal / Quotation Date and number
+        db_quote_date = format_db_date(proposal.quote_date, "%d.%m.%Y")
+        db_proposal_ref = f"{proposal.quote_reference or ''}"
+        if db_proposal_ref and db_quote_date:
+            db_proposal_ref += f", {db_quote_date}"
+        elif db_quote_date:
+            db_proposal_ref = db_quote_date
         
         activity_title = proposal.activity or proposal.quote_description or ""
         db_subject = f'Concerning formation of team for the project "{activity_title}"'

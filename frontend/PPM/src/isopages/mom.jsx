@@ -43,7 +43,7 @@ const DEFAULT_SUMMARY_POINTS = [
     { sl_no: 1, points_discussed: '', responsibility: '' }
 ];
 
-export default function Mom({ proposalId: propProposalId, submissionId: propSubmissionId, onBack }) {
+export default function Mom({ proposalId: propProposalId, submissionId: propSubmissionId, onBack, docInfo }) {
     const [proposals, setProposals] = useState([]);
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -52,6 +52,14 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
 
+    const [filename, setFilename] = useState('CMTI_Minutes_of_Meeting.docx');
+    const loggedCentreDept = getLoggedUserCentreDept();
+    const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('037'));
+    const [docNo, setDocNo] = useState('037');
+    const [docDate, setDocDate] = useState(getTodayDateString());
+    const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
+    const [approvedBy, setApprovedBy] = useState('');
+
     // Meeting Details State
     const [meetingDateTime, setMeetingDateTime] = useState('');
     const [meetingLocation, setMeetingLocation] = useState('');
@@ -59,17 +67,43 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
     const [prevActionPoints, setPrevActionPoints] = useState('-');
     const [prevStatus, setPrevStatus] = useState('-');
     const [agenda, setAgenda] = useState('Project kick off meeting');
-    const [summaryPoints, setSummaryPoints] = useState(DEFAULT_SUMMARY_POINTS);
+    const [summaryPoints, setSummaryPoints] = useState(() => [
+        { sl_no: 1, points_discussed: '', responsibility: getLoggedUserName() }
+    ]);
     const [conclusion, setConclusion] = useState('');
 
-
-    const [filename, setFilename] = useState('CMTI_Minutes_of_Meeting.docx');
-    const loggedCentreDept = getLoggedUserCentreDept();
-    const [revisionCode, setRevisionCode] = useState(getDefaultRevisionCode('037'));
-    const [docNo, setDocNo] = useState('');
-    const [docDate, setDocDate] = useState(getTodayDateString());
-    const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
-    const [approvedBy, setApprovedBy] = useState('');
+    // Fetch dynamic doc number / code from docInfo or /iso-document-list/
+    useEffect(() => {
+        async function fetchDocDetails() {
+            try {
+                if (docInfo && (docInfo.document_no || docInfo.code)) {
+                    const rawDocNo = (docInfo.document_no || '037').trim();
+                    const cleanDocNo = rawDocNo.padStart(3, '0');
+                    setDocNo(cleanDocNo);
+                    const group = getLoggedUserGroup() || '      ';
+                    setRevisionCode(`CMTI-QMS-${group}-${cleanDocNo}/Rev00`);
+                    return;
+                }
+                const res = await axios.get(`${API_BASE_URL}/iso-document-list/`);
+                if (Array.isArray(res.data)) {
+                    const matched = res.data.find(d => 
+                        (d.document_no && (d.document_no.trim() === '037' || d.document_no.trim() === '37')) ||
+                        (d.name && (d.name.toLowerCase().includes('minutes') || d.name.toLowerCase().includes('mom')))
+                    );
+                    if (matched) {
+                        const rawDocNo = (matched.document_no || '037').trim();
+                        const cleanDocNo = rawDocNo.padStart(3, '0');
+                        setDocNo(cleanDocNo);
+                        const group = getLoggedUserGroup() || '      ';
+                        setRevisionCode(`CMTI-QMS-${group}-${cleanDocNo}/Rev00`);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load ISO doc details for MOM:', err);
+            }
+        }
+        fetchDocDetails();
+    }, [docInfo]);
 
     // Fetch existing submission if submissionId or proposalId is present
     useEffect(() => {
@@ -96,6 +130,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
 
                         if (hData.docNo) setDocNo(hData.docNo);
                         if (hData.dateStr) setDocDate(hData.dateStr);
+                        const loadedPreparedBy = fData.prepared_by || hData.preparedName || getLoggedUserName();
                         if (hData.preparedName) setPreparedBy(hData.preparedName);
                         if (hData.approvedName) setApprovedBy(hData.approvedName);
                         if (hData.groupName) setRevisionCode(hData.groupName);
@@ -111,7 +146,13 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
                         if (fData.approved_by) setApprovedBy(fData.approved_by);
 
                         if (Array.isArray(fData.summary_points) && fData.summary_points.length > 0) {
-                            setSummaryPoints(fData.summary_points);
+                            const mappedPoints = fData.summary_points.map(pt => ({
+                                ...pt,
+                                responsibility: (pt.responsibility !== undefined && pt.responsibility !== null && String(pt.responsibility).trim() !== '')
+                                    ? pt.responsibility
+                                    : loadedPreparedBy
+                            }));
+                            setSummaryPoints(mappedPoints);
                         }
                     }
                 } catch (err) {
@@ -126,7 +167,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
     const addPointRow = () => {
         setSummaryPoints(prev => [
             ...prev,
-            { sl_no: prev.length + 1, points_discussed: '', responsibility: '' }
+            { sl_no: prev.length + 1, points_discussed: '', responsibility: preparedBy || getLoggedUserName() }
         ]);
     };
 
@@ -152,10 +193,10 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
 
             const headerData = {
                 documentTitle: 'MINUTES OF MEETING',
-                docNo: docNo || '037/001',
+                docNo: docNo || '037',
                 dateStr: docDate,
                 pageStr: '1 of 1',
-                centreDept: loggedCentreDept || 'SMPM',
+                centreDept: loggedCentreDept || '',
                 preparedName: preparedBy || getLoggedUserName(),
                 approvedName: approvedBy,
                 groupName: revisionCode,
@@ -176,7 +217,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
 
             const payload = {
                 doc_type: 'MOM',
-                document_no: docNo || '037/001',
+                document_no: docNo || '037',
                 proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
                 header_data: headerData,
                 form_data: formData,
@@ -609,7 +650,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
                                         ) : (
                                             <input
                                                 type="text"
-                                                value={row.responsibility}
+                                                value={row.responsibility ?? ''}
                                                 onChange={(e) => updatePointRow(idx, 'responsibility', e.target.value)}
                                                 placeholder="Responsibility..."
                                                 className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded font-medium text-slate-800 text-center"

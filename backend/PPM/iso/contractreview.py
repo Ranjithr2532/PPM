@@ -12,7 +12,7 @@ from fastapi import APIRouter, status, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from db import get_db
-from models.model import Proposal
+from models.model import Proposal, ISODocumentList
 from iso.header import add_header_table
 from iso.finalfooter import add_footer_table
 
@@ -41,6 +41,7 @@ class ContractReviewRequest(BaseModel):
     select_type: str = "Quotation"  # "Quotation" | "Tender" | "Proposal"
     centre_dept: str = ""  # Logged-in user's centre
     group_name: str = ""  # Logged-in user's group name
+    doc_code: Optional[str] = ""
     doc_no: Optional[str] = ""
     doc_date: Optional[str] = ""
     prepared_by: Optional[str] = ""
@@ -215,6 +216,31 @@ def add_header_type_selection(cell, selected_type="Quotation"):
         run_p.font.strike = True
 
 
+def format_contract_review_doc_code(group_name: str = "", doc_no: str = "051") -> str:
+    """
+    Constructs document code following the pattern:
+    CMTI-QMS-<group>-<doc_no>/Rev00
+    e.g., if document_no is 051 and logged-in user group is SPMA -> CMTI-QMS-SPMA-051/Rev00
+    """
+    raw_no = str(doc_no or "051").strip()
+    clean_no = raw_no.zfill(3) if raw_no.isdigit() else raw_no
+    
+    clean_group = str(group_name or "").strip().upper()
+    if clean_group.startswith("C-") or clean_group.startswith("G-"):
+        clean_group = clean_group[2:]
+    
+    # If a full legacy code string was passed, extract just the group token
+    if "CMTI" in clean_group:
+        parts = [
+            p for p in clean_group.replace("/", "-").split("-")
+            if p.upper() not in ("CMTI", "QMS", "REV", "REV00", "REV0", "051", "51", "")
+        ]
+        clean_group = parts[0].upper() if parts else ""
+    
+    group_str = clean_group if clean_group else "      "
+    return f"CMTI-QMS-{group_str}-{clean_no}/Rev00"
+
+
 # ============================================================
 # MAIN DOCUMENT GENERATION FUNCTION
 # ============================================================
@@ -232,6 +258,7 @@ def create_contract_review_document(
     doc_date: str = "",
     prepared_by: str = "",
     approved_by: str = "",
+    doc_code: str = "",
     review_items: Optional[List[ContractReviewItemRequest]] = None
 ) -> Document:
     doc = Document()
@@ -243,21 +270,29 @@ def create_contract_review_document(
     section.left_margin = Inches(1.0)
     section.right_margin = Inches(1.0)
 
+    # Format document number (e.g., 51 -> 051)
+    clean_doc_no = str(doc_no or "051").strip()
+    if clean_doc_no.isdigit():
+        clean_doc_no = clean_doc_no.zfill(3)
+
     # Injections
     add_header_table(
         section,
         title="Customer Contract Review Checklist",
         page_str="1 of 1",
         centre_dept=centre_dept,
-        doc_no=doc_no,
+        doc_no=clean_doc_no,
         date_str=doc_date
     )
+    
+    # Construct document code using document_no and user group: CMTI-QMS-<group>-<doc_no>/Rev00
+    final_doc_code = format_contract_review_doc_code(group_name=group_name, doc_no=clean_doc_no)
     add_footer_table(
         section,
         prepared_name=prepared_by,
         approved_name=approved_by,
         group_name=group_name,
-        doc_code="051"
+        doc_code=final_doc_code
     )
 
     # Spacing before first table
@@ -359,13 +394,13 @@ def create_contract_review_document(
     default_items = [
         (1, "Correct Company Name", "", "", ""),
         (2, "Scope of Supply including Qty", "", "", ""),
-        (3, "Any Technical Requirements", "", "", ""),
+        (3, "Any Technical Requirements", "No", "", ""),
         (4, "Billing Address", "", "", ""),
         (5, "Shipping Address", "", "", ""),
         (6, "Delivery Time/Date", "", "", ""),
         (7, "Mode of Delivery", "", "", ""),
         (8, "Supporting Documentation", "", "", ""),
-        (9, "National & International Standards", "", "", ""),
+        (9, "National & International Standards", "NIL", "", ""),
         (10, "Payment Terms", "", "", ""),
         (11, "Any Penalty clause", "", "", ""),
         (12, "Any Claims", "", "", ""),
@@ -418,6 +453,7 @@ def generate_contract_review_bytes(
     doc_date: str = "",
     prepared_by: str = "",
     approved_by: str = "",
+    doc_code: str = "",
     review_items: Optional[List[ContractReviewItemRequest]] = None
 ) -> io.BytesIO:
     doc = create_contract_review_document(
@@ -433,6 +469,7 @@ def generate_contract_review_bytes(
         doc_date=doc_date,
         prepared_by=prepared_by,
         approved_by=approved_by,
+        doc_code=doc_code,
         review_items=review_items
     )
     buffer = io.BytesIO()
@@ -468,13 +505,13 @@ async def generate_contract_review_doc_get(
     # Dynamic checklist values (Sl 1 to 15)
     q1_val: Optional[str] = Query(None), p1_val: Optional[str] = Query(None), d1_val: Optional[str] = Query(None),
     q2_val: Optional[str] = Query(None), p2_val: Optional[str] = Query(None), d2_val: Optional[str] = Query(None),
-    q3_val: Optional[str] = Query(None), p3_val: Optional[str] = Query(None), d3_val: Optional[str] = Query(None),
+    q3_val: Optional[str] = Query("No"), p3_val: Optional[str] = Query(None), d3_val: Optional[str] = Query(None),
     q4_val: Optional[str] = Query(None), p4_val: Optional[str] = Query(None), d4_val: Optional[str] = Query(None),
     q5_val: Optional[str] = Query(None), p5_val: Optional[str] = Query(None), d5_val: Optional[str] = Query(None),
     q6_val: Optional[str] = Query(None), p6_val: Optional[str] = Query(None), d6_val: Optional[str] = Query(None),
     q7_val: Optional[str] = Query(None), p7_val: Optional[str] = Query(None), d7_val: Optional[str] = Query(None),
     q8_val: Optional[str] = Query(None), p8_val: Optional[str] = Query(None), d8_val: Optional[str] = Query(None),
-    q9_val: Optional[str] = Query(None), p9_val: Optional[str] = Query(None), d9_val: Optional[str] = Query(None),
+    q9_val: Optional[str] = Query("NIL"), p9_val: Optional[str] = Query(None), d9_val: Optional[str] = Query(None),
     q10_val: Optional[str] = Query(None), p10_val: Optional[str] = Query(None), d10_val: Optional[str] = Query(None),
     q11_val: Optional[str] = Query(None), p11_val: Optional[str] = Query(None), d11_val: Optional[str] = Query(None),
     q12_val: Optional[str] = Query(None), p12_val: Optional[str] = Query(None), d12_val: Optional[str] = Query(None),
@@ -542,6 +579,21 @@ async def generate_contract_review_doc_get(
         ContractReviewItemRequest(sl_no=15, checklist="Any Other Requirements(Specify)", quotation_val=q15_val, po_val=p15_val, decision=d15_val),
     ]
 
+    # Fetch document number from ISODocumentList database table if not provided
+    iso_doc = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "051") | 
+        (ISODocumentList.document_no == "51") |
+        (ISODocumentList.name.ilike("%contract%review%")) |
+        (ISODocumentList.name.ilike("%order%review%"))
+    ).first()
+
+    db_doc_no = iso_doc.document_no if (iso_doc and iso_doc.document_no) else "051"
+    resolved_doc_no = doc_no or db_doc_no
+    if resolved_doc_no and resolved_doc_no.strip().isdigit():
+        resolved_doc_no = resolved_doc_no.strip().zfill(3)
+
+    resolved_doc_code = format_contract_review_doc_code(group_name=group_name, doc_no=resolved_doc_no)
+
     buffer = generate_contract_review_bytes(
         quote_no=quote_no,
         quote_date=quote_date,
@@ -551,10 +603,11 @@ async def generate_contract_review_doc_get(
         select_type=select_type,
         centre_dept=centre_dept,
         group_name=group_name,
-        doc_no=doc_no,
+        doc_no=resolved_doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
         approved_by=approved_by,
+        doc_code=resolved_doc_code,
         review_items=review_items
     )
 
@@ -629,6 +682,21 @@ async def generate_contract_review_doc_post(
         if not select_type:
             select_type = db_select_type
 
+    # Fetch document number from ISODocumentList database table if not provided
+    iso_doc = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "051") | 
+        (ISODocumentList.document_no == "51") |
+        (ISODocumentList.name.ilike("%contract%review%")) |
+        (ISODocumentList.name.ilike("%order%review%"))
+    ).first()
+
+    db_doc_no = iso_doc.document_no if (iso_doc and iso_doc.document_no) else "051"
+    resolved_doc_no = doc_no or db_doc_no
+    if resolved_doc_no and resolved_doc_no.strip().isdigit():
+        resolved_doc_no = resolved_doc_no.strip().zfill(3)
+
+    resolved_doc_code = format_contract_review_doc_code(group_name=payload.group_name, doc_no=resolved_doc_no)
+
     buffer = generate_contract_review_bytes(
         quote_no=quote_no,
         quote_date=quote_date,
@@ -638,10 +706,11 @@ async def generate_contract_review_doc_post(
         select_type=select_type,
         centre_dept=centre_dept,
         group_name=payload.group_name,
-        doc_no=doc_no,
+        doc_no=resolved_doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
         approved_by=approved_by,
+        doc_code=resolved_doc_code,
         review_items=payload.review_items
     )
 

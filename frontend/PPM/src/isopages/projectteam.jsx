@@ -101,6 +101,24 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
     const [teamMembers, setTeamMembers] = useState([]);
     const [reviewMembers, setReviewMembers] = useState([]);
     const [staffList, setStaffList] = useState([]);
+    const [usersList, setUsersList] = useState([]);
+
+    // Fetch all users list specifically for Review Team dropdown
+    useEffect(() => {
+        async function loadAllUsers() {
+            try {
+                const token = localStorage.getItem('token');
+                const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders });
+                if (res.data && Array.isArray(res.data)) {
+                    setUsersList(res.data);
+                }
+            } catch (err) {
+                console.error('Failed to load users list from /users/:', err);
+            }
+        }
+        loadAllUsers();
+    }, []);
 
     // Fetch staff list specifically for the current user's centre (or proposal's centre)
     useEffect(() => {
@@ -211,6 +229,9 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         if (fData.project_title) setProjectTitle(fData.project_title);
                         if (fData.customer_name) setCustomerName(fData.customer_name);
                         if (fData.project_leader) setProjectLeader(fData.project_leader);
+                        if (fData.po_reference) setPoReference(fData.po_reference);
+                        if (fData.proposal_ref) setProposalRef(fData.proposal_ref);
+                        if (fData.subject) setSubject(fData.subject);
                         if (fData.team_members) setTeamMembers(fData.team_members);
                         if (fData.review_members) setReviewMembers(fData.review_members);
                     }
@@ -291,6 +312,18 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                     else poDetails = formattedDate;
                 }
                 setPoReference(poDetails);
+            }
+
+            // Format Ref Proposal / Quotation with date
+            if (!proposalRef) {
+                let propRefDetails = prop.quote_reference || '';
+                if (prop.quote_date) {
+                    const parts = prop.quote_date.split('-');
+                    const formattedQuoteDate = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : prop.quote_date;
+                    if (propRefDetails) propRefDetails += `, ${formattedQuoteDate}`;
+                    else propRefDetails = formattedQuoteDate;
+                }
+                setProposalRef(propRefDetails);
             }
 
             // Set Subject from proposal activity
@@ -380,8 +413,15 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
             }
             setPoReference(poDetails);
 
-            // proposal_ref should be empty as requested
-            setProposalRef('');
+            // Format Ref Proposal / Quotation with date
+            let propRefDetails = prop.quote_reference || '';
+            if (prop.quote_date) {
+                const parts = prop.quote_date.split('-');
+                const formattedQuoteDate = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : prop.quote_date;
+                if (propRefDetails) propRefDetails += `, ${formattedQuoteDate}`;
+                else propRefDetails = formattedQuoteDate;
+            }
+            setProposalRef(propRefDetails);
 
             // Set Subject from proposal activity
             const activityName = prop.activity || prop.quote_description || '';
@@ -504,6 +544,45 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
         });
     };
 
+    // Auto-fill designation, type, and roles (defaulting to 'Project review') when selecting/typing review member from all users
+    const handleReviewStaffNameChange = (index, value) => {
+        const cleanVal = (value || '').trim().toLowerCase();
+        const matchedUser = usersList.find(
+            u => u.name && u.name.trim().toLowerCase() === cleanVal
+        );
+        const matchedStaff = staffList.find(
+            s => s.name && s.name.trim().toLowerCase() === cleanVal
+        );
+
+        setReviewMembers(prev => {
+            const updated = [...prev];
+            if (matchedUser) {
+                updated[index] = {
+                    ...updated[index],
+                    name: matchedUser.name,
+                    designation: matchedUser.designation || matchedStaff?.designation || updated[index]?.designation || '',
+                    member_type: matchedStaff?.type || updated[index]?.member_type || '',
+                    roles: updated[index]?.roles || 'Project review'
+                };
+            } else if (matchedStaff) {
+                updated[index] = {
+                    ...updated[index],
+                    name: matchedStaff.name,
+                    designation: matchedStaff.designation || updated[index]?.designation || '',
+                    member_type: matchedStaff.type || updated[index]?.member_type || '',
+                    roles: updated[index]?.roles || 'Project review'
+                };
+            } else {
+                updated[index] = {
+                    ...updated[index],
+                    name: value,
+                    roles: updated[index]?.roles || 'Project review'
+                };
+            }
+            return updated;
+        });
+    };
+
     // Helper to edit Review Team members state
     const handleReviewMemberChange = (index, field, value) => {
         setReviewMembers(prev => {
@@ -533,7 +612,7 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
     const addReviewRow = () => {
         setReviewMembers(prev => [
             ...prev,
-            { sl_no: prev.length + 1, name: "", designation: "", member_type: "", roles: "", signature: "" }
+            { sl_no: prev.length + 1, name: "", designation: "", member_type: "", roles: "Project review", signature: "" }
         ]);
     };
 
@@ -612,12 +691,13 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
 
             const headerData = {
                 documentTitle: 'PROJECT TEAM',
-                docNo: docNo || '045/001',
+                docNo: docNo || '',
+                code: revisionCode,
                 dateStr: docDate,
                 pageStr: '1 of 1',
-                centreDept: loggedCentreDept || 'SMPM',
-                isoSpec: 'ISO 9001-2015',
-                groupName: revisionCode,
+                centreDept: loggedCentreDept || '',
+                isoSpec: '',
+                groupName: getLoggedUserGroup() || '',
             };
 
             const formDataPayload = {
@@ -625,13 +705,16 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                 project_title: projectTitle,
                 customer_name: customerName,
                 project_leader: projectLeader,
+                po_reference: poReference,
+                proposal_ref: proposalRef,
+                subject: subject,
                 team_members: teamMembers,
                 review_members: reviewMembers,
             };
 
             const payload = {
                 doc_type: 'PROJECT_TEAM',
-                document_no: docNo || '045/001',
+                document_no: docNo || '',
                 proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
                 header_data: headerData,
                 form_data: formDataPayload,
@@ -1091,51 +1174,80 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                                     <td className="border border-slate-800 p-2 text-center font-semibold text-slate-500">
                                         {member.sl_no}.
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.name}
-                                            onChange={(e) => handleReviewMemberChange(index, 'name', e.target.value)}
-                                            placeholder="Enter name..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-800 font-medium"
-                                        />
+                                    <td className="border border-slate-800 p-2 font-semibold text-slate-900">
+                                        {isReadOnly ? (member.name || '--') : (
+                                            <AutoComplete
+                                                options={usersList.map((u) => {
+                                                    const desig = u.designation ? ` — ${u.designation}` : '';
+                                                    const groupInfo = u.group || u.center ? ` (${[u.center, u.group].filter(Boolean).join('/')})` : '';
+                                                    return {
+                                                        value: u.name,
+                                                        label: `${u.name}${desig}${groupInfo}`
+                                                    };
+                                                })}
+                                                value={member.name}
+                                                onChange={(val) => handleReviewStaffNameChange(index, val)}
+                                                popupClassName="bg-white"
+                                                popupMatchSelectWidth={false}
+                                                dropdownMatchSelectWidth={false}
+                                                style={{ width: '100%' }}
+                                                filterOption={(inputValue, option) =>
+                                                    option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1 ||
+                                                    (option.label && option.label.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1)
+                                                }
+                                            >
+                                                <input
+                                                    type="text"
+                                                    placeholder="Select or enter user name..."
+                                                    className="w-full bg-white outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-800 font-medium"
+                                                />
+                                            </AutoComplete>
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.designation}
-                                            onChange={(e) => handleReviewMemberChange(index, 'designation', e.target.value)}
-                                            placeholder="Designation..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
-                                        />
+                                    <td className="border border-slate-800 p-2 text-slate-700">
+                                        {isReadOnly ? (member.designation || '--') : (
+                                            <input
+                                                type="text"
+                                                value={member.designation}
+                                                onChange={(e) => handleReviewMemberChange(index, 'designation', e.target.value)}
+                                                placeholder="Designation..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.member_type}
-                                            onChange={(e) => handleReviewMemberChange(index, 'member_type', e.target.value)}
-                                            placeholder="Type..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
-                                        />
+                                    <td className="border border-slate-800 p-2 text-slate-700">
+                                        {isReadOnly ? (member.member_type || '--') : (
+                                            <input
+                                                type="text"
+                                                value={member.member_type}
+                                                onChange={(e) => handleReviewMemberChange(index, 'member_type', e.target.value)}
+                                                placeholder="Type..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1">
-                                        <input
-                                            type="text"
-                                            value={member.roles}
-                                            onChange={(e) => handleReviewMemberChange(index, 'roles', e.target.value)}
-                                            placeholder="Roles..."
-                                            className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
-                                        />
+                                    <td className="border border-slate-800 p-2 text-slate-700">
+                                        {isReadOnly ? (member.roles || 'Project review') : (
+                                            <input
+                                                type="text"
+                                                value={member.roles !== undefined && member.roles !== '' ? member.roles : 'Project review'}
+                                                onChange={(e) => handleReviewMemberChange(index, 'roles', e.target.value)}
+                                                placeholder="Roles..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700 font-medium"
+                                            />
+                                        )}
                                     </td>
-                                    <td className="border border-slate-800 p-1 text-center">
-                                        <button
-                                            onClick={() => removeReviewRow(index)}
-                                            className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all"
-                                            title="Delete row"
-                                        >
-                                            <DeleteOutlined />
-                                        </button>
-                                    </td>
+                                    {!isReadOnly && (
+                                        <td className="border border-slate-800 p-1 text-center">
+                                            <button
+                                                onClick={() => removeReviewRow(index)}
+                                                className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all"
+                                                title="Delete row"
+                                            >
+                                                <DeleteOutlined />
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
