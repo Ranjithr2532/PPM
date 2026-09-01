@@ -100,11 +100,11 @@ def compute_manpower(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], 
     total_fmt = format_indian_currency(total, include_decimals=True)
 
     computed_rows.append({
-        "Role": "",
+        "Role": "Total",
         "Rate (₹)": "",
         "Basis": "",
         "Duration": "",
-        "People": "Total",
+        "People": "",
         "Total (₹)": total_fmt,
     })
 
