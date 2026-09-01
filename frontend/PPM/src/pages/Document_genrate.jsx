@@ -52,6 +52,7 @@ import {
     InboxOutlined,
     ArrowLeftOutlined,
     SendOutlined,
+    FileProtectOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -263,7 +264,7 @@ export default function DocumentGenerate({
                 const parsedUser = JSON.parse(rawUser);
                 return (parsedUser.name || '').trim();
             }
-        } catch {}
+        } catch { }
         return '';
     };
 
@@ -274,7 +275,7 @@ export default function DocumentGenerate({
                 const parsedUser = JSON.parse(rawUser);
                 return (parsedUser.group || '').trim();
             }
-        } catch {}
+        } catch { }
         return '';
     };
 
@@ -631,6 +632,17 @@ export default function DocumentGenerate({
         setScopeItems(scopeItems.filter((_, i) => i !== index));
     };
 
+    const handleRemoveScopeAttachment = (index) => {
+        setScopeAttachments((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const handleAddScopeAttachments = (files) => {
+        const fileList = Array.from(files || []);
+        if (fileList.length === 0) return;
+        setScopeAttachments((prev) => [...prev, ...fileList]);
+        message.success(`Attached ${fileList.length} deliverable document${fileList.length > 1 ? 's' : ''}`);
+    };
+
     const handleAddTermItem = () => {
         if (!newTermInput.trim()) return;
         setTermsItems([...termsItems, newTermInput.trim()]);
@@ -842,6 +854,7 @@ export default function DocumentGenerate({
             sac_code: values.sac_code || '',
             scope_intro: values.scope_intro || '',
             scope_items: scopeItems,
+            scope_attachments: scopeAttachments.map((f) => f.name || String(f)),
             terms_items: termsItems,
             tables: tables,
             internal_cost_tables: internalCostTables,
@@ -952,7 +965,7 @@ export default function DocumentGenerate({
             let parsedUser = {};
             try {
                 parsedUser = rawUser ? JSON.parse(rawUser) : {};
-            } catch {}
+            } catch { }
 
             const uName = values.quotation_given_by_name || parsedUser.name || getUserName();
             const uCenter = values.center || values.dept || parsedUser.center || getUserCenter();
@@ -1565,13 +1578,20 @@ export default function DocumentGenerate({
                             <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
                                     <span>3. Scope of Work & Key Deliverables</span>
-                                    <span className="text-[10px] text-slate-400 font-normal">{scopeItems.length} Bullet Points</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-slate-300 font-normal bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                                            {scopeItems.length} Bullet Points
+                                        </span>
+                                        <span className="text-[10px] text-blue-300 font-normal bg-blue-950 px-2 py-0.5 rounded border border-blue-800">
+                                            {scopeAttachments.length} Attachments
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Outline the technical scope of work, activities, and milestones.
+                                    Outline the technical scope of work, activities, milestones, and attach relevant technical drawings, specifications, or deliverables.
                                 </div>
 
-                                <div className="p-3 space-y-3">
+                                <div className="p-3 space-y-4">
                                     <div>
                                         <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
                                             Introductory Scope Paragraph:
@@ -1622,13 +1642,122 @@ export default function DocumentGenerate({
                                             </Button>
                                         </div>
                                     </div>
+
+                                    {/* Scope & Deliverables Attachments Upload Area */}
+                                    <div className="pt-3 border-t border-slate-200 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <PaperClipOutlined className="text-blue-600" />
+                                                Scope Deliverables Attachments & Drawings:
+                                            </label>
+                                            {scopeAttachments.length > 0 && (
+                                                <Button
+                                                    size="small"
+                                                    type="text"
+                                                    danger
+                                                    onClick={() => setScopeAttachments([])}
+                                                    className="text-[11px] h-6 px-1"
+                                                >
+                                                    Clear All ({scopeAttachments.length})
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        <Dragger
+                                            multiple
+                                            showUploadList={false}
+                                            beforeUpload={(file) => {
+                                                setScopeAttachments((prev) => [...prev, file]);
+                                                message.success(`Attached "${file.name}" to Scope Deliverables`);
+                                                return false;
+                                            }}
+                                            className="p-3 bg-blue-50/30 border border-dashed border-blue-300 hover:border-blue-500 rounded-none transition"
+                                        >
+                                            <div className="flex items-center justify-center gap-3 py-1">
+                                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                                    <UploadOutlined className="text-base" />
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="text-xs font-bold text-slate-800 mb-0">
+                                                        Click or drag files here to attach to Scope of Work & Deliverables
+                                                    </p>
+                                                    <p className="text-[11px] text-slate-500 mb-0">
+                                                        Attach technical drawings, specs, BOMs, datasheets, PDFs, Word, Excel, or CAD images
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </Dragger>
+
+                                        {/* Attached Scope Files List */}
+                                        {scopeAttachments.length > 0 && (
+                                            <div className="space-y-1.5 pt-1">
+                                                {scopeAttachments.map((file, idx) => {
+                                                    const fileSizeKB = (file.size ? (file.size / 1024).toFixed(1) : 0);
+                                                    const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name);
+                                                    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+                                                    const isDoc = /\.(docx?|odt)$/i.test(file.name);
+                                                    const isExcel = /\.(xlsx?|csv)$/i.test(file.name);
+
+                                                    let fileIcon = <FileTextOutlined className="text-blue-500 text-sm" />;
+                                                    if (isImage) fileIcon = <EyeOutlined className="text-purple-500 text-sm" />;
+                                                    else if (isPdf) fileIcon = <FileProtectOutlined className="text-red-500 text-sm" />;
+                                                    else if (isDoc) fileIcon = <FileWordOutlined className="text-blue-600 text-sm" />;
+                                                    else if (isExcel) fileIcon = <CalculatorOutlined className="text-emerald-600 text-sm" />;
+
+                                                    return (
+                                                        <div
+                                                            key={`${file.name}-${idx}`}
+                                                            className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 hover:border-slate-300 text-xs transition"
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                {fileIcon}
+                                                                <span className="font-semibold text-slate-800 truncate" title={file.name}>
+                                                                    {file.name}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">
+                                                                    ({fileSizeKB > 1024 ? `${(fileSizeKB / 1024).toFixed(2)} MB` : `${fileSizeKB} KB`})
+                                                                </span>
+                                                                <Tag color="blue" className="text-[10px] py-0 px-1.5 m-0 leading-tight">
+                                                                    Deliverable
+                                                                </Tag>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                                                {file instanceof File && (
+                                                                    <Button
+                                                                        type="text"
+                                                                        size="small"
+                                                                        icon={<EyeOutlined />}
+                                                                        onClick={() => {
+                                                                            const url = URL.createObjectURL(file);
+                                                                            window.open(url, '_blank');
+                                                                        }}
+                                                                        className="text-slate-500 hover:text-blue-600 text-xs h-6 px-1.5"
+                                                                        title="Preview / Open file"
+                                                                    />
+                                                                )}
+                                                                <Button
+                                                                    type="text"
+                                                                    danger
+                                                                    size="small"
+                                                                    icon={<DeleteOutlined />}
+                                                                    onClick={() => handleRemoveScopeAttachment(idx)}
+                                                                    className="text-xs h-6 px-1.5"
+                                                                    title="Remove attachment"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Section 4: Commercial Pricing Tables */}
                             <div className="border border-slate-900 bg-white mb-6 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
                                 <div className="bg-[#0F172A] text-white p-3 font-bold text-xs uppercase tracking-wider flex items-center justify-between">
-                                    <span>4. Commercial Pricing & Cost Tables</span>
+                                    <span>4. Create table</span>
                                     <div className="flex items-center gap-2">
                                         {grandPricingTotal > 0 && (
                                             <span className="bg-emerald-500 text-white font-mono px-2 py-0.5 text-[10px] rounded-sm font-bold">
@@ -1641,7 +1770,7 @@ export default function DocumentGenerate({
                                             onClick={handleAddTable}
                                             className="rounded-none bg-blue-600 hover:bg-blue-700 text-white border-none text-[10px] font-bold h-6"
                                         >
-                                            Add Pricing Table
+                                            Add Table
                                         </Button>
                                     </div>
                                 </div>
@@ -1823,9 +1952,9 @@ export default function DocumentGenerate({
                                         </Col>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="billing_address" label={<span className="font-bold text-xs text-slate-800">Billing Address</span>}>
-                                                <TextArea 
-                                                    rows={2} 
-                                                    placeholder="Billing Address..." 
+                                                <TextArea
+                                                    rows={2}
+                                                    placeholder="Billing Address..."
                                                     onChange={(e) => {
                                                         if (shippingSameAsBilling) {
                                                             form.setFieldsValue({ shipping_address: e.target.value });
@@ -1837,7 +1966,7 @@ export default function DocumentGenerate({
                                         <Col xs={24} md={8}>
                                             <div className="flex items-center justify-between mb-1">
                                                 <span className="font-bold text-xs text-slate-800">Shipping Address</span>
-                                                <Checkbox 
+                                                <Checkbox
                                                     checked={shippingSameAsBilling}
                                                     onChange={(e) => {
                                                         const checked = e.target.checked;
@@ -1854,9 +1983,9 @@ export default function DocumentGenerate({
                                                 </Checkbox>
                                             </div>
                                             <Form.Item name="shipping_address" noStyle>
-                                                <TextArea 
-                                                    rows={2} 
-                                                    placeholder="Shipping Address..." 
+                                                <TextArea
+                                                    rows={2}
+                                                    placeholder="Shipping Address..."
                                                     disabled={shippingSameAsBilling}
                                                 />
                                             </Form.Item>
@@ -2317,15 +2446,35 @@ export default function DocumentGenerate({
                                             )}
 
                                             {/* Scope */}
-                                            {(formValues.scope_intro || scopeItems.length > 0) && (
+                                            {(formValues.scope_intro || scopeItems.length > 0 || scopeAttachments.length > 0) && (
                                                 <div className="space-y-1 text-[11px]">
-                                                    <div className="font-bold text-slate-900">Scope of Work:</div>
+                                                    <div className="font-bold text-slate-900">Scope of Work & Deliverables:</div>
                                                     {formValues.scope_intro && <p className="italic text-slate-600 mb-1">{formValues.scope_intro}</p>}
-                                                    <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
-                                                        {scopeItems.map((item, i) => (
-                                                            <li key={i}>{item}</li>
-                                                        ))}
-                                                    </ul>
+                                                    {scopeItems.length > 0 && (
+                                                        <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
+                                                            {scopeItems.map((item, i) => (
+                                                                <li key={i}>{item}</li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                    {scopeAttachments.length > 0 && (
+                                                        <div className="mt-2 pt-2 border-t border-dashed border-slate-200">
+                                                            <div className="font-semibold text-slate-800 text-[10px] uppercase tracking-wider mb-1">
+                                                                Attached Scope Deliverables & Drawings:
+                                                            </div>
+                                                            <div className="space-y-0.5">
+                                                                {scopeAttachments.map((f, i) => (
+                                                                    <div key={i} className="text-[10px] text-blue-700 flex items-center gap-1 font-mono">
+                                                                        <span>📎 [{i + 1}]</span>
+                                                                        <span>{f.name}</span>
+                                                                        <span className="text-slate-400 font-sans">
+                                                                            ({(f.size ? (f.size / 1024).toFixed(1) : 0)} KB)
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
 

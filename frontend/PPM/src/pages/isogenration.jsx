@@ -93,6 +93,8 @@ export default function Isogenration() {
     if (activeForm) {
         const formType = typeof activeForm === 'string' ? activeForm : activeForm.type;
         const docData = typeof activeForm === 'object' ? activeForm.doc : null;
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlProposalId = searchParams.get('proposal_id') || searchParams.get('proposalId') || searchParams.get('id');
 
         return (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-h-screen">
@@ -111,17 +113,17 @@ export default function Isogenration() {
                         </div>
                     )}
                 </div>
-                {formType === 'feasibility' && <Fesability docInfo={docData} />}
-                {formType === 'contractreview' && <ContractReview docInfo={docData} />}
-                {formType === 'projectteam' && <ProjectTeam docInfo={docData} />}
-                {formType === 'mom' && <Mom docInfo={docData} />}
-                {formType === 'projectproposal' && <ProjectProposal docInfo={docData} onBack={() => setActiveForm(null)} />}
-                {formType === 'projectplan' && <ProjectPlan docInfo={docData} />}
-                {formType === 'sqap' && <Sqap docInfo={docData} />}
-                {formType === 'bom' && <Bom docInfo={docData} />}
-                {formType === 'drawingregister' && <DrawingRegister docInfo={docData} />}
+                {formType === 'feasibility' && <Fesability proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'contractreview' && <ContractReview proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'projectteam' && <ProjectTeam proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'mom' && <Mom proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'projectproposal' && <ProjectProposal proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'projectplan' && <ProjectPlan proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'sqap' && <Sqap proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'bom' && <Bom proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'drawingregister' && <DrawingRegister proposalId={urlProposalId} docInfo={docData} />}
                 {formType === 'generic' && (
-                    <GenericIsoForm docInfo={docData} onBack={() => setActiveForm(null)} />
+                    <GenericIsoForm proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />
                 )}
             </div>
         );

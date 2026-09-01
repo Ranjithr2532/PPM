@@ -32,16 +32,16 @@ const getDocTypeKey = (doc) => {
     const name = (doc.name || '').toUpperCase();
     const docNo = (doc.document_no || '').trim();
 
-    if (docNo === '049' || name.includes('FEASIBILITY')) return 'FEASIBILITY';
-    if (docNo === '051' || docNo === '050' || name.includes('CONTRACT')) return 'CONTRACT_REVIEW';
-    if (docNo === '045' || name.includes('TEAM')) return 'PROJECT_TEAM';
-    if (docNo === '037' || name.includes('MINUTES') || name.includes('MOM')) return 'MOM';
-    if (docNo === '009' || name.includes('PROPOSAL')) return 'PROJECT_PROPOSAL';
-    if (docNo === '055' || name.includes('SQAP') || name.includes('ASSURANCE') || name.includes('SOFTWARE QUALITY')) return 'SQAP';
-    if (docNo === '053' || name.includes('PLAN')) return 'PROJECT_PLAN';
-    if (docNo === '063' || name.includes('BOM') || name.includes('BILL OF MATERIALS')) return 'BOM';
-    if (docNo === '064' || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) return 'DRAWING_REGISTER';
-    if (docNo === '085' || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) return 'INSPECTION_REPORT';
+    if (docNo.startsWith('049') || name.includes('FEASIBILITY')) return 'FEASIBILITY';
+    if (docNo.startsWith('051') || docNo.startsWith('050') || name.includes('CONTRACT')) return 'CONTRACT_REVIEW';
+    if (docNo.startsWith('045') || name.includes('TEAM')) return 'PROJECT_TEAM';
+    if (docNo.startsWith('037') || name.includes('MINUTES') || name.includes('MOM')) return 'MOM';
+    if (docNo.startsWith('009') || name.includes('PROPOSAL')) return 'PROJECT_PROPOSAL';
+    if (docNo.startsWith('055') || name.includes('SQAP') || name.includes('ASSURANCE') || name.includes('SOFTWARE QUALITY')) return 'SQAP';
+    if (docNo.startsWith('053') || name.includes('PLAN')) return 'PROJECT_PLAN';
+    if (docNo.startsWith('063') || name.includes('BOM') || name.includes('BILL OF MATERIALS')) return 'BOM';
+    if (docNo.startsWith('064') || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) return 'DRAWING_REGISTER';
+    if (docNo.startsWith('085') || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) return 'INSPECTION_REPORT';
     return name.replace(/\s+/g, '_');
 };
 
@@ -232,6 +232,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <Fesability
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -241,6 +242,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <ContractReview
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -250,6 +252,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <ProjectTeam
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -259,6 +262,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <Mom
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -268,6 +272,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <ProjectProposal
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -277,6 +282,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <ProjectPlan
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -286,6 +292,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <Sqap
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -295,6 +302,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <Bom
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -304,6 +312,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <DrawingRegister
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();
@@ -313,6 +322,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <InspectionReport
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
                         onBack={() => {
                             setActiveFormState(null);
                             fetchData();

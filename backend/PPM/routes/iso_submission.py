@@ -90,6 +90,7 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
                         )
                     )
 
+        doc_code = h_data.get("code") or group_name or ""
         doc = create_feasibility_document(
             party_details=f_data.get("party_details", ""),
             enquiry_ref=f_data.get("enquiry_ref_no") or f_data.get("enquiry_ref", ""),
@@ -101,7 +102,8 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
             doc_no=doc_no,
             doc_date=date_str,
             prepared_by=prepared_by,
-            approved_by=approved_by
+            approved_by=approved_by,
+            doc_code=doc_code
         )
         filename = f"ISO_Feasibility_{doc_no.replace('/', '_')}.docx"
 

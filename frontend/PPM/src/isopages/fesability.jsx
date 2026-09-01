@@ -67,6 +67,21 @@ const getDefaultRevisionCode = (docCode) => {
     return `CMTI-QMS-${groupStr}-${docCode}/Rev00`;
 };
 
+const DEFAULT_RESPONSES = {
+    r1_response: 'Yes',
+    r1_details: 'As per quotation',
+    r2_response: 'Yes',
+    r2_details: 'As per quotation',
+    r3_response: 'No',
+    r3_details: '',
+    r4_response: 'No',
+    r4_details: '',
+    r5_response: 'No',
+    r5_details: '',
+    r6_response: 'No',
+    r6_details: '',
+};
+
 const REVIEW_POINTS_TEMPLATES = [
     {
         sl_no: 1,
@@ -82,7 +97,7 @@ const REVIEW_POINTS_TEMPLATES = [
     },
     {
         sl_no: 3,
-        point: "Any other requirements not stated in the enquiry, but necessary in the intended use. Eg : Item has be flame proof, Item has to be used in different sites etc. Please mention in details",
+        point: "Any other requirements not stated in the enquiry, but necessary in the intended use.\nEg : Item has be flame proof,\nItem has to be used in different sites etc.\nPlease mention in details",
         key_resp: "r3_response",
         key_det: "r3_details",
     },
@@ -94,13 +109,13 @@ const REVIEW_POINTS_TEMPLATES = [
     },
     {
         sl_no: 5,
-        point: "All Statutory & Regulatory requirement applicable? eg : Fire safety certification, etc",
+        point: "All Statutory & Regulatory requirement applicable?\neg : Fire safety certification, etc",
         key_resp: "r5_response",
         key_det: "r5_details",
     },
     {
         sl_no: 6,
-        point: "Any Operation Risk related to following is identified (if yes give details) 1. New Technology 2. Ability and capacity to provide product or service 3. Short delivery time frame",
+        point: "Any Operation Risk related to following is identified (if yes give details)\n1. New Technology\n2. Ability and capacity to provide product or service\n3. Short delivery time frame",
         key_resp: "r6_response",
         key_det: "r6_details",
     },
@@ -112,6 +127,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
+    const [projectNumber, setProjectNumber] = useState('');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
 
@@ -122,27 +138,38 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const [conclusion, setConclusion] = useState('Feasible'); // 'Feasible' | 'Not Feasible'
     const [filename, setFilename] = useState('CMTI_Feasibility_Report.docx');
     const loggedCentreDept = getLoggedUserCentreDept();
-    const [revisionCode, setRevisionCode] = useState(() => docInfo?.code || getDefaultRevisionCode('049'));
-    const [docNo, setDocNo] = useState(() => docInfo?.document_no || '');
+    const [docNo, setDocNo] = useState(() => docInfo?.document_no || '049');
+    const [revisionCode, setRevisionCode] = useState(() => getDefaultRevisionCode(docInfo?.document_no || '049'));
     const [docDate, setDocDate] = useState(getTodayDateString());
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
+    const [responses, setResponses] = useState(DEFAULT_RESPONSES);
 
     useEffect(() => {
-        if (docInfo?.code) {
-            setRevisionCode(docInfo.code);
-        }
-        if (docInfo?.document_no && !docNo) {
-            setDocNo(docInfo.document_no);
+        if (docInfo) {
+            const num = docInfo.document_no || '049';
+            setDocNo(num);
+            setRevisionCode(getDefaultRevisionCode(num));
         }
     }, [docInfo]);
 
-
-    // Review points responses and details
-    const [responses, setResponses] = useState({
-        r1_response: 'Yes', r2_response: 'Yes', r3_response: 'Yes', r4_response: 'Yes', r5_response: 'Yes', r6_response: 'Yes',
-        r1_details: '', r2_details: '', r3_details: '', r4_details: '', r5_details: '', r6_details: '',
-    });
+    // Fetch document number dynamically from ISODocumentList database table
+    useEffect(() => {
+        axios.get(`${API_BASE_URL}/iso-document-list/`)
+            .then(res => {
+                if (Array.isArray(res.data)) {
+                    const match = res.data.find(
+                        d => (d.name || '').toUpperCase().includes('FEASIBILITY') || (d.document_no || '').startsWith('049') || d.document_no === '49'
+                    );
+                    if (match) {
+                        const num = docInfo?.document_no || match.document_no || '049';
+                        setDocNo(num);
+                        setRevisionCode(getDefaultRevisionCode(num));
+                    }
+                }
+            })
+            .catch(err => console.error('Error fetching ISO document list for Feasibility:', err));
+    }, []);
 
     // Check props or URL parameters to load existing submission
     useEffect(() => {
@@ -159,7 +186,6 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 try {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
                     if (res.data) {
-
                         const sub = res.data;
                         setSubmissionId(sub.id);
                         setStatus(sub.status || 'DRAFT');
@@ -178,12 +204,16 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                         if (fData.conclusion) setConclusion(fData.conclusion);
 
                         const rList = fData.review_points || [];
-                        const updatedResp = { ...responses };
+                        const updatedResp = { ...DEFAULT_RESPONSES };
                         rList.forEach((pt, idx) => {
                             const template = REVIEW_POINTS_TEMPLATES[idx];
                             if (template) {
-                                updatedResp[template.key_resp] = pt.yes_no_na || pt.response || '';
-                                updatedResp[template.key_det] = pt.details || '';
+                                if (pt.yes_no_na !== undefined || pt.response !== undefined) {
+                                    updatedResp[template.key_resp] = pt.yes_no_na || pt.response || '';
+                                }
+                                if (pt.details !== undefined) {
+                                    updatedResp[template.key_det] = pt.details || '';
+                                }
                             }
                         });
                         setResponses(updatedResp);
@@ -194,8 +224,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             }
             loadSubmission();
         }
-    }, []);
-
+    }, [propSubmissionId, propProposalId]);
 
     // Fetch user details and load proposals
     const fetchProposals = useCallback(async () => {
@@ -217,7 +246,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 else if (path.includes('/ch')) role = 'ch';
             }
 
-            if (!name) return;
+            if (!name && !group && !center) return;
 
             let url = '';
             if (role === 'gh') {
@@ -243,38 +272,49 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
         fetchProposals();
     }, [fetchProposals]);
 
-    // Handle proposal selection
-    const handleProposalChange = (e) => {
-        const value = e.target.value;
-        setSelectedProposalId(value);
-        const prop = proposals.find(p => String(p.id) === String(value));
-        if (prop) {
-            setPartyDetails(prop.customer_name || prop.customerName || '');
-            setEnquiryRef(prop.email_reference || prop.emailReference || '');
-            setDescription(prop.quote_description || prop.quoteDescription || '');
-        } else {
-            setPartyDetails('');
-            setEnquiryRef('');
-            setDescription('');
+    // Auto-select first proposal if not already specified
+    useEffect(() => {
+        if (proposals.length > 0 && !selectedProposalId) {
+            setSelectedProposalId(String(proposals[0].id));
         }
-    };
+    }, [proposals, selectedProposalId]);
+
+    // Automatically pre-populate details when proposal is selected or proposals loaded
+    useEffect(() => {
+        if (!selectedProposalId) return;
+
+        if (proposals.length > 0) {
+            const prop = proposals.find(p => String(p.id) === String(selectedProposalId));
+            if (prop) {
+                if (prop.project_number) setProjectNumber(prop.project_number);
+                if (prop.customer_name || prop.customerName) setPartyDetails(prop.customer_name || prop.customerName);
+                if (prop.email_reference || prop.emailReference) setEnquiryRef(prop.email_reference || prop.emailReference);
+                if (prop.quote_description || prop.quoteDescription) setDescription(prop.quote_description || prop.quoteDescription);
+                return;
+            }
+        }
+
+        // Direct fetch if proposal not found in current proposals list
+        axios.get(`${API_BASE_URL}/proposals/${selectedProposalId}`)
+            .then(res => {
+                if (res.data) {
+                    const prop = res.data;
+                    if (prop.project_number) setProjectNumber(prop.project_number);
+                    if (prop.customer_name || prop.customerName) setPartyDetails(prop.customer_name || prop.customerName);
+                    if (prop.email_reference || prop.emailReference) setEnquiryRef(prop.email_reference || prop.emailReference);
+                    if (prop.quote_description || prop.quoteDescription) setDescription(prop.quote_description || prop.quoteDescription);
+                }
+            })
+            .catch(err => console.error('Error fetching proposal details:', err));
+    }, [selectedProposalId, proposals]);
 
     const handleReset = () => {
-        setSelectedProposalId('');
-        setPartyDetails('');
-        setEnquiryRef('');
-        setDescription('');
         setConclusion('Feasible');
         setFilename('CMTI_Feasibility_Report.docx');
-        setRevisionCode(getDefaultRevisionCode('049'));
-        setDocNo('');
         setDocDate(getTodayDateString());
-        setPreparedBy('');
+        setPreparedBy(getLoggedUserName());
         setApprovedBy('');
-        setResponses({
-            r1_response: '', r2_response: '', r3_response: '', r4_response: '', r5_response: '', r6_response: '',
-            r1_details: '', r2_details: '', r3_details: '', r4_details: '', r5_details: '', r6_details: '',
-        });
+        setResponses({ ...DEFAULT_RESPONSES });
     };
 
     // Handle generating & downloading Document
@@ -293,12 +333,14 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             // Read user centre fresh from localStorage at generate time
             let freshCentreDept = getLoggedUserCentreDept();
 
+            const loggedGroup = getLoggedUserGroup();
+
             params.append('party_details', partyDetails);
             params.append('enquiry_ref', enquiryRef);
             params.append('description', description);
             params.append('conclusion', conclusion);
             params.append('centre_dept', freshCentreDept);
-            params.append('group_name', revisionCode);
+            params.append('group_name', loggedGroup || '');
             params.append('doc_code', revisionCode);
             params.append('doc_no', docNo);
             params.append('doc_date', docDate);
@@ -347,15 +389,15 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
 
             const headerData = {
                 documentTitle: 'FEASIBILITY STUDY REPORT',
-                docNo: docNo || '049/001',
+                docNo: docNo || '',
                 code: revisionCode,
                 dateStr: docDate,
                 pageStr: '1 of 1',
-                centreDept: loggedCentreDept || 'SMPM',
-                isoSpec: 'ISO 9001-2015',
+                centreDept: loggedCentreDept || '',
+                isoSpec: '',
                 preparedName: preparedBy,
                 approvedName: approvedBy,
-                groupName: revisionCode,
+                groupName: getLoggedUserGroup() || '',
             };
 
             const reviewPointsList = REVIEW_POINTS_TEMPLATES.map(pt => ({
@@ -375,7 +417,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
 
             const payload = {
                 doc_type: 'FEASIBILITY',
-                document_no: docNo || '049/001',
+                document_no: docNo || '',
                 proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
                 header_data: headerData,
                 form_data: formDataPayload,
@@ -417,7 +459,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             const rawUser = window.localStorage.getItem('ppm_user');
             const userId = rawUser ? JSON.parse(rawUser)?.id : null;
             const currentApproverName = getLoggedUserName();
-            
+
             if (newStatus === 'APPROVED' && currentApproverName) {
                 setApprovedBy(currentApproverName);
                 // Also update form_data with approved_by name
@@ -487,28 +529,27 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
 
             {/* Top Toolbar Control Bar */}
             <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Load Proposal:</span>
-                    <select
-                        value={selectedProposalId}
-                        onChange={handleProposalChange}
-                        disabled={proposalsLoading || isReadOnly}
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium disabled:opacity-60"
-                    >
-                        <option value="">-- Choose proposal to auto-fill --</option>
-                        {proposals.map(p => (
-                            <option key={p.id} value={p.id}>
-                                {p.project_number || `SL No ${p.id}`} - {p.customer_name || 'No Client'}
-                            </option>
-                        ))}
-                    </select>
+                <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1.5 text-slate-600 hover:text-indigo-600 font-semibold text-xs bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 transition-all"
+                        >
+                            <ArrowLeftOutlined /> Back
+                        </button>
+                    )}
 
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
-                        'bg-amber-100 text-amber-800'
-                    }`}>
+                    {projectNumber && (
+                        <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                            Project: {projectNumber}
+                        </span>
+                    )}
+
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                            status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                                status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                    'bg-amber-100 text-amber-800'
+                        }`}>
                         {status}
                     </span>
                 </div>
@@ -689,14 +730,13 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                         {REVIEW_POINTS_TEMPLATES.map((pt) => (
                             <tr key={pt.sl_no} className="hover:bg-slate-50/30 transition-colors">
                                 <td className="border border-slate-800 p-2 text-center font-semibold text-slate-600">{pt.sl_no}.</td>
-                                <td className="border border-slate-800 p-2 text-left text-[11px] leading-relaxed text-slate-700">{pt.point}</td>
+                                <td className="border border-slate-800 p-2 text-left text-[11px] leading-relaxed text-slate-700 whitespace-pre-line">{pt.point}</td>
                                 <td className="border border-slate-800 p-1 text-center align-middle">
                                     {isReadOnly ? (
-                                        <span className={`font-bold px-2 py-0.5 rounded ${
-                                            responses[pt.key_resp] === 'Yes' ? 'text-emerald-700 bg-emerald-50' :
-                                            responses[pt.key_resp] === 'No' ? 'text-rose-700 bg-rose-50' :
-                                            'text-slate-600'
-                                        }`}>
+                                        <span className={`font-bold px-2 py-0.5 rounded ${responses[pt.key_resp] === 'Yes' ? 'text-emerald-700 bg-emerald-50' :
+                                                responses[pt.key_resp] === 'No' ? 'text-rose-700 bg-rose-50' :
+                                                    'text-slate-600'
+                                            }`}>
                                             {responses[pt.key_resp] || '--'}
                                         </span>
                                     ) : (
@@ -736,9 +776,8 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                     <div className="font-bold text-xs underline mb-3 text-slate-900 uppercase tracking-wide">Conclusion</div>
                     <div className="flex gap-8 mb-3">
                         {isReadOnly ? (
-                            <span className={`font-extrabold text-sm px-3 py-1 rounded border ${
-                                conclusion === 'Feasible' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-rose-50 text-rose-800 border-rose-300'
-                            }`}>
+                            <span className={`font-extrabold text-sm px-3 py-1 rounded border ${conclusion === 'Feasible' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-rose-50 text-rose-800 border-rose-300'
+                                }`}>
                                 {conclusion}
                             </span>
                         ) : (

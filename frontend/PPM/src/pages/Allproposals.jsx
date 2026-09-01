@@ -20,6 +20,8 @@ import {
   FileProtectOutlined,
   PaperClipOutlined,
   UsergroupAddOutlined,
+  MailOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -146,14 +148,26 @@ const ALL_FIELDS = [
   { name: 'phone_no', label: 'Phone No.', width: 150 },
   { name: 'alternate_contact_details', label: 'Alternate Contact', width: 220 },
   { name: 'request_type', label: 'Request Type', width: 160, render: (value) => (value ? <Tag color="blue">{value}</Tag> : null) },
-  { name: 'make_in_india', label: 'Make In India', width: 200, input: 'textarea', inForm: false },
+  {
+    name: 'make_in_india',
+    label: 'Make In India',
+    width: 200,
+    input: 'textarea',
+    inForm: false,
+    render: (value, record) => {
+      const isTender = (Array.isArray(record?.request_type) ? record.request_type.join(' ') : String(record?.request_type || '')).toLowerCase().includes('tender')
+      if (!isTender) return '-'
+      return wrapWithTooltip(value, 25)
+    },
+  },
   {
     name: 'tender_images',
     label: 'Tender Images',
     width: 220,
     inForm: false,
-    render: (value) => {
-      if (!value) return '-'
+    render: (value, record) => {
+      const isTender = (Array.isArray(record?.request_type) ? record.request_type.join(' ') : String(record?.request_type || '')).toLowerCase().includes('tender')
+      if (!isTender || !value) return '-'
       let urls = []
       try {
         urls = Array.isArray(value) ? value : JSON.parse(value)
@@ -418,6 +432,10 @@ export default function Allproposals() {
   const [docxUploading, setDocxUploading] = useState(false)
   const [uploadedDocName, setUploadedDocName] = useState('')
   const [uploadedDocxFile, setUploadedDocxFile] = useState(null)
+  const [manualAiEmailText, setManualAiEmailText] = useState('')
+  const [manualAiExtracting, setManualAiExtracting] = useState(false)
+  const [manualAiPanelOpen, setManualAiPanelOpen] = useState(false)
+  const [manualAiSummary, setManualAiSummary] = useState(null)
   const [costEstimationModalOpen, setCostEstimationModalOpen] = useState(false)
   const [selectedProposalForCostEstimation, setSelectedProposalForCostEstimation] = useState(null)
   const [teamModalOpen, setTeamModalOpen] = useState(false)
@@ -1491,8 +1509,96 @@ export default function Allproposals() {
     setUploadedDocxFile(null)
     setDocxUploading(false)
     setProposalAttachments([])
+    setManualAiEmailText('')
+    setManualAiExtracting(false)
+    setManualAiPanelOpen(false)
+    setManualAiSummary(null)
     coordinatorForm.resetFields()
     setCustomerOptions([])
+  }
+
+  // Handle extracting customer email details and populating manual proposal form
+  const handleExtractEmailForManual = async () => {
+    if (!manualAiEmailText.trim()) {
+      message.warning('Please paste the customer email text first.')
+      return
+    }
+
+    setManualAiExtracting(true)
+    setManualAiSummary(null)
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/ai/extract-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email_text: manualAiEmailText,
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to extract email details')
+      }
+
+      const data = await res.json()
+
+      const cleanCustName = (data.customer_name && !data.customer_name.includes('@')) ? data.customer_name.trim() : ''
+      const cleanCustAddr = (data.customer_address && !data.customer_address.includes('@')) ? data.customer_address.trim() : ''
+
+      const updates = {}
+      if (cleanCustName) {
+        updates.customer_name = cleanCustName
+      }
+      if (cleanCustAddr) {
+        updates.address = cleanCustAddr
+      }
+      if (data.email_to && data.email_to.length > 0) {
+        updates.email = data.email_to.join(', ')
+      }
+      if (data.phone_number) {
+        updates.phone_no = data.phone_number
+      }
+      if (data.kind_attention) {
+        updates.alternate_contact_details = data.kind_attention
+      }
+      if (data.reference || data.proposal_subject) {
+        updates.email_reference = data.reference || data.proposal_subject
+      }
+
+      // Check request type or tender if mentioned in text
+      const lowerFull = (manualAiEmailText + ' ' + (data.proposal_subject || '') + ' ' + (data.reference || '')).toLowerCase()
+      if (lowerFull.includes('tender')) {
+        if (lowerFull.includes('single')) {
+          updates.request_type = 'Single Tender'
+        } else if (lowerFull.includes('limited')) {
+          updates.request_type = 'Limited Tender'
+        } else if (lowerFull.includes('open')) {
+          updates.request_type = 'Open Tender'
+        } else {
+          updates.request_type = 'Single Tender'
+        }
+      } else if (lowerFull.includes('budgetary') || lowerFull.includes('budgetry')) {
+        updates.request_type = 'Budgetry offer'
+      } else if (lowerFull.includes('eoi')) {
+        updates.request_type = 'EOI'
+      }
+
+      coordinatorForm.setFieldsValue(updates)
+
+      setManualAiSummary({
+        customer: cleanCustName || updates.email || 'Customer Details',
+        fieldsCount: Object.keys(updates).length,
+      })
+
+      message.success('Email details successfully extracted and populated into the form!')
+    } catch (err) {
+      console.error('Error extracting email for manual form:', err)
+      message.error(err.message || 'Unable to extract email details')
+    } finally {
+      setManualAiExtracting(false)
+    }
   }
 
   // Handle uploading and parsing proposal docx document
@@ -3114,35 +3220,42 @@ export default function Allproposals() {
                     <Descriptions.Item label="Co-ordinator Remarks" span={2}>{selectedRecord?.co_ordinator_remarks || '-'}</Descriptions.Item>
                     <Descriptions.Item label="PPM Remarks" span={2}>{selectedRecord?.ppm_remarks || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Closure Report" span={2}>{selectedRecord?.closer_report || '-'}</Descriptions.Item>
-                    {selectedRecord?.make_in_india && (
-                      <Descriptions.Item label="Make In India" span={2}>{selectedRecord.make_in_india}</Descriptions.Item>
-                    )}
-                    {selectedRecord?.tender_images && (
-                      <Descriptions.Item label="Tender Images" span={2}>
-                        {(() => {
-                          let urls = []
-                          try {
-                            urls = Array.isArray(selectedRecord.tender_images) ? selectedRecord.tender_images : JSON.parse(selectedRecord.tender_images)
-                          } catch (e) {
-                            urls = String(selectedRecord.tender_images || '').split(',').map((s) => s.trim()).filter(Boolean)
-                          }
-                          if (!Array.isArray(urls) || !urls.length) return '-'
-                          return (
-                            <Space wrap>
-                              {urls.map((url, idx) => (
-                                <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
-                                  <img
-                                    src={url}
-                                    alt={`Tender Image ${idx + 1}`}
-                                    style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid #d9d9d9' }}
-                                  />
-                                </a>
-                              ))}
-                            </Space>
-                          )
-                        })()}
-                      </Descriptions.Item>
-                    )}
+                    {(() => {
+                      const isTender = (Array.isArray(selectedRecord?.request_type) ? selectedRecord.request_type.join(' ') : String(selectedRecord?.request_type || '')).toLowerCase().includes('tender')
+                      if (!isTender) return null
+
+                      return (
+                        <>
+                          {selectedRecord?.make_in_india && (
+                            <Descriptions.Item label="Make In India" span={2}>{selectedRecord.make_in_india}</Descriptions.Item>
+                          )}
+                          {selectedRecord?.tender_images && (() => {
+                            let urls = []
+                            try {
+                              urls = Array.isArray(selectedRecord.tender_images) ? selectedRecord.tender_images : JSON.parse(selectedRecord.tender_images)
+                            } catch (e) {
+                              urls = String(selectedRecord.tender_images || '').split(',').map((s) => s.trim()).filter(Boolean)
+                            }
+                            if (!Array.isArray(urls) || !urls.length) return null
+                            return (
+                              <Descriptions.Item label="Tender Images" span={2}>
+                                <Space wrap>
+                                  {urls.map((url, idx) => (
+                                    <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                                      <img
+                                        src={url}
+                                        alt={`Tender Image ${idx + 1}`}
+                                        style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid #d9d9d9' }}
+                                      />
+                                    </a>
+                                  ))}
+                                </Space>
+                              </Descriptions.Item>
+                            )
+                          })()}
+                        </>
+                      )
+                    })()}
                   </Descriptions>
                 </Card>
 
@@ -3664,7 +3777,7 @@ export default function Allproposals() {
             )}
 
             <Row gutter={[16, 16]} justify="center">
-              {/* Option 1: Attach Proposal */}
+              {/* Option 1: Manual Proposal Entry */}
               <Col xs={24} sm={12} md={convertingDraftRecord ? 8 : 6}>
                 <Card
                   hoverable
@@ -3673,13 +3786,13 @@ export default function Allproposals() {
                   styles={{ body: { padding: '20px', textAlign: 'center' } }}
                 >
                   <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-                    <PaperClipOutlined className="text-xl" />
+                    <FormOutlined className="text-xl" />
                   </div>
                   <h4 className="text-sm font-bold text-slate-800 mb-1">
-                    Attach Proposal
+                    Manual Proposal Entry
                   </h4>
                   <p className="text-[11px] text-slate-500 mb-5 leading-relaxed">
-                    Attach proposal document (.docx, .pdf) & complete manual entry form with auto-extraction.
+                    Fill out proposal details manually and upload supporting documents after submitting.
                   </p>
                   <Button
                     type="primary"
@@ -3691,7 +3804,7 @@ export default function Allproposals() {
                     }}
                     className="rounded-xl font-semibold bg-blue-600 hover:bg-blue-700"
                   >
-                    {convertingDraftRecord ? 'Complete & Attach' : 'Attach Proposal Form'}
+                    {convertingDraftRecord ? 'Complete Draft' : 'Manual Entry Form'}
                   </Button>
                 </Card>
               </Col>
@@ -3839,12 +3952,13 @@ export default function Allproposals() {
             <DocumentGenerate
               stageConfig={stageConfig}
               convertingDraftRecord={convertingDraftRecord}
-              onSuccess={(newPid) => {
+              onSuccess={() => {
                 closeCoordinatorModal()
                 fetchProposals()
-                if (newPid) {
-                  openUploadModalForProject(newPid)
-                }
+              }}
+              onAddToProposals={() => {
+                closeCoordinatorModal()
+                fetchProposals()
               }}
               onBack={() => setProposalCreationMode('selection')}
               onCancel={closeCoordinatorModal}
@@ -3867,84 +3981,172 @@ export default function Allproposals() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Dedicated Attach Document Box */}
-            <div className="p-4 bg-slate-50 border border-slate-300 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
+            {proposalCreationMode === 'upload_review' && (
+              <div className="p-4 bg-slate-50 border border-slate-300 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <PaperClipOutlined className="text-blue-600 text-base" />
+                    <span className="font-bold text-slate-800 text-sm">
+                      Attach Proposal Documents & Files (.docx, .pdf, drawings)
+                    </span>
+                  </div>
+                  {docxUploading && <Spin size="small" tip="Parsing .docx document..." />}
+                </div>
+
+                <Dragger
+                  multiple
+                  beforeUpload={(file) => {
+                    const isDocx = file.name.toLowerCase().endsWith('.docx')
+                    if (isDocx) {
+                      handleDocxUpload(file)
+                    } else {
+                      setProposalAttachments((prev) => [...prev, file])
+                      message.success(`Attached ${file.name}`)
+                    }
+                    return false
+                  }}
+                  showUploadList={false}
+                  className="p-3 bg-white border-dashed border-slate-300 rounded-lg hover:border-blue-500 transition cursor-pointer"
+                >
+                  <p className="ant-upload-drag-icon text-slate-400 mb-1">
+                    <InboxOutlined className="text-2xl text-blue-500" />
+                  </p>
+                  <p className="ant-upload-text text-xs font-semibold text-slate-700">
+                    Click or drag files here to attach
+                  </p>
+                  <p className="ant-upload-hint text-[11px] text-slate-400">
+                    Supports Word (.docx), PDF (.pdf), Excel spreadsheets, technical drawings, and images.
+                  </p>
+                </Dragger>
+
+                {/* Attached Document Chips */}
+                {(uploadedDocName || (proposalAttachments && proposalAttachments.length > 0)) && (
+                  <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-600 mr-1">Attached Files:</span>
+
+                    {uploadedDocName && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-blue-300 rounded-md text-xs font-medium shadow-xs text-blue-700">
+                        <FileWordOutlined className="text-blue-600 text-xs" />
+                        <span className="max-w-[220px] truncate" title={uploadedDocName}>
+                          {uploadedDocName} (Main Document)
+                        </span>
+                        <span
+                          onClick={() => {
+                            setUploadedDocName('')
+                            setUploadedDocxFile(null)
+                          }}
+                          className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
+                        >
+                          ✕
+                        </span>
+                      </div>
+                    )}
+
+                    {proposalAttachments && proposalAttachments.map((file, idx) => (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-slate-700"
+                      >
+                        <PaperClipOutlined className="text-slate-400 text-xs" />
+                        <span className="max-w-[220px] truncate" title={file.name}>
+                          {file.name}
+                        </span>
+                        <span
+                          onClick={() => setProposalAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
+                        >
+                          ✕
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AI Email Auto-Fill Banner for Manual Entry */}
+            <div className="border border-indigo-200 bg-linear-to-r from-indigo-50/70 via-blue-50/50 to-white rounded-xl overflow-hidden shadow-xs mb-4">
+              <div
+                className="px-4 py-3 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between cursor-pointer hover:bg-slate-800 transition select-none"
+                onClick={() => setManualAiPanelOpen(!manualAiPanelOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center text-indigo-300">
+                    <RobotOutlined className="text-sm" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs uppercase tracking-wider block text-indigo-100">
+                      Paste Customer Email & Auto-Fill Details
+                    </span>
+                    <span className="text-[11px] text-slate-300 font-normal block">
+                      Paste email text from Outlook/Gmail to automatically extract customer name, address, email, phone, reference, etc.
+                    </span>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
-                  <PaperClipOutlined className="text-blue-600 text-base" />
-                  <span className="font-bold text-slate-800 text-sm">
-                    Attach Proposal Documents & Files (.docx, .pdf, drawings)
+                  <span className="text-xs font-semibold text-indigo-300 bg-indigo-900/60 px-2.5 py-1 rounded-md border border-indigo-500/30">
+                    {manualAiPanelOpen ? '▲ Collapse Panel' : '▼ Expand & Paste Email'}
                   </span>
                 </div>
-                {docxUploading && <Spin size="small" tip="Parsing .docx document..." />}
               </div>
 
-              <Dragger
-                multiple
-                beforeUpload={(file) => {
-                  const isDocx = file.name.toLowerCase().endsWith('.docx')
-                  if (isDocx) {
-                    handleDocxUpload(file)
-                  } else {
-                    setProposalAttachments((prev) => [...prev, file])
-                    message.success(`Attached ${file.name}`)
-                  }
-                  return false
-                }}
-                showUploadList={false}
-                className="p-3 bg-white border-dashed border-slate-300 rounded-lg hover:border-blue-500 transition cursor-pointer"
-              >
-                <p className="ant-upload-drag-icon text-slate-400 mb-1">
-                  <InboxOutlined className="text-2xl text-blue-500" />
-                </p>
-                <p className="ant-upload-text text-xs font-semibold text-slate-700">
-                  Click or drag files here to attach (Uploading a <code className="text-blue-600 font-bold">.docx</code> will auto-fill form fields)
-                </p>
-                <p className="ant-upload-hint text-[11px] text-slate-400">
-                  Supports Word (.docx), PDF (.pdf), Excel spreadsheets, technical drawings, and images.
-                </p>
-              </Dragger>
+              {manualAiPanelOpen && (
+                <div className="p-4 bg-slate-50/90 border-t border-indigo-100 space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <MailOutlined className="text-indigo-600" />
+                        Paste Customer Email Thread / Text:
+                      </label>
+                      {manualAiEmailText.length > 0 && (
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {manualAiEmailText.length} characters
+                        </span>
+                      )}
+                    </div>
+                    <TextArea
+                      rows={5}
+                      value={manualAiEmailText}
+                      onChange={(e) => setManualAiEmailText(e.target.value)}
+                      placeholder="Paste raw customer enquiry email here (e.g. from Outlook, Gmail, headers, body, signature)..."
+                      className="text-xs font-mono rounded-lg border-slate-300 focus:border-indigo-600 bg-white"
+                    />
+                  </div>
 
-              {/* Attached Document Chips */}
-              {(uploadedDocName || (proposalAttachments && proposalAttachments.length > 0)) && (
-                <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-600 mr-1">Attached Files:</span>
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="primary"
+                        loading={manualAiExtracting}
+                        disabled={!manualAiEmailText.trim()}
+                        onClick={handleExtractEmailForManual}
+                        className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs h-8 px-4 flex items-center gap-1.5 shadow-xs"
+                      >
+                        {manualAiExtracting ? 'Extracting with AI...' : '✨ Extract & Populate Form'}
+                      </Button>
 
-                  {uploadedDocName && (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-blue-300 rounded-md text-xs font-medium shadow-xs text-blue-700">
-                      <FileWordOutlined className="text-blue-600 text-xs" />
-                      <span className="max-w-[220px] truncate" title={uploadedDocName}>
-                        {uploadedDocName} (Main Document)
-                      </span>
-                      <span
+                      <Button
                         onClick={() => {
-                          setUploadedDocName('')
-                          setUploadedDocxFile(null)
+                          setManualAiEmailText('')
+                          setManualAiSummary(null)
                         }}
-                        className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
+                        disabled={!manualAiEmailText}
+                        size="small"
+                        className="rounded-lg text-slate-600 bg-white hover:bg-slate-100 text-xs h-8 px-3"
                       >
-                        ✕
-                      </span>
+                        Clear
+                      </Button>
                     </div>
-                  )}
 
-                  {proposalAttachments && proposalAttachments.map((file, idx) => (
-                    <div
-                      key={`${file.name}-${idx}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs font-medium shadow-xs text-slate-700"
-                    >
-                      <PaperClipOutlined className="text-slate-400 text-xs" />
-                      <span className="max-w-[220px] truncate" title={file.name}>
-                        {file.name}
-                      </span>
-                      <span
-                        onClick={() => setProposalAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-slate-400 hover:text-red-500 cursor-pointer ml-1 font-bold text-xs"
-                      >
-                        ✕
-                      </span>
-                    </div>
-                  ))}
+                    {manualAiSummary && (
+                      <div className="flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1 rounded-lg font-medium">
+                        <CheckCircleOutlined className="text-emerald-600" />
+                        <span>
+                          Populated: <strong>{manualAiSummary.customer}</strong> ({manualAiSummary.fieldsCount} fields updated)
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -3965,6 +4167,7 @@ export default function Allproposals() {
                   }
                   return true
                 }).map((fieldName) => {
+                  if (fieldName === 'make_in_india') return null
                   const field = ALL_FIELDS.find((f) => f.name === fieldName)
                   if (!field) return null
 

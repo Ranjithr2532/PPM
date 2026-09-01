@@ -32,6 +32,8 @@ class QuotationRequest(BaseModel):
     scope_intro: Optional[str] = None
     scope_items: List[str] = Field(default_factory=list)
     scope_of_work: List[str] = Field(default_factory=list)
+    scope_attachments: List[str] = Field(default_factory=list)
+    attachments: List[str] = Field(default_factory=list)
     validity: Optional[str] = None
     payment_terms: Optional[str] = None
     delivery: Optional[str] = None

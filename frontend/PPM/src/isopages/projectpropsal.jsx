@@ -82,7 +82,7 @@ const getCurrentUserRole = () => {
     }
 };
 
-export default function ProjectProposal({ submissionId: propSubmissionId, proposalId: propProposalId, existingRecord, onBack, onSuccess }) {
+export default function ProjectProposal({ submissionId: propSubmissionId, proposalId: propProposalId, existingRecord, onBack, onSuccess, docInfo }) {
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
@@ -92,19 +92,19 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     // Document Header & Metadata State
     const loggedCentreDept = getLoggedUserCentreDept();
     const [revisionCode] = useState(getDefaultRevisionCode('009'));
-    const [docNo, setDocNo] = useState('');
+    const [docNo, setDocNo] = useState(docInfo?.document_no || docInfo?.code || '');
     const [docDate, setDocDate] = useState(getTodayDateString());
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
     const [filename, setFilename] = useState('CMTI_Project_Proposal.docx');
 
     // General Project Details
-    const [titleOfProject, setTitleOfProject] = useState(existingRecord?.quote_description || existingRecord?.activity || '');
-    const [projectNo, setProjectNo] = useState('');
+    const [titleOfProject, setTitleOfProject] = useState(existingRecord?.quote_reference || existingRecord?.activity || existingRecord?.quote_description || '');
+    const [projectNo, setProjectNo] = useState(existingRecord?.project_number || '');
     const [projectCategory, setProjectCategory] = useState('');
-    const [sponsoringAgency, setSponsoringAgency] = useState('');
-    const [sanctionOrder, setSanctionOrder] = useState('');
-    const [totalCost, setTotalCost] = useState('');
+    const [sponsoringAgency, setSponsoringAgency] = useState(existingRecord?.customer_name || '');
+    const [sanctionOrder, setSanctionOrder] = useState(existingRecord?.order_number || '');
+    const [totalCost, setTotalCost] = useState(existingRecord?.quote_amount || '');
 
     // Team & Leaders (by default the project leader is the Project Co-ordinator of that proposal)
     const [projectLeader, setProjectLeader] = useState(() => {
@@ -121,39 +121,50 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
 
     useEffect(() => {
         if (existingRecord) {
-            const desc = existingRecord.quote_description || existingRecord.activity || '';
-            if (desc) {
-                setTitleOfProject(desc);
-            }
+            const title = existingRecord.quote_reference || existingRecord.activity || existingRecord.quote_description || '';
+            if (title) setTitleOfProject(title);
+
             const leader = existingRecord.project_co_ordinator || existingRecord.project_coordinator || existingRecord.quotation_given_by_name || getLoggedUserName() || '';
-            if (leader) {
-                setProjectLeader(leader);
+            if (leader) setProjectLeader(leader);
+
+            if (existingRecord.customer_name) setSponsoringAgency(existingRecord.customer_name);
+            if (existingRecord.quote_amount) setTotalCost(existingRecord.quote_amount);
+            if (existingRecord.project_number) setProjectNo(existingRecord.project_number);
+            if (existingRecord.order_number) setSanctionOrder(existingRecord.order_number);
+            if (existingRecord.date_of_actual_commencement) setCommencementDate(existingRecord.date_of_actual_commencement);
+            if (existingRecord.delivery_date || existingRecord.extended_delivery_date) {
+                setCompletionDate(existingRecord.delivery_date || existingRecord.extended_delivery_date);
             }
-            if (existingRecord.customer_name) {
-                setSponsoringAgency(existingRecord.customer_name);
+            if (existingRecord.key_deliverables) {
+                const lines = String(existingRecord.key_deliverables).split('\n').map(s => s.trim()).filter(Boolean);
+                if (lines.length > 0) setProposedObjectives(lines);
             }
-            if (existingRecord.quote_amount) {
-                setTotalCost(existingRecord.quote_amount);
-            }
-        } else if (proposalId || propProposalId) {
-            const pid = proposalId || propProposalId;
+        }
+
+        const effectiveProposalId = propProposalId || proposalId || (existingRecord ? existingRecord.id : null);
+        if (effectiveProposalId && !existingRecord) {
             async function fetchProposalDetails() {
                 try {
-                    const res = await axios.get(`${API_BASE_URL}/proposals/${pid}`);
+                    const res = await axios.get(`${API_BASE_URL}/proposals/${effectiveProposalId}`);
                     if (res.data) {
                         const p = res.data;
-                        if (p.quote_description || p.activity) {
-                            setTitleOfProject(p.quote_description || p.activity);
-                        }
+                        const title = p.quote_reference || p.activity || p.quote_description || '';
+                        if (title) setTitleOfProject(title);
+
                         const leader = p.project_co_ordinator || p.project_coordinator || p.quotation_given_by_name || getLoggedUserName() || '';
-                        if (leader) {
-                            setProjectLeader(leader);
+                        if (leader) setProjectLeader(leader);
+
+                        if (p.customer_name) setSponsoringAgency(p.customer_name);
+                        if (p.quote_amount) setTotalCost(p.quote_amount);
+                        if (p.project_number) setProjectNo(p.project_number);
+                        if (p.order_number) setSanctionOrder(p.order_number);
+                        if (p.date_of_actual_commencement) setCommencementDate(p.date_of_actual_commencement);
+                        if (p.delivery_date || p.extended_delivery_date) {
+                            setCompletionDate(p.delivery_date || p.extended_delivery_date);
                         }
-                        if (p.customer_name) {
-                            setSponsoringAgency(p.customer_name);
-                        }
-                        if (p.quote_amount) {
-                            setTotalCost(p.quote_amount);
+                        if (p.key_deliverables) {
+                            const lines = String(p.key_deliverables).split('\n').map(s => s.trim()).filter(Boolean);
+                            if (lines.length > 0) setProposedObjectives(lines);
                         }
                     }
                 } catch (e) {
@@ -271,7 +282,7 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     // Check props or URL parameters to load existing submission
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
-        const urlId = propSubmissionId || searchParams.get('id') || searchParams.get('submission_id');
+        const urlId = propSubmissionId || searchParams.get('submission_id') || searchParams.get('iso_id');
 
         if (urlId) {
             async function loadSubmission() {
@@ -319,7 +330,6 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                     }
                 } catch (err) {
                     console.error('Failed to load submission:', err);
-                    message.error('Could not load ISO submission details');
                 }
             }
             loadSubmission();

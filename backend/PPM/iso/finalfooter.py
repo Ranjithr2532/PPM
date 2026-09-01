@@ -311,7 +311,7 @@ def add_footer_table(
         rev_para.paragraph_format.space_before = Pt(4)
         rev_para.paragraph_format.space_after = Pt(0)
         rev_para.paragraph_format.line_spacing = 1.0
-        rev_para.text = f"ISO 9001-2015                                                                                     {rev_text}"
+        rev_para.text = rev_text
         rev_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
         if rev_para.runs:
             run_rev = rev_para.runs[0]
@@ -342,7 +342,7 @@ def add_footer_table(
             rev_para.paragraph_format.space_before = Pt(4)
             rev_para.paragraph_format.space_after = Pt(0)
             rev_para.paragraph_format.line_spacing = 1.0
-            rev_para.text = f"ISO 9001-2015                                                                                     {rev_text}"
+            rev_para.text = rev_text
             rev_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
             if rev_para.runs:
                 run_rev = rev_para.runs[0]

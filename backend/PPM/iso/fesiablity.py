@@ -12,7 +12,7 @@ from fastapi import APIRouter, status, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from db import get_db
-from models.model import Proposal
+from models.model import Proposal, ISODocumentList
 from iso.header import add_header_table
 from iso.finalfooter import add_footer_table
 
@@ -39,6 +39,7 @@ class FeasibilityRequest(BaseModel):
     conclusion: str = "Feasible"  # "Feasible" or "Not Feasible"
     centre_dept: str = ""  # Logged-in user's centre
     group_name: str = ""  # Logged-in user's group ISO code
+    doc_code: Optional[str] = ""
     doc_no: Optional[str] = ""
     doc_date: Optional[str] = ""
     prepared_by: Optional[str] = ""
@@ -148,6 +149,31 @@ def add_text(
 
 
 
+def format_feasibility_doc_code(group_name: str = "", doc_no: str = "049") -> str:
+    """
+    Constructs document code following the pattern:
+    CMTI-QMS-<group>-<doc_no>/Rev00
+    e.g., if document_no is 049 and logged-in user group is SPMA -> CMTI-QMS-SPMA-049/Rev00
+    """
+    raw_no = str(doc_no or "049").strip()
+    clean_no = raw_no.zfill(3) if raw_no.isdigit() else raw_no
+    
+    clean_group = str(group_name or "").strip().upper()
+    if clean_group.startswith("C-") or clean_group.startswith("G-"):
+        clean_group = clean_group[2:]
+    
+    # If a full legacy code string was passed, extract just the group token
+    if "CMTI" in clean_group:
+        parts = [
+            p for p in clean_group.replace("/", "-").split("-")
+            if p.upper() not in ("CMTI", "QMS", "REV", "REV00", "REV0", "049", "49", "")
+        ]
+        clean_group = parts[0].upper() if parts else ""
+    
+    group_str = clean_group if clean_group else "      "
+    return f"CMTI-QMS-{group_str}-{clean_no}/Rev00"
+
+
 # ============================================================
 # MAIN DOCUMENT GENERATION FUNCTION
 # ============================================================
@@ -175,17 +201,23 @@ def create_feasibility_document(
     section.left_margin = Inches(1.0)
     section.right_margin = Inches(1.0)
 
+    # Format document number (e.g., 49 -> 049)
+    clean_doc_no = str(doc_no or "049").strip()
+    if clean_doc_no.isdigit():
+        clean_doc_no = clean_doc_no.zfill(3)
+
     # Injections
     add_header_table(
         section,
         title="FEASIBILITY REVIEW FORM",
         page_str="1 of 1",
         centre_dept=centre_dept,
-        doc_no=doc_no,
+        doc_no=clean_doc_no,
         date_str=doc_date
     )
     
-    final_doc_code = doc_code or group_name or "049"
+    # Construct document code using document_no and user group: cmti-<group>-<doc_no>/rev/0
+    final_doc_code = format_feasibility_doc_code(group_name=group_name, doc_no=clean_doc_no)
     add_footer_table(
         section,
         prepared_name=prepared_by,
@@ -285,36 +317,36 @@ def create_feasibility_document(
             1,
             "Compliance of all technical requirements?",
             "Yes",
-            ""
+            "As per quotation"
         ),
         (
             2,
             "Delivery and Post Delivery activity compliance",
             "Yes",
-            ""
+            "As per quotation"
         ),
         (
             3,
             "Any other requirements not stated in the enquiry, but necessary in the intended use.\nEg : Item has be flame proof,\nItem has to be used in different sites etc.\nPlease mention in details",
-            "Yes",
+            "No",
             ""
         ),
         (
             4,
             "Any Critical / Special Characteristic identified in drawing /specifications?",
-            "Yes",
+            "No",
             ""
         ),
         (
             5,
             "All Statutory & Regulatory requirement applicable?\neg : Fire safety certification, etc",
-            "Yes",
+            "No",
             ""
         ),
         (
             6,
             "Any Operation Risk related to following is identified (if yes give details)\n1. New Technology\n2. Ability and capacity to provide product or service\n3. Short delivery time frame",
-            "Yes",
+            "No",
             ""
         )
     ]
@@ -491,6 +523,20 @@ async def generate_feasibility_doc_get(
         ReviewPointRequest(sl_no=6, point="Any Operation Risk related to following...", response=r6_response, details=r6_details),
     ]
 
+    # Fetch document number from ISODocumentList database table if not provided
+    iso_doc = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "049") | 
+        (ISODocumentList.document_no == "49") |
+        (ISODocumentList.name.ilike("%feasibility%"))
+    ).first()
+
+    db_doc_no = iso_doc.document_no if (iso_doc and iso_doc.document_no) else "049"
+    resolved_doc_no = doc_no or db_doc_no
+    if resolved_doc_no and resolved_doc_no.strip().isdigit():
+        resolved_doc_no = resolved_doc_no.strip().zfill(3)
+
+    resolved_doc_code = format_feasibility_doc_code(group_name=group_name, doc_no=resolved_doc_no)
+
     buffer = generate_feasibility_bytes(
         party_details=party_details,
         enquiry_ref=enquiry_ref,
@@ -499,11 +545,11 @@ async def generate_feasibility_doc_get(
         conclusion=conclusion,
         centre_dept=centre_dept,
         group_name=group_name,
-        doc_no=doc_no,
+        doc_no=resolved_doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
         approved_by=approved_by,
-        doc_code=doc_code or group_name
+        doc_code=resolved_doc_code
     )
 
     headers = {
@@ -549,6 +595,20 @@ async def generate_feasibility_doc_post(
         if not description:
             description = proposal.quote_description or ""
 
+    # Fetch document number from ISODocumentList database table if not provided
+    iso_doc = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "049") | 
+        (ISODocumentList.document_no == "49") |
+        (ISODocumentList.name.ilike("%feasibility%"))
+    ).first()
+
+    db_doc_no = iso_doc.document_no if (iso_doc and iso_doc.document_no) else "049"
+    resolved_doc_no = doc_no or db_doc_no
+    if resolved_doc_no and resolved_doc_no.strip().isdigit():
+        resolved_doc_no = resolved_doc_no.strip().zfill(3)
+
+    resolved_doc_code = format_feasibility_doc_code(group_name=payload.group_name or "", doc_no=resolved_doc_no)
+
     buffer = generate_feasibility_bytes(
         party_details=party_details,
         enquiry_ref=enquiry_ref,
@@ -557,11 +617,11 @@ async def generate_feasibility_doc_post(
         conclusion=payload.conclusion,
         centre_dept=payload.centre_dept or "",
         group_name=payload.group_name or "",
-        doc_no=doc_no,
+        doc_no=resolved_doc_no,
         doc_date=doc_date,
         prepared_by=prepared_by,
         approved_by=approved_by,
-        doc_code=payload.group_name or ""
+        doc_code=resolved_doc_code
     )
 
     headers = {
