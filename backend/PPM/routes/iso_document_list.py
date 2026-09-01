@@ -15,7 +15,49 @@ router = APIRouter(prefix="/iso-document-list", tags=["ISO Document List Managem
 
 @router.get("/", response_model=List[ISODocumentListResponse])
 def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
-    # Auto-seed standard ISO document templates if missing doc 037 or 009
+    # Auto-seed standard ISO document templates if missing
+    existing_049 = db.query(ISODocumentList).filter(
+        (ISODocumentList.name.ilike("%feasibility%")) | (ISODocumentList.document_no.like("049%"))
+    ).first()
+    if not existing_049:
+        feas_doc = ISODocumentList(
+            name="Feasibility Review Form",
+            initial="FR",
+            code="CMTI-QMS-SMPM-049/Rev00",
+            document_no="049",
+            is_active=True,
+        )
+        db.add(feas_doc)
+        db.commit()
+
+    existing_051 = db.query(ISODocumentList).filter(
+        (ISODocumentList.name.ilike("%contract%")) | (ISODocumentList.document_no.like("051%")) | (ISODocumentList.document_no.like("050%"))
+    ).first()
+    if not existing_051:
+        cr_doc = ISODocumentList(
+            name="Customer Contract Review Checklist",
+            initial="CR",
+            code="CMTI-QMS-SMPM-051/Rev00",
+            document_no="051",
+            is_active=True,
+        )
+        db.add(cr_doc)
+        db.commit()
+
+    existing_045 = db.query(ISODocumentList).filter(
+        (ISODocumentList.name.ilike("%team%")) | (ISODocumentList.document_no.like("045%"))
+    ).first()
+    if not existing_045:
+        pt_doc = ISODocumentList(
+            name="Project Team Letter",
+            initial="PT",
+            code="CMTI-QMS-SMPM-045/Rev00",
+            document_no="045",
+            is_active=True,
+        )
+        db.add(pt_doc)
+        db.commit()
+
     existing_037 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "037").first()
     if not existing_037:
         mom_doc = ISODocumentList(

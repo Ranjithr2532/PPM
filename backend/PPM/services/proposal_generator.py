@@ -403,6 +403,16 @@ def build_proposal_document(data: dict) -> Document:
             p_si.add_run(scope_intro)
         if scope_items:
             add_bullets(document, scope_items)
+        
+        scope_attachments = data.get("scope_attachments") or data.get("attachments") or []
+        if scope_attachments:
+            p_att_h = document.add_paragraph()
+            p_att_h.paragraph_format.space_before = Pt(4)
+            p_att_h.paragraph_format.space_after = Pt(2)
+            r_att_h = p_att_h.add_run("Attached Scope Documents & Technical Deliverables:")
+            r_att_h.font.bold = True
+            r_att_h.font.size = Pt(10)
+            add_bullets(document, [f"{att}" for att in scope_attachments])
 
     if terms_items:
         p_tm_h = document.add_paragraph()
