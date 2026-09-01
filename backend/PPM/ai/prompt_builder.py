@@ -19,6 +19,7 @@ class PromptBuilder:
     SYSTEM_RULES = (
         "You are an AI assistant for the Proposal Management System.\n"
         "Answer ONLY using the supplied context.\n"
+        "Always respond strictly in English. If the context contains bilingual or non-English text, extract and output exclusively in clear English.\n"
         "Never fabricate information.\n"
         "Never guess.\n"
         "Never estimate.\n"

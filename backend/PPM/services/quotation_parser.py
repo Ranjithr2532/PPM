@@ -522,6 +522,26 @@ def parse_cmti_quotation_docx(file_bytes: bytes, filename: str = "") -> Dict[str
         if "please feel free to contact" in line_lower:
             extracted["contact_details"] = line_clean
 
+    # 6. Essential Requirements parsing
+    for line in all_lines:
+        line_clean = line.strip()
+        for key, field_name in [
+            ("Any Technical Requirements:", "technical_requirements"),
+            ("Billing Address:", "billing_address"),
+            ("Shipping Address:", "shipping_address"),
+            ("Delivery Time/Date:", "delivery_time_date"),
+            ("Mode of Delivery:", "mode_of_delivery"),
+            ("Supporting Documentation:", "supporting_documentation"),
+            ("National & International Standards:", "standards"),
+            ("Any Penalty Clause:", "penalty_clause"),
+            ("Any Claims:", "claims"),
+            ("Any Specific Legal Requirements:", "legal_requirements"),
+            ("Any Other Requirements (Specify):", "other_requirements"),
+        ]:
+            if line_clean.startswith(key):
+                val = line_clean[len(key):].strip()
+                extracted[field_name] = val
+
     extracted["signatory_name"] = ""
 
     return extracted

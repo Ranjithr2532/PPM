@@ -11,9 +11,11 @@ from docx.oxml.ns import qn
 from pydantic import BaseModel
 from fastapi import APIRouter, status, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from db import get_db
-from models.model import Proposal
+from models.model import Proposal, TeamMember
+from models.user_model import User
 from iso.header import add_header_table, normalize_centre_dept
 from iso.finalfooter import add_footer_table
 
@@ -435,6 +437,7 @@ async def generate_project_team_doc_get(
     if not filename.lower().endswith(".docx"):
         filename += ".docx"
 
+    team_members = []
     if project_id is not None:
         proposal = db.query(Proposal).filter(Proposal.id == project_id).first()
         if not proposal:
@@ -470,6 +473,52 @@ async def generate_project_team_doc_get(
         ):
             subject = db_subject
 
+        # Autofill project coordinator and team members from database
+        coordinator_name = proposal.project_co_ordinator
+        coordinator_user = None
+        if coordinator_name:
+            coordinator_clean = " ".join(coordinator_name.split()).lower()
+            coordinator_user = db.query(User).filter(func.lower(User.name) == coordinator_clean).first()
+
+        db_members = db.query(TeamMember).filter(TeamMember.proposal_id == proposal.id).all()
+        team_members_list = []
+        sl_no = 1
+
+        if coordinator_name:
+            coord_desig = coordinator_user.designation if coordinator_user else ""
+            team_members_list.append(
+                TeamMemberRequest(
+                    sl_no=sl_no,
+                    name=coordinator_name,
+                    designation=coord_desig or "",
+                    member_type="",
+                    roles="",
+                    signature=""
+                )
+            )
+            sl_no += 1
+
+        for m in db_members:
+            m_name = m.team_member_id
+            if coordinator_name and " ".join(m_name.split()).lower() == " ".join(coordinator_name.split()).lower():
+                continue
+            m_clean = " ".join(m_name.split()).lower()
+            m_user = db.query(User).filter(func.lower(User.name) == m_clean).first()
+            m_desig = m_user.designation if m_user else ""
+            team_members_list.append(
+                TeamMemberRequest(
+                    sl_no=sl_no,
+                    name=m_name,
+                    designation=m_desig or "",
+                    member_type="",
+                    roles="",
+                    signature=""
+                )
+            )
+            sl_no += 1
+
+        team_members = team_members_list
+
     # Defaults if empty
     if not project_no: project_no = "GST2502201"
     if not po_reference: po_reference = "22TNGAEH0023, 31.05.2022"
@@ -485,7 +534,8 @@ async def generate_project_team_doc_get(
         group_name=group_name,
         centre_dept=centre_dept,
         doc_no=doc_no,
-        doc_date=doc_date
+        doc_date=doc_date,
+        team_members=team_members
     )
 
     headers = {
@@ -523,6 +573,7 @@ async def generate_project_team_doc_post(
     doc_no = payload.doc_no or ""
     doc_date = payload.doc_date or ""
 
+    team_members = payload.team_members
     if payload.project_id is not None:
         proposal = db.query(Proposal).filter(Proposal.id == payload.project_id).first()
         if not proposal:
@@ -555,6 +606,53 @@ async def generate_project_team_doc_post(
         ):
             subject = db_subject
 
+        # If team_members is empty, autofill it from database
+        if not team_members:
+            coordinator_name = proposal.project_co_ordinator
+            coordinator_user = None
+            if coordinator_name:
+                coordinator_clean = " ".join(coordinator_name.split()).lower()
+                coordinator_user = db.query(User).filter(func.lower(User.name) == coordinator_clean).first()
+
+            db_members = db.query(TeamMember).filter(TeamMember.proposal_id == proposal.id).all()
+            team_members_list = []
+            sl_no = 1
+
+            if coordinator_name:
+                coord_desig = coordinator_user.designation if coordinator_user else ""
+                team_members_list.append(
+                    TeamMemberRequest(
+                        sl_no=sl_no,
+                        name=coordinator_name,
+                        designation=coord_desig or "",
+                        member_type="",
+                        roles="",
+                        signature=""
+                    )
+                )
+                sl_no += 1
+
+            for m in db_members:
+                m_name = m.team_member_id
+                if coordinator_name and " ".join(m_name.split()).lower() == " ".join(coordinator_name.split()).lower():
+                    continue
+                m_clean = " ".join(m_name.split()).lower()
+                m_user = db.query(User).filter(func.lower(User.name) == m_clean).first()
+                m_desig = m_user.designation if m_user else ""
+                team_members_list.append(
+                    TeamMemberRequest(
+                        sl_no=sl_no,
+                        name=m_name,
+                        designation=m_desig or "",
+                        member_type="",
+                        roles="",
+                        signature=""
+                    )
+                )
+                sl_no += 1
+
+            team_members = team_members_list
+
     buffer = generate_project_team_bytes(
         project_no=project_no,
         po_reference=po_reference,
@@ -566,7 +664,7 @@ async def generate_project_team_doc_post(
         centre_dept=centre_dept,
         doc_no=doc_no,
         doc_date=doc_date,
-        team_members=payload.team_members,
+        team_members=team_members,
         review_members=payload.review_members
     )
 

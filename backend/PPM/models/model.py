@@ -77,6 +77,7 @@ class Proposal(Base):
     documents = relationship("Document", back_populates="proposal", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="proposal", cascade="all, delete-orphan")
     progress_entries = relationship("Progress", back_populates="proposal", cascade="all, delete-orphan")
+    team_members = relationship("TeamMember", back_populates="proposal", cascade="all, delete-orphan")
 class Remarks(Base):
     __tablename__ = "remarks"  
 
@@ -473,4 +474,18 @@ class ISODocument(Base):
     uploaded_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# -------------------------------------------------
+# TEAM MEMBERS TABLE
+# -------------------------------------------------
+class TeamMember(Base):
+    __tablename__ = "team_members"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    proposal_id = Column(Integer, ForeignKey("proposals.id", ondelete="CASCADE"), nullable=False, index=True)
+    team_member_id = Column(Text, nullable=False)
+
+    proposal = relationship("Proposal", back_populates="team_members")
+
 

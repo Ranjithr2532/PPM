@@ -1,6 +1,7 @@
 from routes.manpower import router as manpower_router
 from routes.iso_submission import router as iso_submission_router
 from routes.iso_document_list import router as iso_document_list_router
+from routes.team_members import router as team_members_router
 
 
 from fastapi import FastAPI, Depends
@@ -139,4 +140,5 @@ app.include_router(dynamic_table_router, dependencies=jwt_auth)
 app.include_router(groupchat_router, dependencies=jwt_auth)
 app.include_router(count_router, dependencies=jwt_auth)
 app.include_router(manpower_router, dependencies=jwt_auth)
+app.include_router(team_members_router, dependencies=jwt_auth)
 

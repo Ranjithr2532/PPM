@@ -19,6 +19,7 @@ import {
   FileTextOutlined,
   FileProtectOutlined,
   PaperClipOutlined,
+  UsergroupAddOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -64,6 +65,7 @@ import TopChatNotificationBar from '../components/TopChatNotificationBar'
 import { encryptMessage, decryptMessage } from '../utils/crypto.js'
 import DocumentGenerate from './Document_genrate'
 import ProjectProposal from '../isopages/projectpropsal.jsx'
+import { TeamMemberModal } from '../utils/teammembe'
 
 dayjs.extend(isSameOrAfter)
 dayjs.extend(isSameOrBefore)
@@ -418,6 +420,9 @@ export default function Allproposals() {
   const [uploadedDocxFile, setUploadedDocxFile] = useState(null)
   const [costEstimationModalOpen, setCostEstimationModalOpen] = useState(false)
   const [selectedProposalForCostEstimation, setSelectedProposalForCostEstimation] = useState(null)
+  const [teamModalOpen, setTeamModalOpen] = useState(false)
+  const [selectedProposalIdForTeam, setSelectedProposalIdForTeam] = useState(null)
+  const [teamProposalIds, setTeamProposalIds] = useState([])
 
   const [tenderFileList, setTenderFileList] = useState([])
   const [coordinatorSubmitLoading, setCoordinatorSubmitLoading] = useState(false)
@@ -654,6 +659,21 @@ export default function Allproposals() {
       setTableLoading(false)
     }
   }, [isGhRole])
+
+  const fetchTeamProjects = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/team-members/my-projects`, {
+        headers: getAuthHeaders(),
+      })
+      if (response.ok) {
+        const mappings = await response.json()
+        const ids = (Array.isArray(mappings) ? mappings : []).map((m) => m.proposal_id)
+        setTeamProposalIds(ids)
+      }
+    } catch (err) {
+      console.error('Failed to fetch team projects:', err)
+    }
+  }, [])
 
   const fetchStageConfig = useCallback(async () => {
     try {
@@ -1137,13 +1157,14 @@ export default function Allproposals() {
   useEffect(() => {
     const loadData = async () => {
       await fetchProposals()
+      await fetchTeamProjects()
       await fetchStageConfig()
       await fetchCustomerSuggestions()
       await fetchAllQueryCounts()
       await fetchUnacknowledgedCount()
     }
     loadData()
-  }, [fetchProposals, fetchStageConfig, fetchCustomerSuggestions, fetchAllQueryCounts])
+  }, [fetchProposals, fetchTeamProjects, fetchStageConfig, fetchCustomerSuggestions, fetchAllQueryCounts])
 
   useEffect(() => {
     const currentUrl = viewDocumentUrl || ''
@@ -1992,43 +2013,44 @@ export default function Allproposals() {
   }
 
   const statistics = useMemo(() => {
-    const totalProposals = tableData.filter((item) => !item.project_number?.trim()).length
-    const totalProjects = tableData.filter((item) => item.project_number?.trim()).length
-    const technicallyCompleted = tableData.filter(
+    const nonTeamData = tableData.filter((item) => !teamProposalIds.includes(item.id))
+    const totalProposals = nonTeamData.filter((item) => !item.project_number?.trim()).length
+    const totalProjects = nonTeamData.filter((item) => item.project_number?.trim()).length
+    const technicallyCompleted = nonTeamData.filter(
       (item) =>
         item.technical_completed_year &&
         item.technical_completed_year.trim() !== '',
     ).length
-    const financiallyCompleted = tableData.filter(
+    const financiallyCompleted = nonTeamData.filter(
       (item) =>
         item.technical_completed_year &&
         item.technical_completed_year.trim() !== '' &&
         item.financial_completed_year &&
         item.financial_completed_year.trim() !== '',
     ).length
-    const financiallyNotCompleted = tableData.filter(
+    const financiallyNotCompleted = nonTeamData.filter(
       (item) =>
         item.technical_completed_year &&
         item.technical_completed_year.trim() !== '' &&
         (!item.financial_completed_year || item.financial_completed_year.trim() === ''),
     ).length
-    const pendingProjects = tableData.filter(
+    const pendingProjects = nonTeamData.filter(
       (item) => item.status === 'Ongoing' || item.status === 'On Hold',
     ).length
 
-    const onHoldProjects = tableData.filter(
+    const onHoldProjects = nonTeamData.filter(
       (item) => item.status === 'On Hold',
     ).length
 
-    const convertedNo = tableData.filter(
+    const convertedNo = nonTeamData.filter(
       (item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason),
     ).length
 
-    const draftProposalsCount = tableData.filter((item) => item.draft === true).length
+    const draftProposalsCount = nonTeamData.filter((item) => item.draft === true).length
 
     const PROJECT_PREFIXES = ['GSP', 'ISP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'SVP', 'TOT']
     const projectCodeBreakdown = {}
-    tableData.forEach((item) => {
+    nonTeamData.forEach((item) => {
       if (item.project_number?.trim()) {
         const prefix = PROJECT_PREFIXES.find((p) =>
           item.project_number.toUpperCase().startsWith(p),
@@ -2040,6 +2062,8 @@ export default function Allproposals() {
         }
       }
     })
+
+    const teamProjectsCount = tableData.filter((item) => teamProposalIds.includes(item.id)).length
 
     return {
       allCount: totalProposals + totalProjects,
@@ -2053,8 +2077,9 @@ export default function Allproposals() {
       convertedNo,
       draftProposalsCount,
       projectCodeBreakdown,
+      teamProjectsCount,
     }
-  }, [tableData])
+  }, [tableData, teamProposalIds])
 
   const groupOptions = useMemo(() => {
     const groups = [
@@ -2132,13 +2157,18 @@ export default function Allproposals() {
     }
 
     if (statusFilter === 'draftProposals') {
-      filtered = filtered.filter((item) => item.draft === true || item.draft === 'true' || item.draft === 1)
+      filtered = filtered.filter((item) => (item.draft === true || item.draft === 'true' || item.draft === 1) && !teamProposalIds.includes(item.id))
     } else {
+      if (statusFilter !== 'teamProjects') {
+        filtered = filtered.filter((item) => !teamProposalIds.includes(item.id))
+      }
       filtered = filtered.filter((item) => !item.draft || item.draft === 'false' || item.draft === 0)
 
       if (statusFilter && statusFilter !== 'totalProjects') {
         if (statusFilter === 'proposals') {
           filtered = filtered.filter((item) => !item.project_number || item.project_number.trim() === '')
+        } else if (statusFilter === 'teamProjects') {
+          filtered = filtered.filter((item) => teamProposalIds.includes(item.id))
         } else if (statusFilter === 'technicallyCompleted') {
           filtered = filtered.filter(
             (item) =>
@@ -2210,7 +2240,7 @@ export default function Allproposals() {
     }
 
     setFilteredData(filtered)
-  }, [searchText, orderDateRange, enquiryDateRange, statusFilter, projectCodePrefix, projectNumberFilter, groupFilter, quotationGivenByFilter, tableData])
+  }, [searchText, orderDateRange, enquiryDateRange, statusFilter, projectCodePrefix, projectNumberFilter, groupFilter, quotationGivenByFilter, tableData, teamProposalIds])
 
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
@@ -2378,6 +2408,19 @@ export default function Allproposals() {
               title="More Details"
             />
             {userRole === 'scientist' && (
+              <Button
+                size="small"
+                type="link"
+                icon={<UsergroupAddOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSelectedProposalIdForTeam(record.id)
+                  setTeamModalOpen(true)
+                }}
+                title="Manage Team Members"
+              />
+            )}
+            {userRole === 'scientist' && (
               <Dropdown
                 menu={{
                   items: [
@@ -2492,6 +2535,19 @@ export default function Allproposals() {
                   onClick={(e) => { e.stopPropagation(); openDetailModal(record) }}
                   title="More Details"
                 />
+                {userRole === 'scientist' && (
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<UsergroupAddOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedProposalIdForTeam(record.id)
+                      setTeamModalOpen(true)
+                    }}
+                    title="Manage Team Members"
+                  />
+                )}
                 {userRole === 'scientist' && (
                   <Dropdown
                     menu={{
@@ -2620,6 +2676,12 @@ export default function Allproposals() {
                         On hold: {statistics.onHoldProjects}
                       </div>
                     ),
+                  },
+                  {
+                    key: 'teamProjects',
+                    title: 'Team Projects',
+                    value: statistics.teamProjectsCount,
+                    bgClass: 'bg-gradient-to-br from-indigo-500 to-indigo-600',
                   },
                 ]
 
@@ -3257,7 +3319,7 @@ export default function Allproposals() {
                 ]}
               />
               {(!docsLoading && !projectDocs.length) && (
-                <div className="text-center text-gray-500 mt-4">No enquiry documents uploaded</div>
+                <div className="text-center text-gray-500 mt-4">No documents uploaded</div>
               )}
             </Card>
           </div>
@@ -4374,6 +4436,15 @@ export default function Allproposals() {
         }
         createdBy={currentUserName}
         projectId={selectedProposalForCostEstimation?.id}
+      />
+
+      <TeamMemberModal
+        isOpen={teamModalOpen}
+        onClose={() => {
+          setTeamModalOpen(false)
+          setSelectedProposalIdForTeam(null)
+        }}
+        proposalId={selectedProposalIdForTeam}
       />
 
       <FloatingChatsWidget

@@ -188,8 +188,99 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
         fetchProposals();
     }, [fetchProposals]);
 
+    // Automatically pre-populate details and team members when proposal is selected (e.g. from props)
+    useEffect(() => {
+        if (!selectedProposalId || proposals.length === 0) return;
+
+        const prop = proposals.find(p => String(p.id) === String(selectedProposalId));
+        if (prop) {
+            // Only set if not already set to prevent overwrite
+            if (!projectNo) setProjectNo(prop.project_number || '');
+            if (!projectTitle) setProjectTitle(prop.quote_description || prop.activity || '');
+            if (!customerName) setCustomerName(prop.customer_name || '');
+            if (!projectLeader) setProjectLeader(prop.project_co_ordinator || '');
+
+            // Format Customer PO reference with date
+            if (!poReference) {
+                let poDetails = prop.order_number || '';
+                if (prop.order_date) {
+                    const parts = prop.order_date.split('-');
+                    const formattedDate = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : prop.order_date;
+                    if (poDetails) poDetails += `, ${formattedDate}`;
+                    else poDetails = formattedDate;
+                }
+                setPoReference(poDetails);
+            }
+
+            // Set Subject from proposal activity
+            if (!subject) {
+                const activityName = prop.activity || prop.quote_description || '';
+                setSubject(`Concerning formation of team for the project "${activityName}"`);
+            }
+
+            // Autofill team members if empty
+            if (teamMembers.length === 0) {
+                async function fetchInitialTeam() {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+                        // Fetch all users
+                        const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders });
+                        const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+
+                        // Fetch team members of proposal
+                        const membersRes = await axios.get(`${API_BASE_URL}/team-members/proposal/${selectedProposalId}`, { headers: authHeaders });
+                        const dbMembers = Array.isArray(membersRes.data) ? membersRes.data : [];
+
+                        const initialTeam = [];
+                        let slNo = 1;
+
+                        // 1. Coordinator
+                        const coordName = prop.project_co_ordinator;
+                        if (coordName) {
+                            const coordClean = coordName.replace(/\s+/g, ' ').trim().toLowerCase();
+                            const coordUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
+                            initialTeam.push({
+                                sl_no: slNo++,
+                                name: coordName,
+                                designation: coordUser ? (coordUser.designation || '') : '',
+                                member_type: '',
+                                roles: '',
+                                signature: ''
+                            });
+                        }
+
+                        // 2. Team Members
+                        dbMembers.forEach(m => {
+                            const mName = m.team_member_id;
+                            if (coordName && mName.replace(/\s+/g, ' ').trim().toLowerCase() === coordName.replace(/\s+/g, ' ').trim().toLowerCase()) {
+                                return;
+                            }
+                            const mClean = mName.replace(/\s+/g, ' ').trim().toLowerCase();
+                            const mUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
+                            initialTeam.push({
+                                sl_no: slNo++,
+                                name: mName,
+                                designation: mUser ? (mUser.designation || '') : '',
+                                member_type: '',
+                                roles: '',
+                                signature: ''
+                            });
+                        });
+
+                        setTeamMembers(initialTeam);
+                    } catch (err) {
+                        console.error('Failed to pre-populate project team:', err);
+                    }
+                }
+                fetchInitialTeam();
+            }
+        }
+    }, [selectedProposalId, proposals, teamMembers.length]);
+
     // Handle proposal selection
-    const handleProposalChange = (e) => {
+    const handleProposalChange = async (e) => {
         const value = e.target.value;
         setSelectedProposalId(value);
         const prop = proposals.find(p => String(p.id) === String(value));
@@ -212,11 +303,67 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
             // Set Subject from proposal activity
             const activityName = prop.activity || prop.quote_description || '';
             setSubject(`Concerning formation of team for the project "${activityName}"`);
+
+            // Fetch users and team members to pre-populate
+            try {
+                const token = localStorage.getItem('token');
+                const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+                // Fetch all users
+                const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders });
+                const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+
+                // Fetch team members of proposal
+                const membersRes = await axios.get(`${API_BASE_URL}/team-members/proposal/${value}`, { headers: authHeaders });
+                const dbMembers = Array.isArray(membersRes.data) ? membersRes.data : [];
+
+                const initialTeam = [];
+                let slNo = 1;
+
+                // 1. Coordinator
+                const coordName = prop.project_co_ordinator;
+                if (coordName) {
+                    const coordClean = coordName.replace(/\s+/g, ' ').trim().toLowerCase();
+                    const coordUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
+                    initialTeam.push({
+                        sl_no: slNo++,
+                        name: coordName,
+                        designation: coordUser ? (coordUser.designation || '') : '',
+                        member_type: '',
+                        roles: '',
+                        signature: ''
+                    });
+                }
+
+                // 2. Team Members
+                dbMembers.forEach(m => {
+                    const mName = m.team_member_id;
+                    if (coordName && mName.replace(/\s+/g, ' ').trim().toLowerCase() === coordName.replace(/\s+/g, ' ').trim().toLowerCase()) {
+                        return;
+                    }
+                    const mClean = mName.replace(/\s+/g, ' ').trim().toLowerCase();
+                    const mUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
+                    initialTeam.push({
+                        sl_no: slNo++,
+                        name: mName,
+                        designation: mUser ? (mUser.designation || '') : '',
+                        member_type: '',
+                        roles: '',
+                        signature: ''
+                    });
+                });
+
+                setTeamMembers(initialTeam);
+            } catch (err) {
+                console.error('Failed to pre-populate project team:', err);
+                setTeamMembers([]);
+            }
         } else {
             setProjectNo('');
             setPoReference('');
             setProposalRef('');
             setSubject('Concerning formation of team for the project ""');
+            setTeamMembers([]);
         }
     };
 
@@ -485,20 +632,32 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
             {/* Top Toolbar Control Bar */}
             <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Load Proposal:</span>
-                    <select
-                        value={selectedProposalId}
-                        onChange={handleProposalChange}
-                        disabled={proposalsLoading || isReadOnly}
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium disabled:opacity-60"
-                    >
-                        <option value="">-- Choose proposal to auto-fill --</option>
-                        {proposals.map(p => (
-                            <option key={p.id} value={p.id}>
-                                {p.project_number || `SL No ${p.id}`} - {p.customer_name || 'No Client'}
-                            </option>
-                        ))}
-                    </select>
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="mr-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-200"
+                        >
+                            <ArrowLeftOutlined /> Back
+                        </button>
+                    )}
+                    {!propProposalId && (
+                        <>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Load Proposal:</span>
+                            <select
+                                value={selectedProposalId}
+                                onChange={handleProposalChange}
+                                disabled={proposalsLoading || isReadOnly}
+                                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5 font-medium disabled:opacity-60"
+                            >
+                                <option value="">-- Choose proposal to auto-fill --</option>
+                                {proposals.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.project_number || `SL No ${p.id}`} - {p.customer_name || 'No Client'}
+                                    </option>
+                                ))}
+                            </select>
+                        </>
+                    )}
 
                     <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
                             status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :

@@ -10,4 +10,5 @@ class User(Base):
     role = Column(String, nullable=True)
     center = Column(String, nullable=True)
     group = Column(String, nullable=True)
+    designation = Column(String, nullable=True)
     password = Column(String, nullable=False)
