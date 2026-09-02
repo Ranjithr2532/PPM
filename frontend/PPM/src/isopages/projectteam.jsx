@@ -193,18 +193,11 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                     }
                 }
 
-                // 5. Fetch registered users to combine with staff
+                // 5. Fetch registered users to combine with staff (fetch all users)
                 let fetchedUsers = [];
                 const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] }));
                 if (usersRes.data && Array.isArray(usersRes.data)) {
                     fetchedUsers = usersRes.data;
-                    if (targetCentreName) {
-                        const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
-                        fetchedUsers = fetchedUsers.filter(u => {
-                            const uCenter = (u.center || u.centre || '').toLowerCase().replace(/^c-/, '').trim();
-                            return !uCenter || uCenter === cleanTarget;
-                        });
-                    }
                 }
 
                 // Merge staff and users into a unified list uniquely by name
@@ -433,8 +426,8 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                                 sl_no: slNo++,
                                 name: mName,
                                 designation: mStaff?.designation || mUser?.designation || '',
-                                member_type: mStaff?.type || '',
-                                roles: mStaff?.role || '',
+                                member_type: mStaff?.type || mUser?.type || '',
+                                roles: m.roles || '',
                                 signature: ''
                             });
                         });
@@ -526,8 +519,8 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         sl_no: slNo++,
                         name: mName,
                         designation: mStaff?.designation || mUser?.designation || '',
-                        member_type: mStaff?.type || '',
-                        roles: mStaff?.role || '',
+                        member_type: mStaff?.type || mUser?.type || '',
+                        roles: m.roles || '',
                         signature: ''
                     });
                 });
@@ -585,8 +578,8 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                     ...updated[index],
                     name: matched.name,
                     designation: matched.designation || updated[index]?.designation || '',
-                    member_type: matched.type || updated[index]?.member_type || '',
-                    roles: matched.role || updated[index]?.roles || ''
+                    member_type: matched.type || updated[index]?.member_type || ''
+                    // Roles left untouched so user can type manually
                 };
             } else {
                 updated[index] = {
