@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Typography, message, Select, Drawer } from 'antd'
+import { Layout, Menu, Button, Typography, message, Select, Drawer, Modal, Form, Input, Avatar } from 'antd'
 import {
   ProfileOutlined,
   SettingOutlined,
@@ -11,7 +11,9 @@ import {
   FileWordOutlined,
   MenuOutlined,
   FilePdfOutlined,
-  RobotOutlined
+  RobotOutlined,
+  UserOutlined,
+  EditOutlined
 } from '@ant-design/icons'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -88,6 +90,62 @@ function Sidebar() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
   const [selectedRole, setSelectedRole] = useState('');
+
+  // Profile Modal State
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileForm] = Form.useForm();
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [userProfileData, setUserProfileData] = useState(null);
+
+  const handleOpenProfile = () => {
+    try {
+      const rawUser = window.localStorage.getItem('ppm_user')
+      if (rawUser) {
+        const parsed = JSON.parse(rawUser)
+        setUserProfileData(parsed)
+        profileForm.setFieldsValue({
+          designation: parsed.designation || '',
+          type: parsed.type || ''
+        })
+        setIsProfileModalOpen(true)
+      }
+    } catch (err) {
+      console.error('Error opening profile:', err)
+    }
+  }
+
+  const handleSaveProfile = async (values) => {
+    const userId = userProfileData?.id || userProfileData?.user_id;
+    if (!userId) {
+      message.error('User ID not found');
+      return;
+    }
+    setProfileLoading(true);
+    try {
+      const response = await axios.put(`${API_BASE_URL}/users/${userId}`, {
+        designation: (values.designation || '').trim(),
+        type: (values.type || '').trim()
+      });
+
+      const updatedUser = {
+        ...userProfileData,
+        ...response.data,
+        designation: (values.designation || '').trim(),
+        type: (values.type || '').trim()
+      };
+
+      window.localStorage.setItem('ppm_user', JSON.stringify(updatedUser));
+      setUserProfileData(updatedUser);
+      message.success('Profile updated successfully!');
+      setIsProfileModalOpen(false);
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+      message.error(err.response?.data?.detail || 'Failed to update profile');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   const isDirector = basePath === 'director'
   const isCH = basePath === 'ch' || userRole === 'ch'
   const isGuest = basePath === 'guest'
@@ -457,6 +515,26 @@ function Sidebar() {
 
       {/* Footer & Logout */}
       <div className="px-4 pb-6 border-t border-slate-100 pt-4 bg-slate-50/50 flex flex-col gap-2.5">
+        {/* Profile Icon Trigger */}
+        <div className="flex justify-end py-1">
+          <Button
+            type="default"
+            shape="circle"
+            size="large"
+            icon={<UserOutlined className="text-white text-lg" />}
+            onClick={() => {
+              setMobileOpen(false);
+              handleOpenProfile();
+            }}
+            title="View/Edit Profile"
+            style={{
+              backgroundColor: "#2563eb",
+              borderColor: "#2563eb",
+            }}
+            className="shadow-sm transition-all flex items-center justify-center hover:!bg-blue-700 hover:!border-blue-700"
+          />
+        </div>
+
         {manualPdfUrl && (
           <Button
             block
@@ -516,7 +594,11 @@ function Sidebar() {
             </Button>
           )}
           {userName && (
-            <div className="flex items-center gap-2">
+            <div
+              onClick={handleOpenProfile}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <Avatar size={24} icon={<UserOutlined />} className="bg-blue-600" />
               <span className="text-xs font-semibold text-slate-700 truncate max-w-[120px]">{userName}</span>
               <span className="px-2 py-0.5 bg-blue-500/10 text-blue-600 rounded-full text-[10px] font-bold uppercase">
                 {userRole || 'User'}
@@ -556,6 +638,112 @@ function Sidebar() {
       >
         {renderSidebarContent()}
       </Sider>
+      {/* User Profile Details Modal */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-lg border-b pb-2">
+            <UserOutlined className="text-blue-600" />
+            <span>User Profile Details</span>
+          </div>
+        }
+        open={isProfileModalOpen}
+        onCancel={() => setIsProfileModalOpen(false)}
+        footer={null}
+        destroyOnClose
+        centered
+        className="rounded-2xl"
+      >
+        {userProfileData && (
+          <div className="py-2 space-y-4">
+            {/* Readonly Info Grid */}
+            <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/70 text-xs">
+              <div>
+                <span className="text-slate-400 font-medium block">Name</span>
+                <span className="font-semibold text-slate-800">{userProfileData.name || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Email</span>
+                <span className="font-semibold text-slate-800 truncate block">{userProfileData.email || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Role</span>
+                <span className="font-semibold text-slate-800 capitalize">{userProfileData.role || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Centre</span>
+                <span className="font-semibold text-slate-800">{userProfileData.center || userProfileData.centre || 'N/A'}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-slate-400 font-medium block">Group</span>
+                <span className="font-semibold text-slate-800">{userProfileData.group || 'N/A'}</span>
+              </div>
+            </div>
+
+            {/* Form for Editing Designation & Type */}
+            <Form
+              form={profileForm}
+              layout="vertical"
+              onFinish={handleSaveProfile}
+              requiredMark={false}
+            >
+              <Form.Item
+                name="designation"
+                label={
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-700">Designation</span>
+                    <span className="text-xs text-slate-500 font-normal mt-0.5">
+                      e.g. SCIENTIST-C, SCIENTIST-D, SCIENTIST-E, GH SMC, CH SMPM
+                    </span>
+                  </div>
+                }
+              >
+                <Input
+                  placeholder="Enter designation..."
+                  size="large"
+                  className="rounded-xl w-full"
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="type"
+                label={
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-700">Field / Domain Type</span>
+                    <span className="text-xs text-slate-500 font-normal mt-0.5">
+                      e.g. Computer Science, Mechanical, Electrical & Communication
+                    </span>
+                  </div>
+                }
+              >
+                <Input
+                  placeholder="Enter field/domain type..."
+                  size="large"
+                  className="rounded-xl w-full"
+                />
+              </Form.Item>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t mt-4">
+                <Button
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="rounded-xl"
+                  size="large"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={profileLoading}
+                  className="rounded-xl bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-500/20"
+                  size="large"
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </Form>
+          </div>
+        )}
+      </Modal>
     </>
   )
 }

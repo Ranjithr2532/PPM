@@ -8,6 +8,7 @@ class UserCreate(BaseModel):
     center: Optional[str] = None
     group: Optional[str] = None
     designation: Optional[str] = None
+    type: Optional[str] = None
     password: str = Field(min_length=6)
 
 class UserLogin(BaseModel):
@@ -22,6 +23,7 @@ class UserResponse(BaseModel):
     center: Optional[str] = None
     group: Optional[str] = None
     designation: Optional[str] = None
+    type: Optional[str] = None
 
     class Config:
         from_attributes = True

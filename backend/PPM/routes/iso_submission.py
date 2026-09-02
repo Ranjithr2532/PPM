@@ -108,36 +108,36 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
         filename = f"ISO_Feasibility_{doc_no.replace('/', '_')}.docx"
 
     elif doc_type == "CONTRACT_REVIEW":
-        from iso.contractreview import create_contract_review_document, ContractReviewPoint
-        raw_points = f_data.get("review_points", [])
-        review_points_objs = []
+        from iso.contractreview import create_contract_review_document, ContractReviewItemRequest
+        raw_points = f_data.get("review_items", []) or f_data.get("review_points", [])
+        review_items_objs = []
         if isinstance(raw_points, list):
-            for pt in raw_points:
+            for i, pt in enumerate(raw_points):
                 if isinstance(pt, dict):
-                    review_points_objs.append(
-                        ContractReviewPoint(
-                            sl_no=pt.get("sl_no", 1),
-                            point=pt.get("review_point") or pt.get("point", ""),
-                            response=pt.get("yes_no_na") or pt.get("response", ""),
-                            details=pt.get("details", "")
+                    review_items_objs.append(
+                        ContractReviewItemRequest(
+                            sl_no=pt.get("sl_no", i + 1),
+                            checklist=pt.get("checklist") or pt.get("point") or pt.get("review_point", ""),
+                            quotation_val=pt.get("quotation_val") or pt.get("response", ""),
+                            po_val=pt.get("po_val", ""),
+                            decision=pt.get("decision") or pt.get("details", "")
                         )
                     )
 
         doc = create_contract_review_document(
+            quote_no=f_data.get("quote_no", ""),
+            quote_date=f_data.get("quote_date", ""),
             po_number=f_data.get("po_number", ""),
             po_date=f_data.get("po_date", ""),
             customer_name=f_data.get("customer_name", ""),
-            work_order_no=f_data.get("work_order_no", ""),
-            project_cost=f_data.get("project_cost", ""),
-            pdc=f_data.get("pdc", ""),
-            review_points=review_points_objs,
-            conclusion=f_data.get("conclusion", ""),
+            select_type=f_data.get("select_type", "Quotation"),
             centre_dept=centre_dept,
             group_name=group_name,
             doc_no=doc_no,
             doc_date=date_str,
             prepared_by=prepared_by,
-            approved_by=approved_by
+            approved_by=approved_by,
+            review_items=review_items_objs
         )
         filename = f"ISO_ContractReview_{doc_no.replace('/', '_')}.docx"
 
