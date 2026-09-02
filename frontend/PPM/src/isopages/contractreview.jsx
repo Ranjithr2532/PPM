@@ -10,6 +10,8 @@ import {
     FileTextOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
@@ -94,6 +96,15 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
 
+    // Document state for PO check
+    const [proposalDocs, setProposalDocs] = useState([]);
+    const [poDocument, setPoDocument] = useState(null);
+    const [docsLoading, setDocsLoading] = useState(false);
+    const [showPoViewer, setShowPoViewer] = useState(false);
+    const [poViewerUrl, setPoViewerUrl] = useState('');
+    const [docViewType, setDocViewType] = useState('iframe'); // 'iframe' | 'html' | 'loading' | 'error'
+    const [docHtmlContent, setDocHtmlContent] = useState('');
+
     // Details state
     const [quoteNo, setQuoteNo] = useState('');
     const [quoteDate, setQuoteDate] = useState('');
@@ -127,9 +138,9 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                 if (Array.isArray(res.data)) {
                     const match = res.data.find(
                         d => (d.name || '').toUpperCase().includes('CONTRACT') ||
-                             (d.name || '').toUpperCase().includes('ORDER REVIEW') ||
-                             (d.document_no || '').startsWith('051') ||
-                             d.document_no === '51'
+                            (d.name || '').toUpperCase().includes('ORDER REVIEW') ||
+                            (d.document_no || '').startsWith('051') ||
+                            d.document_no === '51'
                     );
                     if (match) {
                         const num = docInfo?.document_no || match.document_no || '051';
@@ -346,6 +357,117 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             })
             .catch(err => console.error('Error fetching proposal details for Contract Review:', err));
     }, [selectedProposalId, proposals, applyProposalData]);
+
+    // Fetch documents linked to the selected proposal ID and detect PO document
+    useEffect(() => {
+        if (!selectedProposalId) {
+            setProposalDocs([]);
+            setPoDocument(null);
+            return;
+        }
+
+        setDocsLoading(true);
+        axios.get(`${API_BASE_URL}/documents/`)
+            .then(res => {
+                const docs = Array.isArray(res.data) ? res.data : [];
+                const projectDocs = docs.filter(d => {
+                    const docProjectId = d?.project_id ?? d?.project ?? d?.projectId;
+                    return docProjectId != null && String(docProjectId) === String(selectedProposalId);
+                });
+                setProposalDocs(projectDocs);
+
+                // Strict PO document detection (prevents false positives like 'proposal', 'report', etc.)
+                const isPoDoc = (d) => {
+                    if (!d) return false;
+                    const name = (d.name || '').toLowerCase();
+                    const desc = (d.description || '').toLowerCase();
+                    const url = (d.url || '').toLowerCase();
+
+                    // 1. Explicit purchase order / work order keywords
+                    if (
+                        name.includes('purchase order') || desc.includes('purchase order') || url.includes('purchase_order') || url.includes('purchase-order') ||
+                        name.includes('purchase_order') || desc.includes('purchase_order') ||
+                        name.includes('work order') || desc.includes('work order') || url.includes('work_order')
+                    ) {
+                        return true;
+                    }
+
+                    // 2. Standalone word "po" (matches "PO", "PO_123", "Customer_PO", but NOT "proposal", "report", "import", "export")
+                    const poRegex = /(^|[\s_\-./])po([\s_\-./\d]|$)/i;
+                    if (poRegex.test(name) || poRegex.test(desc) || poRegex.test(url)) {
+                        return true;
+                    }
+
+                    // 3. Match against current PO Number if set
+                    if (poNumber && poNumber.trim().length > 2) {
+                        const cleanPoNum = poNumber.trim().toLowerCase();
+                        if (name.includes(cleanPoNum) || desc.includes(cleanPoNum) || url.includes(cleanPoNum)) {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                };
+
+                const foundPo = projectDocs.find(isPoDoc) || null;
+                setPoDocument(foundPo);
+            })
+            .catch(err => {
+                console.error('Error fetching proposal documents:', err);
+                setProposalDocs([]);
+                setPoDocument(null);
+            })
+            .finally(() => {
+                setDocsLoading(false);
+            });
+    }, [selectedProposalId, poNumber]);
+
+    const handleOpenPODocument = async (docToOpen = poDocument) => {
+        if (!docToOpen) return;
+        let fileUrl = docToOpen.url || '';
+        if (!fileUrl) {
+            alert('Document URL is not available.');
+            return;
+        }
+        if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+            fileUrl = `${API_BASE_URL}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+        }
+        setPoViewerUrl(fileUrl);
+        setShowPoViewer(true);
+
+        const cleanUrl = fileUrl.split('?')[0].toLowerCase();
+        const ext = cleanUrl.split('.').pop();
+
+        if (ext === 'docx' || ext === 'doc') {
+            setDocViewType('loading');
+            setDocHtmlContent('');
+            try {
+                const res = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+                const result = await mammoth.convertToHtml({ arrayBuffer: res.data });
+                setDocHtmlContent(result.value || '<p className="p-4 text-slate-500 italic">No text content found in Word document.</p>');
+                setDocViewType('html');
+            } catch (err) {
+                console.error('Error rendering Word document with mammoth:', err);
+                setDocViewType('error');
+            }
+        } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+            setDocViewType('loading');
+            setDocHtmlContent('');
+            try {
+                const res = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+                const wb = XLSX.read(res.data, { type: 'array' });
+                const sheetName = wb.SheetNames[0];
+                const html = XLSX.utils.sheet_to_html(wb.Sheets[sheetName]);
+                setDocHtmlContent(html);
+                setDocViewType('html');
+            } catch (err) {
+                console.error('Error rendering Excel document with xlsx:', err);
+                setDocViewType('error');
+            }
+        } else {
+            setDocViewType('iframe');
+        }
+    };
 
     // Direct file upload quotation reader
     const handleQuotationFileUpload = async (event) => {
@@ -649,12 +771,11 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                         </span>
                     )}
 
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
                         status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
-                        'bg-amber-100 text-amber-800'
-                    }`}>
+                            status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                'bg-amber-100 text-amber-800'
+                        }`}>
                         {status}
                     </span>
 
@@ -678,6 +799,8 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                                     className="hidden"
                                 />
                             </label>
+
+
                         </>
                     )}
                 </div>
@@ -735,6 +858,8 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                     </button>
                 </div>
             </div>
+
+
 
 
 
@@ -894,6 +1019,30 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                     </tbody>
                 </table>
 
+                <div className="flex justify-end mb-3">
+                    <button
+                        type="button"
+                        onClick={() => handleOpenPODocument(poDocument)}
+                        disabled={!poDocument || docsLoading}
+                        className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-sm ${poDocument
+                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-pointer'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            }`}
+                        title={
+                            poDocument
+                                ? `Open PO Document (${poDocument.name})`
+                                : 'No PO Document uploaded for this proposal'
+                        }
+                    >
+                        <FileTextOutlined />
+                        {docsLoading
+                            ? 'Checking PO...'
+                            : poDocument
+                                ? 'Check PO'
+                                : 'Check PO (No Doc)'}
+                    </button>
+                </div>
+
                 <table className="w-full border-collapse border border-slate-800 text-xs mb-6">
                     <thead>
                         <tr className="bg-slate-900 text-white font-bold text-center">
@@ -1005,6 +1154,72 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                 </div>
 
             </div>
+            
+            {/* PO Viewer Modal */}
+            {showPoViewer && (
+                <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                <FileTextOutlined /> Document Preview
+                            </h3>
+                            <div className="flex items-center gap-4">
+                                <a 
+                                    href={poViewerUrl} 
+                                    download
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                                >
+                                    Download / Open External
+                                </a>
+                                <button
+                                    onClick={() => setShowPoViewer(false)}
+                                    className="text-slate-400 hover:text-slate-600 font-bold text-lg leading-none ml-2"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 bg-slate-100 p-4 overflow-auto">
+                            {docViewType === 'loading' && (
+                                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 font-semibold text-sm">
+                                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    Loading and rendering document...
+                                </div>
+                            )}
+                            {docViewType === 'html' && (
+                                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-4xl mx-auto overflow-auto text-slate-800 space-y-4">
+                                    <div 
+                                        className="prose prose-slate max-w-none [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2"
+                                        dangerouslySetInnerHTML={{ __html: docHtmlContent }}
+                                    />
+                                </div>
+                            )}
+                            {docViewType === 'error' && (
+                                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600">
+                                    <p className="font-semibold text-rose-600">Could not render file directly in browser preview.</p>
+                                    <a 
+                                        href={poViewerUrl} 
+                                        download
+                                        className="bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
+                                    >
+                                        Download File
+                                    </a>
+                                </div>
+                            )}
+                            {docViewType === 'iframe' && (
+                                <iframe 
+                                    src={poViewerUrl} 
+                                    className="w-full h-full bg-white rounded-xl border border-slate-300 shadow-inner"
+                                    title="Document Viewer"
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }
