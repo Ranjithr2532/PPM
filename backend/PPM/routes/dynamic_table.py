@@ -292,23 +292,10 @@ def get_latest_costs_summary(project_id: int, db: Session = Depends(get_db)):
     }
 
 
-# ------------------------------------------------------------------
-# POST /dynamic-tables/{project_id}/generate-word
-# Saves tables as a NEW version (never overwrites old versions),
-# then returns the formatted .docx file in the compact/simple style.
-# ------------------------------------------------------------------
-@router.post("/{project_id}/generate-word")
-def save_and_generate_word_document(
-    project_id: int, payload: GenerateWordPayload, db: Session = Depends(get_db)
-):
-    """
-    Saves all tables under a version number and generates a compact,
-    single-accent-color corporate Word proposal.
-    """
+def save_tables_to_db(project_id: int, payload: GenerateWordPayload, db: Session) -> int:
     if not payload.tables:
         raise HTTPException(status_code=400, detail="At least one table is required")
 
-    # 1. Check if this exact table configuration matches any existing version to prevent duplicates
     matched_version = None
     versions = [v[0] for v in db.query(DynamicTable.version).filter(DynamicTable.project_id == project_id).distinct().all()]
 
@@ -357,7 +344,40 @@ def save_and_generate_word_document(
             )
         db.commit()
 
-    # 2. Build the compact/simple corporate Word document (Targeted for 1-page layout)
+    return new_version
+
+
+# ------------------------------------------------------------------
+# POST /dynamic-tables/{project_id}/save
+# Saves tables as a NEW version (never overwrites old versions)
+# ------------------------------------------------------------------
+@router.post("/{project_id}/save")
+def save_table_details(
+    project_id: int, payload: GenerateWordPayload, db: Session = Depends(get_db)
+):
+    """
+    Saves all tables under a version number in database.
+    """
+    version = save_tables_to_db(project_id, payload, db)
+    return {"version": version, "detail": f"Saved as Version {version}"}
+
+
+# ------------------------------------------------------------------
+# POST /dynamic-tables/{project_id}/generate-word
+# Generates and returns formatted .docx file without saving to DB
+# ------------------------------------------------------------------
+@router.post("/{project_id}/generate-word")
+def generate_word_document_only(
+    project_id: int, payload: GenerateWordPayload, db: Session = Depends(get_db)
+):
+    """
+    Generates a compact, single-accent-color corporate Word proposal document.
+    Does not save to DB.
+    """
+    if not payload.tables:
+        raise HTTPException(status_code=400, detail="At least one table is required")
+
+    # Build the compact/simple corporate Word document (Targeted for 1-page layout)
     doc = DocxDocument()
 
     for section in doc.sections:

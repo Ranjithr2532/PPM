@@ -60,7 +60,13 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-/** POST /{projectId}/generate-word — saves as new version, downloads .docx */
+/** POST /{projectId}/save — saves dynamic tables to database */
+async function saveTablesData(projectId, payload) {
+    const res = await api.post(`/${projectId}/save`, payload);
+    return res.data;
+}
+
+/** POST /{projectId}/generate-word — generates and downloads .docx without saving */
 async function generateWordDocument(projectId, payload) {
     const res = await api.post(`/${projectId}/generate-word`, payload, { responseType: "blob" });
 
@@ -1390,6 +1396,7 @@ export function CostEstimationModal({
 }) {
     const [headers, setHeaders] = useState([]);
     const [activeTab, setActiveTab] = useState("recurring");
+    const [saving, setSaving] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [currentVersion, setCurrentVersion] = useState(null);
@@ -1552,19 +1559,38 @@ export function CostEstimationModal({
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     };
 
-    const handleGenerate = async () => {
-        if (!projectId) { message.error("Missing project reference - cannot save or generate"); return; }
-        setGenerating(true);
+    const handleSaveDetails = async () => {
+        if (!projectId) { message.error("Missing project reference - cannot save details"); return; }
+        setSaving(true);
         try {
-            const newVersion = await generateWordDocument(projectId, {
+            const res = await saveTablesData(projectId, {
                 title: title || "Cost Breakdown",
                 created_by: createdBy,
                 tables: headers,
             });
-            message.success(`Saved as Version ${newVersion || ""} and Word document generated`);
-            closeModal();
+            const ver = res?.version;
+            if (ver) setCurrentVersion(ver);
+            message.success(`Cost breakdown details saved successfully${ver ? ` (Version ${ver})` : ""}`);
+        } catch (err) {
+            console.error("Save details error:", err);
+            message.error("Failed to save cost breakdown details");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleGenerate = async () => {
+        if (!projectId) { message.error("Missing project reference - cannot generate"); return; }
+        setGenerating(true);
+        try {
+            await generateWordDocument(projectId, {
+                title: title || "Cost Breakdown",
+                created_by: createdBy,
+                tables: headers,
+            });
+            message.success("Word document generated successfully");
         } catch {
-            message.error("Failed to save/generate document");
+            message.error("Failed to generate Word document");
         } finally {
             setGenerating(false);
         }
@@ -1777,6 +1803,16 @@ export function CostEstimationModal({
                             >
                                 <FileWordOutlined /> Preview {previewOpen ? "✕" : "▸"}
                             </button>
+
+                            {/* Save Details Button */}
+                            <button
+                                onClick={handleSaveDetails}
+                                disabled={saving || !projectId}
+                                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-60"
+                            >
+                                <CheckOutlined /> {saving ? "Saving..." : "Save Details"}
+                            </button>
+
                             {onApply || hideGenerateWord ? (
                                 <button
                                     onClick={() => { if (onApply) onApply(headers); message.success("Cost breakdown applied to proposal document"); onClose(); }}
