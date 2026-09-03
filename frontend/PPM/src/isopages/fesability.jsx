@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DownloadOutlined,
     ReloadOutlined,
     FileWordOutlined,
     ArrowLeftOutlined,
     CheckOutlined,
-    CloseOutlined
-
+    CloseOutlined,
+    CheckCircleOutlined,
+    LoadingOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
@@ -55,7 +56,7 @@ const getLoggedUserGroup = () => {
         const rawUser = window.localStorage.getItem('ppm_user');
         if (!rawUser) return '';
         const parsedUser = JSON.parse(rawUser);
-        return (parsedUser.group || '').trim().toUpperCase();
+        return (parsedUser.group || parsedUser.groupName || '').trim().toUpperCase();
     } catch (e) {
         return '';
     }
@@ -67,11 +68,25 @@ const getDefaultRevisionCode = (docCode) => {
     return `CMTI-QMS-${groupStr}-${docCode}/Rev00`;
 };
 
+const getCurrentUserRole = () => {
+    try {
+        const rawUser = window.localStorage.getItem('ppm_user');
+        if (!rawUser) return 'scientist';
+        const parsedUser = JSON.parse(rawUser);
+        const r = (parsedUser.role || '').toLowerCase().trim();
+        if (r === 'centre head' || r === 'center head') return 'ch';
+        if (r === 'group head') return 'gh';
+        return r || 'scientist';
+    } catch (e) {
+        return 'scientist';
+    }
+};
+
 const DEFAULT_RESPONSES = {
     r1_response: 'Yes',
-    r1_details: 'As per quotation',
+    r1_details: '',
     r2_response: 'Yes',
-    r2_details: 'As per quotation',
+    r2_details: '',
     r3_response: 'No',
     r3_details: '',
     r4_response: 'No',
@@ -131,6 +146,22 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
 
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
+
     // Document state (replaces Ant Design form state)
     const [partyDetails, setPartyDetails] = useState('');
     const [enquiryRef, setEnquiryRef] = useState('');
@@ -144,6 +175,22 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
     const [responses, setResponses] = useState(DEFAULT_RESPONSES);
+
+    // Check user role
+    const currentUserRole = (() => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+    const isAdmin = ['admin', 'director'].includes(currentUserRole);
+    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
+    const isApproved = status === 'APPROVED';
+    const isSubmitted = status === 'SUBMITTED';
+    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
+    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
 
     useEffect(() => {
         if (docInfo) {
@@ -181,50 +228,152 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             setSelectedProposalId(String(urlPropId));
         }
 
-        if (urlId) {
-            async function loadSubmission() {
-                try {
+        async function loadSubmission() {
+            try {
+                let sub = null;
+                if (urlId) {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
-                    if (res.data) {
-                        const sub = res.data;
-                        setSubmissionId(sub.id);
-                        setStatus(sub.status || 'DRAFT');
-                        setDocNo(sub.document_no || '');
-                        if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
+                    if (res.data) sub = res.data;
+                } else if (urlPropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: urlPropId, doc_type: 'FEASIBILITY' });
+                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
+                }
 
-                        const hData = sub.header_data || {};
-                        if (hData.dateStr) setDocDate(hData.dateStr);
-                        if (hData.preparedName) setPreparedBy(hData.preparedName);
-                        if (hData.approvedName) setApprovedBy(hData.approvedName);
+                if (sub) {
+                    setSubmissionId(sub.id);
+                    submissionIdRef.current = sub.id;
+                    setStatus(sub.status || 'DRAFT');
+                    statusRef.current = sub.status || 'DRAFT';
+                    setDocNo(sub.document_no || '');
+                    if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
 
-                        const fData = sub.form_data || {};
-                        if (fData.party_details) setPartyDetails(fData.party_details);
-                        if (fData.enquiry_ref_no) setEnquiryRef(fData.enquiry_ref_no);
-                        if (fData.description_of_the_enquiry) setDescription(fData.description_of_the_enquiry);
-                        if (fData.conclusion) setConclusion(fData.conclusion);
+                    const hData = sub.header_data || {};
+                    if (hData.dateStr) setDocDate(hData.dateStr);
+                    if (hData.preparedName) setPreparedBy(hData.preparedName);
+                    if (hData.approvedName) setApprovedBy(hData.approvedName);
 
-                        const rList = fData.review_points || [];
-                        const updatedResp = { ...DEFAULT_RESPONSES };
-                        rList.forEach((pt, idx) => {
-                            const template = REVIEW_POINTS_TEMPLATES[idx];
-                            if (template) {
-                                if (pt.yes_no_na !== undefined || pt.response !== undefined) {
-                                    updatedResp[template.key_resp] = pt.yes_no_na || pt.response || '';
-                                }
-                                if (pt.details !== undefined) {
-                                    updatedResp[template.key_det] = pt.details || '';
-                                }
+                    const fData = sub.form_data || {};
+                    if (fData.party_details) setPartyDetails(fData.party_details);
+                    if (fData.enquiry_ref_no) setEnquiryRef(fData.enquiry_ref_no);
+                    if (fData.description_of_the_enquiry) setDescription(fData.description_of_the_enquiry);
+                    if (fData.conclusion) setConclusion(fData.conclusion);
+
+                    const rList = fData.review_points || [];
+                    const updatedResp = { ...DEFAULT_RESPONSES };
+                    rList.forEach((pt, idx) => {
+                        const template = REVIEW_POINTS_TEMPLATES[idx];
+                        if (template) {
+                            if (pt.yes_no_na !== undefined || pt.response !== undefined) {
+                                updatedResp[template.key_resp] = pt.yes_no_na || pt.response || '';
                             }
-                        });
-                        setResponses(updatedResp);
-                    }
-                } catch (err) {
-                    console.error('Failed to load ISO submission:', err);
+                            if (pt.details !== undefined) {
+                                updatedResp[template.key_det] = pt.details || '';
+                            }
+                        }
+                    });
+                    setResponses(updatedResp);
+                }
+            } catch (err) {
+                console.error('Failed to load ISO submission:', err);
+            } finally {
+                setTimeout(() => { isHydratedRef.current = true; }, 400);
+            }
+        }
+        loadSubmission();
+    }, [propSubmissionId, propProposalId]);
+
+    // Auto-Save Draft to Database
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'FEASIBILITY REVIEW FORM',
+                docNo: docNo || '',
+                code: revisionCode,
+                dateStr: docDate,
+                pageStr: '1 of 1',
+                centreDept: loggedCentreDept || '',
+                isoSpec: '',
+                groupName: getLoggedUserGroup() || '',
+                preparedName: preparedBy || getLoggedUserName(),
+                approvedName: approvedBy || '',
+            };
+
+            const reviewPointsList = REVIEW_POINTS_TEMPLATES.map((item) => ({
+                sl_no: item.sl_no,
+                point: item.point,
+                yes_no_na: responses[item.key_resp] || '',
+                details: responses[item.key_det] || '',
+            }));
+
+            const formDataPayload = {
+                party_details: partyDetails,
+                enquiry_ref_no: enquiryRef,
+                description_of_the_enquiry: description,
+                review_points: reviewPointsList,
+                conclusion: conclusion,
+            };
+
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                doc_type: 'FEASIBILITY',
+                document_no: docNo || '',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formDataPayload,
+                status: currentDocStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionIdRef.current) {
+                response = await axios.put(`${API_BASE_URL}/iso-submissions/${submissionIdRef.current}`, payload);
+            } else {
+                response = await axios.post(`${API_BASE_URL}/iso-submissions/`, payload);
+                if (response.data && response.data.id) {
+                    setSubmissionId(response.data.id);
+                    submissionIdRef.current = response.data.id;
                 }
             }
-            loadSubmission();
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save error in Feasibility:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
         }
-    }, [propSubmissionId, propProposalId]);
+    }, [isReadOnly, docNo, revisionCode, docDate, loggedCentreDept, preparedBy, approvedBy, responses, partyDetails, enquiryRef, description, conclusion, selectedProposalId]);
+
+    // Debounced Auto-Save
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        return () => clearTimeout(timer);
+    }, [partyDetails, enquiryRef, description, responses, conclusion, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
+
+    // Flush on page unload / refresh
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+    }, [performAutoSave, isReadOnly]);
 
     // Fetch user details and load proposals
     const fetchProposals = useCallback(async () => {
@@ -492,24 +641,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
         } finally {
             setSubmitting(false);
         }
-
     };
-
-    // Check user role
-    const currentUserRole = (() => {
-        try {
-            const rawUser = window.localStorage.getItem('ppm_user');
-            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
-        } catch (e) {
-            return '';
-        }
-    })();
-    const isAdmin = ['admin', 'director'].includes(currentUserRole);
-    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
-    const isApproved = status === 'APPROVED';
-    const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
 
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
@@ -532,8 +664,14 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
                     {onBack && (
                         <button
-                            onClick={onBack}
+                            onClick={async () => {
+                                if (isHydratedRef.current && !isReadOnly) {
+                                    await performAutoSave();
+                                }
+                                onBack();
+                            }}
                             className="flex items-center gap-1.5 text-slate-600 hover:text-indigo-600 font-semibold text-xs bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 transition-all"
+                            title="Back (Auto-saves draft)"
                         >
                             <ArrowLeftOutlined /> Back
                         </button>
@@ -552,28 +690,32 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                         }`}>
                         {status}
                     </span>
+
+                    {/* Auto-Save Draft Status Badge */}
+                    <div className="ml-1">
+                        {autoSaveState === 'saving' && (
+                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                <LoadingOutlined className="text-[10px]" /> Saving draft...
+                            </span>
+                        )}
+                        {autoSaveState === 'saved' && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
                     {/* Scientist Create / Edit Controls */}
                     {!isReadOnly && !isApprover && (
-                        <>
-                            <button
-                                onClick={() => handleSaveSubmission('DRAFT')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                            >
-                                {submitting ? 'Saving...' : 'Save Draft'}
-                            </button>
-
-                            <button
-                                onClick={() => handleSaveSubmission('SUBMITTED')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
-                            >
-                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
-                            </button>
-                        </>
+                        <button
+                            onClick={() => handleSaveSubmission('SUBMITTED')}
+                            disabled={submitting}
+                            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                        >
+                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                        </button>
                     )}
 
                     {/* CH / GH Approver Review Controls */}

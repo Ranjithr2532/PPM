@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DownloadOutlined,
     FileWordOutlined,
@@ -7,7 +7,9 @@ import {
     DeleteOutlined,
     CheckOutlined,
     CloseOutlined,
-    BoldOutlined
+    BoldOutlined,
+    CheckCircleOutlined,
+    LoadingOutlined
 } from '@ant-design/icons';
 import { DatePicker, message } from 'antd';
 import dayjs from 'dayjs';
@@ -279,65 +281,93 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     const totalB = calcSubtotal(nonRecurringBudget);
     const grandTotal = totalA + totalB;
 
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
+
     // Check props or URL parameters to load existing submission
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const urlId = propSubmissionId || searchParams.get('submission_id') || searchParams.get('iso_id');
+        const effectivePropId = propProposalId || existingRecord?.id || proposalId;
 
-        if (urlId) {
-            async function loadSubmission() {
-                try {
+        async function loadSubmission() {
+            try {
+                let sub = null;
+                if (urlId) {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
-                    if (res.data) {
-                        const sub = res.data;
-                        setSubmissionId(sub.id);
-                        setStatus(sub.status || 'DRAFT');
-                        setDocNo(sub.document_no || '');
-
-                        const h = sub.header_data || {};
-                        if (h.document_no) setDocNo(h.document_no);
-                        if (h.date) setDocDate(h.date);
-                        if (h.prepared_by) setPreparedBy(h.prepared_by);
-                        if (h.approved_by) setApprovedBy(h.approved_by);
-
-                        const f = sub.form_data || {};
-                        if (f.title_of_project) setTitleOfProject(f.title_of_project);
-                        if (f.project_no) setProjectNo(f.project_no);
-                        if (f.project_category) setProjectCategory(f.project_category);
-                        if (f.sponsoring_agency) setSponsoringAgency(f.sponsoring_agency);
-                        if (f.sanction_order) setSanctionOrder(f.sanction_order);
-                        if (f.total_cost) setTotalCost(f.total_cost);
-                        if (f.project_leader) setProjectLeader(f.project_leader);
-                        if (f.co_leaders) setCoLeaders(f.co_leaders);
-                        if (Array.isArray(f.core_st_members)) setCoreStMembers(f.core_st_members);
-                        if (f.dev_partners_name) setDevPartnersName(f.dev_partners_name);
-                        if (f.dev_partners_roles) setDevPartnersRoles(f.dev_partners_roles);
-                        if (f.commencement_date) setCommencementDate(f.commencement_date);
-                        if (f.completion_date) setCompletionDate(f.completion_date);
-                        if (Array.isArray(f.proposed_objectives)) setProposedObjectives(f.proposed_objectives);
-                        if (f.current_status) setCurrentStatus(f.current_status);
-                        if (Array.isArray(f.research_tasks)) setResearchTasks(f.research_tasks);
-                        if (f.task_active_months) setTaskActiveMonths(f.task_active_months);
-                        if (Array.isArray(f.recurring_budget)) setRecurringBudget(f.recurring_budget);
-                        if (Array.isArray(f.non_recurring_budget)) setNonRecurringBudget(f.non_recurring_budget);
-                        if (f.salient_achievements) setSalientAchievements(f.salient_achievements);
-                        if (f.expected_trl) setExpectedTrl(f.expected_trl);
-                        if (f.ipr_details) setIprDetails(f.ipr_details);
-                        if (Array.isArray(f.human_resources)) setHumanResources(f.human_resources);
-                        if (f.revenue_generated) setRevenueGenerated(f.revenue_generated);
-                        if (Array.isArray(f.equipment_details)) setEquipmentDetails(f.equipment_details);
-                        if (f.infrastructure_details) setInfrastructureDetails(f.infrastructure_details);
-                    }
-                } catch (err) {
-                    console.error('Failed to load submission:', err);
+                    if (res.data) sub = res.data;
+                } else if (effectivePropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: effectivePropId, doc_type: 'PROJECT_PROPOSAL' });
+                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
                 }
+
+                if (sub) {
+                    setSubmissionId(sub.id);
+                    submissionIdRef.current = sub.id;
+                    setStatus(sub.status || 'DRAFT');
+                    statusRef.current = sub.status || 'DRAFT';
+                    setDocNo(sub.document_no || '');
+
+                    const h = sub.header_data || {};
+                    if (h.document_no) setDocNo(h.document_no);
+                    if (h.date) setDocDate(h.date);
+                    if (h.prepared_by) setPreparedBy(h.prepared_by);
+                    if (h.approved_by) setApprovedBy(h.approved_by);
+
+                    const f = sub.form_data || {};
+                    if (f.title_of_project) setTitleOfProject(f.title_of_project);
+                    if (f.project_no) setProjectNo(f.project_no);
+                    if (f.project_category) setProjectCategory(f.project_category);
+                    if (f.sponsoring_agency) setSponsoringAgency(f.sponsoring_agency);
+                    if (f.sanction_order) setSanctionOrder(f.sanction_order);
+                    if (f.total_cost) setTotalCost(f.total_cost);
+                    if (f.project_leader) setProjectLeader(f.project_leader);
+                    if (f.co_leaders) setCoLeaders(f.co_leaders);
+                    if (Array.isArray(f.core_st_members)) setCoreStMembers(f.core_st_members);
+                    if (f.dev_partners_name) setDevPartnersName(f.dev_partners_name);
+                    if (f.dev_partners_roles) setDevPartnersRoles(f.dev_partners_roles);
+                    if (f.commencement_date) setCommencementDate(f.commencement_date);
+                    if (f.completion_date) setCompletionDate(f.completion_date);
+                    if (Array.isArray(f.proposed_objectives)) setProposedObjectives(f.proposed_objectives);
+                    if (f.current_status) setCurrentStatus(f.current_status);
+                    if (Array.isArray(f.research_tasks)) setResearchTasks(f.research_tasks);
+                    if (f.task_active_months) setTaskActiveMonths(f.task_active_months);
+                    if (Array.isArray(f.recurring_budget)) setRecurringBudget(f.recurring_budget);
+                    if (Array.isArray(f.non_recurring_budget)) setNonRecurringBudget(f.non_recurring_budget);
+                    if (f.salient_achievements) setSalientAchievements(f.salient_achievements);
+                    if (f.expected_trl) setExpectedTrl(f.expected_trl);
+                    if (f.ipr_details) setIprDetails(f.ipr_details);
+                    if (Array.isArray(f.human_resources)) setHumanResources(f.human_resources);
+                    if (f.revenue_generated) setRevenueGenerated(f.revenue_generated);
+                    if (Array.isArray(f.equipment_details)) setEquipmentDetails(f.equipment_details);
+                    if (f.infrastructure_details) setInfrastructureDetails(f.infrastructure_details);
+                }
+            } catch (err) {
+                console.error('Failed to load submission:', err);
+            } finally {
+                setTimeout(() => {
+                    isHydratedRef.current = true;
+                }, 400);
             }
-            loadSubmission();
         }
-    }, [propSubmissionId]);
+        loadSubmission();
+    }, [propSubmissionId, propProposalId, existingRecord]);
 
     // Construct Payload
-    const buildPayload = () => {
+    const buildPayload = useCallback(() => {
         return {
             title_of_project: titleOfProject,
             project_no: projectNo,
@@ -373,7 +403,87 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
             doc_date: docDate,
             filename: filename
         };
-    };
+    }, [titleOfProject, projectNo, projectCategory, sponsoringAgency, sanctionOrder, totalCost, projectLeader, coLeaders, coreStMembers, devPartnersName, devPartnersRoles, commencementDate, completionDate, proposedObjectives, currentStatus, researchTasks, taskActiveMonths, recurringBudget, nonRecurringBudget, salientAchievements, expectedTrl, iprDetails, humanResources, revenueGenerated, equipmentDetails, infrastructureDetails, preparedBy, approvedBy, loggedCentreDept, docNo, docDate, filename]);
+
+    // Auto-Save Draft to Database
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            let activePropId = proposalId || propProposalId || (existingRecord ? existingRecord.id : null);
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                doc_type: 'PROJECT_PROPOSAL',
+                document_no: docNo || '009',
+                proposal_id: activePropId || null,
+                header_data: {
+                    document_no: docNo,
+                    date: docDate,
+                    prepared_by: preparedBy,
+                    approved_by: approvedBy,
+                    centre_dept: loggedCentreDept
+                },
+                form_data: buildPayload(),
+                status: currentDocStatus,
+                created_by: userId
+            };
+
+            let res;
+            if (submissionIdRef.current) {
+                res = await isoSubmissionService.updateSubmission(submissionIdRef.current, payload);
+            } else {
+                res = await isoSubmissionService.createSubmission(payload);
+                if (res && res.id) {
+                    setSubmissionId(res.id);
+                    submissionIdRef.current = res.id;
+                }
+            }
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save draft error:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
+        }
+    }, [isReadOnly, proposalId, propProposalId, existingRecord, docNo, docDate, preparedBy, approvedBy, loggedCentreDept, buildPayload]);
+
+    // Debounced Auto-Save on field change
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+
+        const timer = setTimeout(() => {
+            performAutoSave();
+        }, 1000);
+
+        return () => clearTimeout(timer);
+    }, [titleOfProject, projectNo, projectCategory, sponsoringAgency, sanctionOrder, totalCost, projectLeader, coLeaders, coreStMembers, devPartnersName, devPartnersRoles, commencementDate, completionDate, proposedObjectives, currentStatus, researchTasks, taskActiveMonths, recurringBudget, nonRecurringBudget, salientAchievements, expectedTrl, iprDetails, humanResources, revenueGenerated, equipmentDetails, infrastructureDetails, preparedBy, approvedBy, docNo, docDate, performAutoSave, isReadOnly]);
+
+    // Flush on page unload / refresh
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) {
+                performAutoSave();
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) {
+                performAutoSave();
+            }
+        };
+    }, [performAutoSave, isReadOnly]);
 
     // Generate Word Document (.docx)
     const handleGenerateDoc = async () => {
@@ -592,8 +702,14 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
             <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     <button
-                        onClick={onBack}
+                        onClick={async () => {
+                            if (isHydratedRef.current && !isReadOnly) {
+                                await performAutoSave();
+                            }
+                            if (onBack) onBack();
+                        }}
                         className="flex items-center gap-2 text-slate-600 hover:text-indigo-600 font-bold text-xs bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 transition-colors"
+                        title="Back to Directory (Auto-saves draft)"
                     >
                         <ArrowLeftOutlined /> Back to Directory
                     </button>
@@ -605,28 +721,32 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                         }`}>
                         {status}
                     </span>
+
+                    {/* Auto-Save Draft Status Badge */}
+                    <div className="ml-1">
+                        {autoSaveState === 'saving' && (
+                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                <LoadingOutlined className="text-[10px]" /> Saving draft...
+                            </span>
+                        )}
+                        {autoSaveState === 'saved' && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
                     {/* Scientist Create / Edit Controls */}
                     {!isReadOnly && (
-                        <>
-                            <button
-                                onClick={() => handleSaveSubmission('DRAFT')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                            >
-                                {submitting ? 'Saving...' : 'Save Draft'}
-                            </button>
-
-                            <button
-                                onClick={() => handleSaveSubmission('SUBMITTED')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"
-                            >
-                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
-                            </button>
-                        </>
+                        <button
+                            onClick={() => handleSaveSubmission('SUBMITTED')}
+                            disabled={submitting}
+                            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"
+                        >
+                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                        </button>
                     )}
 
                     {/* CH / GH Approver Review Controls */}

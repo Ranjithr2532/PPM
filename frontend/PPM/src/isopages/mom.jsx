@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DownloadOutlined,
     ReloadOutlined,
@@ -7,7 +7,9 @@ import {
     PlusOutlined,
     DeleteOutlined,
     CheckOutlined,
-    CloseOutlined
+    CloseOutlined,
+    CheckCircleOutlined,
+    LoadingOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
@@ -51,6 +53,22 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
     const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
+
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     const [filename, setFilename] = useState('CMTI_Minutes_of_Meeting.docx');
     const loggedCentreDept = getLoggedUserCentreDept();
@@ -113,55 +131,166 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
 
         if (urlPropId) setSelectedProposalId(String(urlPropId));
 
-        if (urlId) {
-            async function loadSubmission() {
-                try {
+        async function loadSubmission() {
+            try {
+                let rec = null;
+                if (urlId) {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
-                    if (res.data) {
-                        const rec = res.data;
-                        setSubmissionId(rec.id);
-                        setStatus(rec.status || 'DRAFT');
+                    if (res.data) rec = res.data;
+                } else if (urlPropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: urlPropId, doc_type: 'MOM' });
+                    if (Array.isArray(subs) && subs.length > 0) rec = subs[0];
+                }
 
-                        const hData = rec.header_data || {};
-                        const fData = rec.form_data || {};
+                if (rec) {
+                    setSubmissionId(rec.id);
+                    submissionIdRef.current = rec.id;
+                    setStatus(rec.status || 'DRAFT');
+                    statusRef.current = rec.status || 'DRAFT';
 
-                        if (rec.proposal_id) setSelectedProposalId(String(rec.proposal_id));
-                        if (rec.document_no) setDocNo(rec.document_no);
+                    const hData = rec.header_data || {};
+                    const fData = rec.form_data || {};
 
-                        if (hData.docNo) setDocNo(hData.docNo);
-                        if (hData.dateStr) setDocDate(hData.dateStr);
-                        const loadedPreparedBy = fData.prepared_by || hData.preparedName || getLoggedUserName();
-                        if (hData.preparedName) setPreparedBy(hData.preparedName);
-                        if (hData.approvedName) setApprovedBy(hData.approvedName);
-                        if (hData.groupName) setRevisionCode(hData.groupName);
+                    if (rec.proposal_id) setSelectedProposalId(String(rec.proposal_id));
+                    if (rec.document_no) setDocNo(rec.document_no);
 
-                        if (fData.meeting_date_time) setMeetingDateTime(fData.meeting_date_time);
-                        if (fData.meeting_location) setMeetingLocation(fData.meeting_location);
-                        if (fData.prev_mom_no_date) setPrevMomNoDate(fData.prev_mom_no_date);
-                        if (fData.prev_action_points) setPrevActionPoints(fData.prev_action_points);
-                        if (fData.prev_status) setPrevStatus(fData.prev_status);
-                        if (fData.agenda) setAgenda(fData.agenda);
-                        if (fData.conclusion) setConclusion(fData.conclusion);
-                        if (fData.prepared_by) setPreparedBy(fData.prepared_by);
-                        if (fData.approved_by) setApprovedBy(fData.approved_by);
+                    if (hData.docNo) setDocNo(hData.docNo);
+                    if (hData.dateStr) setDocDate(hData.dateStr);
+                    const loadedPreparedBy = fData.prepared_by || hData.preparedName || getLoggedUserName();
+                    if (hData.preparedName) setPreparedBy(hData.preparedName);
+                    if (hData.approvedName) setApprovedBy(hData.approvedName);
+                    if (hData.groupName) setRevisionCode(hData.groupName);
 
-                        if (Array.isArray(fData.summary_points) && fData.summary_points.length > 0) {
-                            const mappedPoints = fData.summary_points.map(pt => ({
-                                ...pt,
-                                responsibility: (pt.responsibility !== undefined && pt.responsibility !== null && String(pt.responsibility).trim() !== '')
-                                    ? pt.responsibility
-                                    : loadedPreparedBy
-                            }));
-                            setSummaryPoints(mappedPoints);
-                        }
+                    if (fData.meeting_date_time) setMeetingDateTime(fData.meeting_date_time);
+                    if (fData.meeting_location) setMeetingLocation(fData.meeting_location);
+                    if (fData.prev_mom_no_date) setPrevMomNoDate(fData.prev_mom_no_date);
+                    if (fData.prev_action_points) setPrevActionPoints(fData.prev_action_points);
+                    if (fData.prev_status) setPrevStatus(fData.prev_status);
+                    if (fData.agenda) setAgenda(fData.agenda);
+                    if (fData.conclusion) setConclusion(fData.conclusion);
+                    if (fData.prepared_by) setPreparedBy(fData.prepared_by);
+                    if (fData.approved_by) setApprovedBy(fData.approved_by);
+
+                    if (Array.isArray(fData.summary_points) && fData.summary_points.length > 0) {
+                        const mappedPoints = fData.summary_points.map(pt => ({
+                            ...pt,
+                            responsibility: (pt.responsibility !== undefined && pt.responsibility !== null && String(pt.responsibility).trim() !== '')
+                                ? pt.responsibility
+                                : loadedPreparedBy
+                        }));
+                        setSummaryPoints(mappedPoints);
                     }
-                } catch (err) {
-                    console.error('Failed to fetch existing ISO submission:', err);
+                }
+            } catch (err) {
+                console.error('Failed to fetch existing ISO submission:', err);
+            } finally {
+                setTimeout(() => { isHydratedRef.current = true; }, 400);
+            }
+        }
+        loadSubmission();
+    }, [propSubmissionId, propProposalId]);
+
+    const currentUserRole = (() => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
+        } catch (e) { return ''; }
+    })();
+    const isAdmin = ['admin', 'director'].includes(currentUserRole);
+    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
+    const isApproved = status === 'APPROVED';
+    const isSubmitted = status === 'SUBMITTED';
+    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+
+    // Auto-Save Draft to Database
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'MINUTES OF MEETING',
+                docNo: docNo || '037',
+                code: revisionCode,
+                dateStr: docDate,
+                pageStr: '1 of 1',
+                centreDept: loggedCentreDept || '',
+                groupName: revisionCode,
+                preparedName: preparedBy || getLoggedUserName(),
+                approvedName: approvedBy || '',
+            };
+
+            const formData = {
+                meeting_date_time: meetingDateTime,
+                meeting_location: meetingLocation,
+                prev_mom_no_date: prevMomNoDate,
+                prev_action_points: prevActionPoints,
+                prev_status: prevStatus,
+                agenda: agenda,
+                summary_points: summaryPoints,
+                conclusion: conclusion,
+                prepared_by: preparedBy || getLoggedUserName(),
+                approved_by: approvedBy || '',
+            };
+
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                doc_type: 'MOM',
+                document_no: docNo || '037',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formData,
+                status: currentDocStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionIdRef.current) {
+                response = await isoSubmissionService.updateSubmission(submissionIdRef.current, payload);
+            } else {
+                response = await isoSubmissionService.createSubmission(payload);
+                if (response && response.id) {
+                    setSubmissionId(response.id);
+                    submissionIdRef.current = response.id;
                 }
             }
-            loadSubmission();
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save error in MOM:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
         }
-    }, [propSubmissionId, propProposalId]);
+    }, [isReadOnly, docNo, revisionCode, docDate, loggedCentreDept, preparedBy, approvedBy, meetingDateTime, meetingLocation, prevMomNoDate, prevActionPoints, prevStatus, agenda, summaryPoints, conclusion, selectedProposalId]);
+
+    // Debounced Auto-Save
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        return () => clearTimeout(timer);
+    }, [meetingDateTime, meetingLocation, prevMomNoDate, prevActionPoints, prevStatus, agenda, summaryPoints, conclusion, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
+
+    // Flush on page unload / refresh
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+    }, [performAutoSave, isReadOnly]);
 
     // Add / remove summary points
     const addPointRow = () => {
@@ -345,22 +474,6 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
         }
     };
 
-    // Role check
-    const currentUserRole = (() => {
-        try {
-            const rawUser = window.localStorage.getItem('ppm_user');
-            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
-        } catch (e) {
-            return '';
-        }
-    })();
-    const isAdmin = ['admin', 'director'].includes(currentUserRole);
-    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
-    const isApproved = status === 'APPROVED';
-    const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
-
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
             {/* Status Alert Banners */}
@@ -381,34 +494,45 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
             <div className="w-full max-w-4xl flex items-center justify-between gap-4 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={onBack}
+                        onClick={async () => {
+                            if (isHydratedRef.current && !isReadOnly) {
+                                await performAutoSave();
+                            }
+                            if (onBack) onBack();
+                        }}
                         className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 px-3 py-2 rounded-xl transition-all"
+                        title="Back to ISO Documents (Auto-saves draft)"
                     >
                         <ArrowLeftOutlined /> Back to ISO Documents
                     </button>
                     <span className="text-sm font-bold text-slate-800 border-l border-slate-200 pl-3">
                         Minutes of Meeting (Doc No: 037)
                     </span>
+
+                    {/* Auto-Save Draft Status Badge */}
+                    <div className="ml-1">
+                        {autoSaveState === 'saving' && (
+                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                <LoadingOutlined className="text-[10px]" /> Saving draft...
+                            </span>
+                        )}
+                        {autoSaveState === 'saved' && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2.5">
                     {!isReadOnly && !isApprover && (
-                        <>
-                            <button
-                                onClick={() => handleSaveSubmission('DRAFT')}
-                                disabled={submitting}
-                                className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
-                            >
-                                {submitting ? 'Saving...' : 'Save Draft'}
-                            </button>
-                            <button
-                                onClick={() => handleSaveSubmission('SUBMITTED')}
-                                disabled={submitting}
-                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
-                            >
-                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
-                            </button>
-                        </>
+                        <button
+                            onClick={() => handleSaveSubmission('SUBMITTED')}
+                            disabled={submitting}
+                            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                        >
+                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                        </button>
                     )}
 
                     {isApprover && isSubmitted && (

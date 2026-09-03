@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Input,
@@ -25,6 +25,8 @@ import {
   TableOutlined,
   CheckSquareOutlined,
   AppstoreAddOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
@@ -50,6 +52,21 @@ export default function GenericIsoForm({
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [currentSubmission, setCurrentSubmission] = useState(null);
+
+  // Auto-save draft tracking states & refs
+  const isHydratedRef = useRef(false);
+  const submissionIdRef = useRef(submissionId);
+  const statusRef = useRef('DRAFT');
+  const isSavingRef = useRef(false);
+  const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+
+  useEffect(() => {
+    if (currentSubmission?.id) {
+      submissionIdRef.current = currentSubmission.id;
+      statusRef.current = currentSubmission.status || 'DRAFT';
+    }
+  }, [currentSubmission]);
 
   // Form Fields
   const [headerData, setHeaderData] = useState({
@@ -152,6 +169,7 @@ export default function GenericIsoForm({
       console.error('Error loading generic ISO submission:', err);
     } finally {
       setLoading(false);
+      setTimeout(() => { isHydratedRef.current = true; }, 400);
     }
   }, [submissionId, proposalId, docTypeKey, docNo]);
 
@@ -297,12 +315,14 @@ export default function GenericIsoForm({
     setSavingDraft(true);
     try {
       const payload = getPayload('DRAFT');
-      if (currentSubmission?.id) {
-        const updated = await isoSubmissionService.updateSubmission(currentSubmission.id, payload);
+      if (submissionIdRef.current || currentSubmission?.id) {
+        const updated = await isoSubmissionService.updateSubmission(submissionIdRef.current || currentSubmission.id, payload);
         setCurrentSubmission(updated);
+        submissionIdRef.current = updated.id;
       } else {
         const created = await isoSubmissionService.createSubmission(payload);
         setCurrentSubmission(created);
+        submissionIdRef.current = created.id;
       }
       message.success('Draft saved successfully!');
     } catch (err) {
@@ -313,16 +333,71 @@ export default function GenericIsoForm({
     }
   };
 
+  // Auto-Save Draft to Database
+  const performAutoSave = useCallback(async () => {
+    if (!isHydratedRef.current) return;
+    if (isSavingRef.current) return;
+
+    isSavingRef.current = true;
+    setAutoSaveState('saving');
+    try {
+      const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+      const payload = getPayload(currentDocStatus);
+
+      let res;
+      if (submissionIdRef.current || currentSubmission?.id) {
+        res = await isoSubmissionService.updateSubmission(submissionIdRef.current || currentSubmission.id, payload);
+        setCurrentSubmission(res);
+        submissionIdRef.current = res.id;
+      } else {
+        res = await isoSubmissionService.createSubmission(payload);
+        setCurrentSubmission(res);
+        if (res && res.id) submissionIdRef.current = res.id;
+      }
+
+      setAutoSaveState('saved');
+      setLastSavedAt(new Date());
+    } catch (err) {
+      console.error('Auto-save error in GenericIsoForm:', err);
+      setAutoSaveState('error');
+    } finally {
+      isSavingRef.current = false;
+    }
+  }, [headerData, projectTitle, projectNo, customerName, description, tableHeaders, tableRows, checklistPoints, customSections, conclusion, preparedBy, approvedBy, docName, docCode, docNo, docTypeKey, proposalId, currentSubmission]);
+
+  // Debounced Auto-Save
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    const timer = setTimeout(() => { performAutoSave(); }, 1000);
+    return () => clearTimeout(timer);
+  }, [headerData, projectTitle, projectNo, customerName, description, tableHeaders, tableRows, checklistPoints, customSections, conclusion, preparedBy, approvedBy, performAutoSave]);
+
+  // Flush on page unload / refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isHydratedRef.current) performAutoSave();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (isHydratedRef.current) performAutoSave();
+    };
+  }, [performAutoSave]);
+
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
       const payload = getPayload('SUBMITTED');
-      if (currentSubmission?.id) {
-        const updated = await isoSubmissionService.updateSubmission(currentSubmission.id, payload);
+      if (submissionIdRef.current || currentSubmission?.id) {
+        const updated = await isoSubmissionService.updateSubmission(submissionIdRef.current || currentSubmission.id, payload);
         setCurrentSubmission(updated);
+        submissionIdRef.current = updated.id;
+        statusRef.current = 'SUBMITTED';
       } else {
         const created = await isoSubmissionService.createSubmission(payload);
         setCurrentSubmission(created);
+        submissionIdRef.current = created.id;
+        statusRef.current = 'SUBMITTED';
       }
       message.success('ISO Document submitted successfully!');
     } catch (err) {
@@ -336,11 +411,12 @@ export default function GenericIsoForm({
   const handleDownloadWord = async () => {
     setDownloading(true);
     try {
-      let subId = currentSubmission?.id;
+      let subId = submissionIdRef.current || currentSubmission?.id;
       if (!subId) {
         const payload = getPayload('DRAFT');
         const created = await isoSubmissionService.createSubmission(payload);
         setCurrentSubmission(created);
+        submissionIdRef.current = created.id;
         subId = created.id;
       }
       const safeName = `ISO_${docName.replace(/\s+/g, '_')}_${docNo}.docx`;
@@ -363,8 +439,14 @@ export default function GenericIsoForm({
             {onBack && (
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={onBack}
+                onClick={async () => {
+                  if (isHydratedRef.current) {
+                    await performAutoSave();
+                  }
+                  onBack();
+                }}
                 className="font-medium text-slate-600 hover:text-indigo-600"
+                title="Back (Auto-saves draft)"
               >
                 Back
               </Button>
@@ -391,6 +473,20 @@ export default function GenericIsoForm({
                     {currentSubmission.status}
                   </Tag>
                 )}
+
+                {/* Auto-Save Draft Status Badge */}
+                <div>
+                  {autoSaveState === 'saving' && (
+                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                      <LoadingOutlined className="text-[10px]" /> Saving draft...
+                    </span>
+                  )}
+                  {autoSaveState === 'saved' && (
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                      <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                    </span>
+                  )}
+                </div>
               </div>
               <Text className="text-xs text-slate-500 font-mono">
                 Code: {docCode} | Quality Management Standard Template
@@ -399,14 +495,6 @@ export default function GenericIsoForm({
           </div>
 
           <Space wrap className="justify-end">
-            <Button
-              icon={<SaveOutlined />}
-              onClick={handleSaveDraft}
-              loading={savingDraft}
-              className="font-semibold text-slate-700"
-            >
-              Save Draft
-            </Button>
             <Button
               type="primary"
               icon={<CheckOutlined />}
@@ -802,9 +890,6 @@ export default function GenericIsoForm({
           </Text>
         </div>
         <Space>
-          <Button onClick={handleSaveDraft} loading={savingDraft} className="bg-white text-slate-900 font-semibold text-xs">
-            Save Draft
-          </Button>
           <Button type="primary" onClick={handleSubmit} loading={submitting} className="bg-indigo-500 hover:bg-indigo-600 font-semibold text-xs">
             Submit for Approval
           </Button>

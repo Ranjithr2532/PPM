@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     FileWordOutlined,
     ArrowLeftOutlined,
@@ -8,6 +8,7 @@ import {
     UploadOutlined,
     PaperClipOutlined,
     CheckCircleOutlined,
+    LoadingOutlined,
     InboxOutlined,
     DeleteOutlined
 } from '@ant-design/icons';
@@ -37,6 +38,23 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
     const userRole = getCurrentUserRole();
     const isAdmin = ['admin', 'director'].includes(userRole);
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin'].includes(userRole);
+    const isReadOnly = isAdmin ? false : (status === 'APPROVED' || (status === 'SUBMITTED' && isApprover));
+
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     // Load Proposals
     useEffect(() => {
@@ -89,6 +107,8 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
             }
         } catch (err) {
             console.error('Failed to load SQAP submission:', err);
+        } finally {
+            setTimeout(() => { isHydratedRef.current = true; }, 400);
         }
     };
 
@@ -101,11 +121,102 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
                 .then(subs => {
                     if (Array.isArray(subs) && subs.length > 0) {
                         loadSubmission(subs[0].id);
+                    } else {
+                        setTimeout(() => { isHydratedRef.current = true; }, 400);
                     }
                 })
-                .catch(err => console.error(err));
+                .catch(err => {
+                    console.error(err);
+                    setTimeout(() => { isHydratedRef.current = true; }, 400);
+                });
+        } else {
+            setTimeout(() => { isHydratedRef.current = true; }, 400);
         }
     }, [propSubmissionId, selectedProposalId]);
+
+    // Auto-Save Draft to Database
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'Software Quality Assurance Plan (SQAP)',
+                docNo: 'CMTI-QMS-055',
+                code: 'Rev00',
+                dateStr: new Date().toISOString().split('T')[0],
+                centreDept: getLoggedUserGroup() || '',
+                preparedName: getLoggedUserName(),
+                approvedName: '',
+            };
+
+            const formDataPayload = {
+                project_title: projectTitle,
+                customer_name: customerName,
+                sanction_letter_no: sanctionLetterNo,
+                is_uploaded: uploadedFile ? true : false,
+                uploaded_filename: uploadedFile?.name || '',
+                file_path: uploadedFile?.url || '',
+            };
+
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                doc_type: 'SQAP',
+                document_no: 'CMTI-QMS-055',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formDataPayload,
+                status: currentDocStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionIdRef.current) {
+                response = await axios.put(`${API_BASE_URL}/iso-submissions/${submissionIdRef.current}`, payload);
+            } else {
+                response = await axios.post(`${API_BASE_URL}/iso-submissions/`, payload);
+                if (response.data && response.data.id) {
+                    setSubmissionId(response.data.id);
+                    submissionIdRef.current = response.data.id;
+                }
+            }
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save error in SQAP:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
+        }
+    }, [isReadOnly, projectTitle, customerName, sanctionLetterNo, uploadedFile, selectedProposalId]);
+
+    // Debounced Auto-Save
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        return () => clearTimeout(timer);
+    }, [projectTitle, customerName, sanctionLetterNo, uploadedFile, selectedProposalId, performAutoSave, isReadOnly]);
+
+    // Flush on page unload / refresh
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+    }, [performAutoSave, isReadOnly]);
 
     // Download Word Template
     const handleDownloadTemplate = async () => {
@@ -231,9 +342,15 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
             <div className="w-full max-w-4xl flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={onClose || onBack}
+                        onClick={async () => {
+                            if (isHydratedRef.current && !isReadOnly) {
+                                await performAutoSave();
+                            }
+                            if (onClose) onClose();
+                            else if (onBack) onBack();
+                        }}
                         className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition"
-                        title="Go Back"
+                        title="Go Back (Auto-saves draft)"
                     >
                         <ArrowLeftOutlined className="text-lg" />
                     </button>
@@ -253,6 +370,20 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
                     }`}>
                         {status === 'DRAFT' && uploadedFile ? 'UPLOADED' : status}
                     </span>
+
+                    {/* Auto-Save Draft Status Badge */}
+                    <div className="ml-1">
+                        {autoSaveState === 'saving' && (
+                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                <LoadingOutlined className="text-[10px]" /> Saving draft...
+                            </span>
+                        )}
+                        {autoSaveState === 'saved' && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                            </span>
+                        )}
+                    </div>
 
                     {isApprover && status === 'SUBMITTED' && (
                         <div className="flex items-center gap-2 border-l pl-3 ml-2 border-slate-200">

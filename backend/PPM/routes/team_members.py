@@ -175,46 +175,6 @@ def get_team_members_by_proposal(
             detail=f"Proposal with id {proposal_id} not found"
         )
 
-    # Check authorization:
-    # 1. Admin, GH, CH are always allowed
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role in ("admin", "gh", "group head", "ch", "center head"):
-        pass
-    else:
-        # 2. Project coordinator or team members
-        user_id_str = current_user.get("sub")
-        db_user = None
-        if user_id_str:
-            db_user = db.query(User).filter(User.id == int(user_id_str)).first()
-            
-        if not db_user:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User record not found"
-            )
-            
-        is_coord = False
-        if proposal.project_co_ordinator:
-            coord_clean = re.sub(r'\s+', ' ', proposal.project_co_ordinator.strip()).lower()
-            user_clean = re.sub(r'\s+', ' ', db_user.name.strip()).lower()
-            if coord_clean == user_clean:
-                is_coord = True
-                
-        is_member = False
-        all_members = db.query(TeamMember).filter(TeamMember.proposal_id == proposal_id).all()
-        user_clean = re.sub(r'\s+', ' ', db_user.name.strip()).lower()
-        for m in all_members:
-            m_clean = re.sub(r'\s+', ' ', m.team_member_id.strip()).lower()
-            if m_clean == user_clean:
-                is_member = True
-                break
-                
-        if not (is_coord or is_member):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not authorized to view the team members of this project."
-            )
-
     return db.query(TeamMember).filter(TeamMember.proposal_id == proposal_id).all()
 
 
