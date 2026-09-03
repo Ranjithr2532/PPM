@@ -27,7 +27,6 @@ import Sqap from './sqap.jsx';
 import Bom from './bom.jsx';
 import DrawingRegister from './drawingregister.jsx';
 import InspectionReport from './inspectionreport.jsx';
-import GenericIsoForm from './GenericIsoForm.jsx';
 
 const getDocTypeKey = (doc) => {
     const name = (doc.name || '').toUpperCase();
@@ -44,6 +43,20 @@ const getDocTypeKey = (doc) => {
     if (docNo.startsWith('064') || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) return 'DRAWING_REGISTER';
     if (docNo.startsWith('085') || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) return 'INSPECTION_REPORT';
     return name.replace(/\s+/g, '_');
+};
+
+const hasDedicatedForm = (docTypeKey) => {
+    return [
+        'FEASIBILITY',
+        'CONTRACT_REVIEW',
+        'PROJECT_TEAM',
+        'MOM',
+        'PROJECT_PROPOSAL',
+        'PROJECT_PLAN',
+        'BOM',
+        'DRAWING_REGISTER',
+        'INSPECTION_REPORT'
+    ].includes(docTypeKey);
 };
 
 
@@ -212,6 +225,57 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
         }
     };
 
+    const handleDownloadSqapTemplate = async (doc) => {
+        try {
+            message.loading({ content: 'Downloading SQAP template (.docx)...', key: 'sqapTpl' });
+            let projectTitle = '';
+            let customerName = '';
+            let sanctionNo = '';
+
+            if (proposalId) {
+                try {
+                    const pRes = await axios.get(`${API_BASE_URL}/proposals/${proposalId}`);
+                    const p = pRes.data;
+                    if (p) {
+                        projectTitle = p.title_of_project || p.quote_description || p.project_name || '';
+                        customerName = p.customer_name || '';
+                        sanctionNo = p.sanction_letter_no || p.project_number || p.quote_number || p.po_number || '';
+                    }
+                } catch (e) {
+                    console.error('Error fetching proposal for template:', e);
+                }
+            }
+
+            const res = await axios.post(`${API_BASE_URL}/iso/sqap/generate`, {
+                project_title: projectTitle,
+                customer_name: customerName,
+                sanction_letter_no: sanctionNo,
+                project_no: sanctionNo,
+                released_by_org: 'CMTI',
+                user_agency_org: customerName,
+                doc_no: '055',
+                filename: `ISO_SQAP_055_Template.docx`
+            }, {
+                responseType: 'blob'
+            });
+
+            const blob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'ISO_SQAP_055_Template.docx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            message.success({ content: 'SQAP Template downloaded successfully!', key: 'sqapTpl' });
+        } catch (err) {
+            console.error('SQAP template download error:', err);
+            message.error({ content: 'Failed to download SQAP template', key: 'sqapTpl' });
+        }
+    };
+
     const handleDeleteSubmission = async (subId) => {
         setActionLoading(true);
         try {
@@ -344,16 +408,37 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                         }}
                     />
                 ) : (
-                    /* Universal Generic Form for Any Custom ISO Document Template */
-                    <GenericIsoForm
-                        proposalId={proposalId}
-                        submissionId={activeFormState.id}
-                        docInfo={activeFormState.docInfo || { name: activeFormState.docTypeKey }}
-                        onBack={() => {
-                            setActiveFormState(null);
-                            fetchData();
-                        }}
-                    />
+                    /* Direct Upload Interface for Templates without Dedicated Forms */
+                    <div className="max-w-2xl mx-auto py-12 text-center bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-4">
+                        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto text-2xl">
+                            <UploadOutlined />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900">
+                            Upload ISO Document - {activeFormState.docInfo?.name || activeFormState.docTypeKey}
+                        </h3>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto">
+                            No web form is required for this document. Please upload your completed ISO document file (.docx, .pdf, or .doc).
+                        </p>
+                        <div className="pt-2 flex justify-center gap-3">
+                            <Button
+                                onClick={() => setActiveFormState(null)}
+                                className="text-xs"
+                            >
+                                Back to Documents
+                            </Button>
+                            <Button
+                                type="primary"
+                                icon={<UploadOutlined />}
+                                onClick={() => {
+                                    handleOpenUploadModal(activeFormState.docInfo);
+                                    setActiveFormState(null);
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-xs font-bold"
+                            >
+                                Select & Upload File
+                            </Button>
+                        </div>
+                    </div>
                 )}
 
             </div>
@@ -654,6 +739,18 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                 </div>
 
                                 <div className="flex items-center gap-2 justify-end flex-wrap">
+                                    {/* Template Download for SQAP */}
+                                    {docTypeKey === 'SQAP' && (
+                                        <Button
+                                            size="small"
+                                            icon={<DownloadOutlined />}
+                                            onClick={() => handleDownloadSqapTemplate(doc)}
+                                            className="text-xs font-semibold bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                        >
+                                            Download Template
+                                        </Button>
+                                    )}
+
                                     {/* Upload Document Button */}
                                     <Button
                                         size="small"
@@ -666,23 +763,25 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
 
                                     {sub ? (
                                         <>
-                                            {/* View / Edit Form */}
-                                            <Button
-                                                size="small"
-                                                icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
-                                                onClick={() => handleEditForm(docTypeKey, sub.id, doc)}
-                                                className="text-xs font-medium border-slate-300 text-slate-800"
-                                            >
-                                                {isAdmin
-                                                    ? 'Edit Form'
-                                                    : sub.status === 'APPROVED'
-                                                        ? 'View Form'
-                                                        : sub.status === 'SUBMITTED'
-                                                            ? isApprover
-                                                                ? 'Review Form'
-                                                                : 'View Form (Pending)'
-                                                            : 'Edit Form'}
-                                            </Button>
+                                            {/* View / Edit Form for other docs only */}
+                                            {docTypeKey !== 'SQAP' && (
+                                                <Button
+                                                    size="small"
+                                                    icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
+                                                    onClick={() => handleEditForm(docTypeKey, sub.id, doc)}
+                                                    className="text-xs font-medium border-slate-300 text-slate-800"
+                                                >
+                                                    {isAdmin
+                                                        ? 'Edit Form'
+                                                        : sub.status === 'APPROVED'
+                                                            ? 'View Form'
+                                                            : sub.status === 'SUBMITTED'
+                                                                ? isApprover
+                                                                    ? 'Review Form'
+                                                                    : 'View Form (Pending)'
+                                                                : 'Edit Form'}
+                                                </Button>
+                                            )}
 
                                             {/* Download Word (.docx / uploaded file) */}
                                             <Button
@@ -759,9 +858,8 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 </Popconfirm>
                                             )}
                                         </>
-                                    ) : (
-
-                                        /* Create Form Button if form not created yet */
+                                    ) : hasDedicatedForm(docTypeKey) ? (
+                                        /* Create Form Button ONLY for documents with dedicated form templates */
                                         <Button
                                             size="small"
                                             type="primary"
@@ -771,7 +869,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                         >
                                             Create Form
                                         </Button>
-                                    )}
+                                    ) : null}
                                 </div>
                             </div>
                         );

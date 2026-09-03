@@ -74,7 +74,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                 }
                 const res = await axios.get(`${API_BASE_URL}/iso-document-list/`);
                 if (Array.isArray(res.data)) {
-                    const matched = res.data.find(d => 
+                    const matched = res.data.find(d =>
                         (d.document_no && (d.document_no.trim() === '053' || d.document_no.trim() === '53')) ||
                         (d.name && (d.name.toLowerCase().includes('plan') || d.name.toLowerCase().includes('schedule')))
                     );
@@ -203,7 +203,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 const diff = (y2 - y1) * 12 + (m2 - m1) + 1;
                                 if (diff > 0) calculatedMonths = diff;
                             }
-                        } catch (e) {}
+                        } catch (e) { }
                     }
 
                     // Check max month in activeMonthsMap
@@ -477,12 +477,11 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full uppercase ${
-                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                        status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                        status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
-                        'bg-amber-100 text-amber-800'
-                    }`}>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full uppercase ${status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                            status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                                status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                    'bg-amber-100 text-amber-800'
+                        }`}>
                         {status}
                     </span>
 
@@ -711,11 +710,10 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                     <td
                                                         key={wIdx}
                                                         onClick={() => toggleTaskWeek(tIdx, weekNum)}
-                                                        className={`border-r border-slate-200 text-center cursor-pointer select-none transition ${
-                                                            isActive
+                                                        className={`border-r border-slate-200 text-center cursor-pointer select-none transition ${isActive
                                                                 ? 'bg-blue-600 text-white font-extrabold'
                                                                 : 'hover:bg-blue-100/50'
-                                                        }`}
+                                                            }`}
                                                     >
                                                         {isActive ? 'X' : ''}
                                                     </td>

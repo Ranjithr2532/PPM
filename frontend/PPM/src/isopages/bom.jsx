@@ -37,18 +37,14 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
     const [projectTitle, setProjectTitle] = useState('');
     const [projectNo, setProjectNo] = useState('');
     const [customerName, setCustomerName] = useState('');
-    const [assemblyName, setAssemblyName] = useState('');
-    const [bomRev, setBomRev] = useState('Rev00');
 
     // Dynamic Main BOM Table
     const [bomHeaders, setBomHeaders] = useState([
-        "Sl. No.",
-        "Item / Component Description",
-        "Part No. / Specifications",
-        "Qty",
-        "Unit",
-        "Make / Supplier",
-        "Remarks"
+        "Part name/Part Number",
+        "Specification",
+        "Make",
+        "Quantity",
+        "Function Criticality"
     ]);
 
     const [bomRows, setBomRows] = useState([]);
@@ -189,7 +185,6 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
     const handleAddBomRow = () => {
         if (isReadOnly) return;
         const newRow = Array(bomHeaders.length).fill("");
-        newRow[0] = String(bomRows.length + 1);
         setBomRows(prev => [...prev, newRow]);
     };
 
@@ -401,8 +396,6 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
             project_title: projectTitle,
             project_no: projectNo,
             customer_name: customerName,
-            assembly_name: assemblyName,
-            bom_rev: bomRev,
             items: {
                 headers: bomHeaders,
                 rows: bomRows
@@ -595,7 +588,7 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                     </div>
 
                     {/* Metadata Section */}
-                    <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/50">
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50/50">
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Link Proposal</label>
                             <select
@@ -646,30 +639,6 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                                 disabled={isReadOnly}
                                 placeholder="Customer Name"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Assembly / System Name</label>
-                            <input
-                                type="text"
-                                value={assemblyName}
-                                onChange={(e) => setAssemblyName(e.target.value)}
-                                disabled={isReadOnly}
-                                placeholder="Sub-system / Assembly Name"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">BOM Revision</label>
-                            <input
-                                type="text"
-                                value={bomRev}
-                                onChange={(e) => setBomRev(e.target.value)}
-                                disabled={isReadOnly}
-                                placeholder="e.g. Rev00"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-mono"
                             />
                         </div>
                     </div>
@@ -993,6 +962,12 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                             className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
                         />
                     </div>
+                </div>
+
+                {/* Footer Criticality Note & Revision Code */}
+                <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 font-mono">
+                    <span className="italic">SC- Safety Critical, FC- Function Critical, NC- Not Critical</span>
+                    <span className="font-bold">CMTI-{getLoggedUserGroup() ? `${getLoggedUserGroup()}-` : ''}QMS-{docNo || '063'}/Rev00</span>
                 </div>
             </div>
         </div>

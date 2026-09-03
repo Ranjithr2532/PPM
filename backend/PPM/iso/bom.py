@@ -1,6 +1,6 @@
 """
 FastAPI Router & Document Generator for ISO Document 063: Bill of Materials (BOM).
-Generates Word (.docx) document matching CMTI-QMS-063/Rev00 specification.
+Matches the exact specification from 063-BOM _Final_BEL.docx.
 """
 
 from typing import List, Dict, Any, Optional
@@ -19,27 +19,86 @@ from docx.oxml.ns import nsdecls, qn
 
 from iso.header import add_header_table
 from iso.finalfooter import add_footer_table
-from iso.sqap import set_cell_shading, set_cell_border, set_cell_margins, add_text
+
+# Helper functions for Word table manipulation
+def set_cell_shading(cell, color_hex: str):
+    shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
+    cell._tc.get_or_add_tcPr().append(shading_elm)
+
+def set_cell_border(cell, **kwargs):
+    tcPr = cell._tc.get_or_add_tcPr()
+    tcBorders = tcPr.first_child_found_in("w:tcBorders")
+    if tcBorders is None:
+        tcBorders = OxmlElement('w:tcBorders')
+        tcPr.append(tcBorders)
+
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        edge_data = kwargs.get(edge)
+        if edge_data:
+            tag = f'w:{edge}'
+            element = tcBorders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tcBorders.append(element)
+            for key in ["val", "color", "sz", "space"]:
+                if key in edge_data:
+                    element.set(qn(f'w:{key}'), str(edge_data[key]))
+
+def set_cell_margins(cell, top=35, start=35, bottom=35, end=35):
+    tcPr = cell._tc.get_or_add_tcPr()
+    tcMar = OxmlElement('w:tcMar')
+    for m_name, m_val in [('top', top), ('left', start), ('bottom', bottom), ('right', end)]:
+        node = OxmlElement(f'w:{m_name}')
+        node.set(qn('w:w'), str(m_val))
+        node.set(qn('w:type'), 'dxa')
+        tcMar.append(node)
+    tcPr.append(tcMar)
+
+def set_cell_width(cell, width_inches: float):
+    tcPr = cell._tc.get_or_add_tcPr()
+    tcW = tcPr.find(qn("w:tcW"))
+    if tcW is None:
+        tcW = OxmlElement("w:tcW")
+        tcPr.append(tcW)
+    tcW.set(qn("w:w"), str(int(width_inches * 1440)))
+    tcW.set(qn("w:type"), "dxa")
+
+def add_text(cell_or_paragraph, text: str, font_name: str = "Arial", font_size: float = 9.5, bold: bool = False, italic: bool = False, color: RGBColor = RGBColor(0, 0, 0), alignment: WD_ALIGN_PARAGRAPH = WD_ALIGN_PARAGRAPH.LEFT, space_after: int = 0):
+    if hasattr(cell_or_paragraph, 'paragraphs'):
+        p = cell_or_paragraph.paragraphs[0]
+    else:
+        p = cell_or_paragraph
+
+    p.alignment = alignment
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after = Pt(space_after)
+    p.paragraph_format.line_spacing = 1.15
+
+    run = p.add_run(str(text))
+    run.font.name = font_name
+    run.font.size = Pt(font_size)
+    run.font.bold = bold
+    run.font.italic = italic
+    run.font.color.rgb = color
+    return run
 
 router = APIRouter(prefix="/iso", tags=["ISO Bill of Materials (Doc 063)"])
 
 
 class BOMItemRequest(BaseModel):
-    sl_no: str = ""
-    item_description: str = ""
-    part_no_spec: str = ""
+    part_name: str = ""
+    specification: str = ""
+    make: str = ""
     quantity: str = ""
-    unit: str = ""
-    make_supplier: str = ""
-    unit_cost: str = ""
-    total_cost: str = ""
-    remarks: str = ""
+    function_criticality: str = "NC"
+
 
 class BOMSectionRequest(BaseModel):
     title: str = ""
     content: str = ""
     headers: Optional[List[str]] = None
     rows: Optional[List[List[str]]] = None
+
 
 class BOMRequest(BaseModel):
     project_title: str = ""
@@ -60,8 +119,13 @@ class BOMRequest(BaseModel):
     filename: str = "ISO_Bill_of_Materials.docx"
 
 
-DEFAULT_BOM_ITEMS = []
-DEFAULT_BOM_SECTIONS = []
+DEFAULT_BOM_HEADERS = [
+    "Part name/Part Number",
+    "Specification",
+    "Make",
+    "Quantity",
+    "Function Criticality"
+]
 
 
 def create_bom_document(
@@ -83,69 +147,56 @@ def create_bom_document(
 ) -> Document:
     doc = Document()
 
-    # Setup margins (A4 Landscape for wide BOM tables)
+    # Setup margins (A4 Portrait to match 063-BOM _Final_BEL.docx)
     for section in doc.sections:
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.5)
         section.left_margin = Inches(0.5)
         section.right_margin = Inches(0.5)
-        section.page_width = Inches(11.69)
-        section.page_height = Inches(8.27)
+        section.page_width = Inches(8.27)
+        section.page_height = Inches(11.69)
 
-    header_group = (group_name or centre_dept or "SMPM").strip().upper()
+    header_group = (group_name or centre_dept or "SMC").strip().upper()
     if header_group.startswith("G-"):
         header_group = header_group[2:]
     elif header_group.startswith("C-"):
         header_group = header_group[2:]
 
-    # Add Standard ISO Header Table
+    final_doc_no = str(doc_no or "063").strip()
+    if final_doc_no.isdigit():
+        final_doc_no = final_doc_no.zfill(3)
+
+    # 1. Header Table
     add_header_table(
         doc.sections[0],
         title=f"BILL OF MATERIALS-{header_group}",
         page_str="1 of 1",
         centre_dept=centre_dept,
-        doc_no=doc_no or "063",
+        doc_no=final_doc_no,
         date_str=doc_date
     )
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    doc.add_paragraph().paragraph_format.space_after = Pt(14)
 
-    # Document Main Title Header
-    main_p = doc.add_paragraph()
-    add_text(main_p, "BILL OF MATERIALS (BOM)", font_size=12, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
+    # 2. Summary Paragraph
+    proj_desc = project_title or "Project"
+    if customer_name:
+        summary_line = f"SUMMARY: This document details the bill of materials for {proj_desc} ({customer_name})"
+    else:
+        summary_line = f"SUMMARY: This document details the bill of materials for {proj_desc}"
 
-    # Metadata Card Table
-    meta_table = doc.add_table(rows=2, cols=3)
-    meta_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    meta_table.autofit = False
+    p_sum = doc.add_paragraph()
+    p_sum.paragraph_format.space_before = Pt(0)
+    p_sum.paragraph_format.space_after = Pt(2)
+    add_text(p_sum, summary_line, font_size=10, bold=True, color=RGBColor(15, 23, 42))
 
-    border_fmt = {"val": "single", "sz": "4", "color": "CCCCCC"}
+    p_conf = doc.add_paragraph()
+    p_conf.paragraph_format.space_before = Pt(0)
+    p_conf.paragraph_format.space_after = Pt(12)
+    add_text(p_conf, "CONFIDENTIAL", font_size=9, bold=True, color=RGBColor(100, 116, 139))
 
-    meta_cells_data = [
-        ("Project Title:", project_title or "--", "Project No:", project_no or "--", "BOM Revision:", bom_rev or "Rev00"),
-        ("Customer Name:", customer_name or "--", "Assembly / System:", assembly_name or "--", "Date:", doc_date or "--")
-    ]
-
-    for r_idx, row_tuples in enumerate(meta_cells_data):
-        row = meta_table.rows[r_idx]
-        lbl1, val1, lbl2, val2, lbl3, val3 = row_tuples
-
-        for c_idx, (l, v) in enumerate([(lbl1, val1), (lbl2, val2), (lbl3, val3)]):
-            cell = row.cells[c_idx]
-            set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-            set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-            set_cell_shading(cell, "F4F6F9")
-
-            p = cell.paragraphs[0]
-            p.paragraph_format.space_after = Pt(0)
-            p.paragraph_format.line_spacing = 1.0
-            add_text(p, f"{l} ", font_size=8.5, bold=True)
-            add_text(p, str(v), font_size=8.5, bold=False)
-
-    doc.add_paragraph().paragraph_format.space_after = Pt(8)
-
-    # Main BOM Table with User-Defined Headers & Rows
-    custom_headers = ["Sl. No.", "Item / Component Description", "Part No. / Specifications", "Qty", "Unit", "Make / Supplier", "Remarks"]
+    # 3. BOM Table (5 Columns)
+    custom_headers = list(DEFAULT_BOM_HEADERS)
     custom_rows = []
 
     if isinstance(items, dict):
@@ -154,109 +205,94 @@ def create_bom_document(
     elif isinstance(items, list):
         for r_idx, item in enumerate(items):
             if isinstance(item, dict):
-                sl = item.get("sl_no") or str(r_idx + 1)
-                desc = item.get("item_description") or ""
-                part = item.get("part_no_spec") or ""
-                qty = item.get("quantity") or ""
-                unit = item.get("unit") or ""
-                make = item.get("make_supplier") or ""
-                rem = item.get("remarks") or ""
-                custom_rows.append([sl, desc, part, qty, unit, make, rem])
+                part = item.get("part_name") or item.get("part_name_part_number") or item.get("part_no_spec") or item.get("item_description") or ""
+                spec = item.get("specification") or item.get("spec") or ""
+                make = item.get("make") or item.get("make_supplier") or ""
+                qty = str(item.get("quantity") or item.get("qty") or "")
+                crit = item.get("function_criticality") or item.get("criticality") or item.get("remarks") or item.get("unit") or "NC"
+                custom_rows.append([part, spec, make, qty, crit])
             elif isinstance(item, list):
                 custom_rows.append([str(v or "") for v in item])
 
-    if custom_headers:
-        table_bom = doc.add_table(rows=1 + max(1, len(custom_rows)), cols=len(custom_headers))
-        table_bom.alignment = WD_TABLE_ALIGNMENT.CENTER
-        table_bom.autofit = False
+    total_rows = 1 + max(1, len(custom_rows))
+    table_bom = doc.add_table(rows=total_rows, cols=len(custom_headers))
+    table_bom.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table_bom.autofit = False
 
-        # Header Row
-        hdr_row = table_bom.rows[0]
-        for c_idx, h_text in enumerate(custom_headers):
-            cell = hdr_row.cells[c_idx]
-            set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-            set_cell_shading(cell, "D9E2EC")
-            set_cell_margins(cell, top=30, start=25, bottom=30, end=25)
-            add_text(cell, str(h_text), font_size=8.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+    # Exact column widths matching 063-BOM _Final_BEL.docx (Total ~7.0 inches)
+    if len(custom_headers) == 5:
+        col_widths = [2.2, 1.4, 1.1, 0.85, 1.45]
+    else:
+        col_widths = [7.0 / len(custom_headers)] * len(custom_headers)
 
-        # Data Rows
-        for r_idx, r_data in enumerate(custom_rows):
-            data_row = table_bom.rows[r_idx + 1]
-            for c_idx, val in enumerate(r_data):
-                if c_idx < len(data_row.cells):
-                    cell = data_row.cells[c_idx]
-                    set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-                    set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-                    add_text(cell, str(val or ""), font_size=8.5)
+    border_fmt = {"val": "single", "sz": "4", "color": "000000"}
 
-        if not custom_rows:
-            data_row = table_bom.rows[1]
-            for c_idx in range(len(custom_headers)):
+    # Format Header Row
+    hdr_row = table_bom.rows[0]
+    for c_idx, h_text in enumerate(custom_headers):
+        cell = hdr_row.cells[c_idx]
+        set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
+        set_cell_margins(cell, top=40, start=35, bottom=40, end=35)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        if c_idx < len(col_widths):
+            set_cell_width(cell, col_widths[c_idx])
+        add_text(cell, str(h_text), font_size=10, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Format Data Rows
+    for r_idx, r_data in enumerate(custom_rows):
+        data_row = table_bom.rows[r_idx + 1]
+        for c_idx, val in enumerate(r_data):
+            if c_idx < len(data_row.cells):
                 cell = data_row.cells[c_idx]
                 set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-                set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-                add_text(cell, "-", font_size=8.5, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                set_cell_margins(cell, top=30, start=35, bottom=30, end=35)
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                if c_idx < len(col_widths):
+                    set_cell_width(cell, col_widths[c_idx])
+                
+                # Center align Quantity and Function Criticality
+                align = WD_ALIGN_PARAGRAPH.CENTER if c_idx in (3, 4) else WD_ALIGN_PARAGRAPH.LEFT
+                add_text(cell, str(val or ""), font_size=9.5, alignment=align)
 
-        doc.add_paragraph().paragraph_format.space_after = Pt(8)
+    if not custom_rows:
+        data_row = table_bom.rows[1]
+        for c_idx in range(len(custom_headers)):
+            cell = data_row.cells[c_idx]
+            set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
+            set_cell_margins(cell, top=30, start=35, bottom=30, end=35)
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            if c_idx < len(col_widths):
+                set_cell_width(cell, col_widths[c_idx])
+            add_text(cell, "-", font_size=9.5, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Render Extra Sections / Free Dynamic Content (if user created custom sections/tables)
-    sec_list = sections or []
-    for s_idx, sec in enumerate(sec_list):
-        if isinstance(sec, dict):
-            s_title = sec.get("title") or ""
-            s_content = sec.get("content") or ""
-            tbl_headers = sec.get("headers") or []
-            tbl_rows = sec.get("rows") or []
-        else:
-            s_title = getattr(sec, "title", "") or ""
-            s_content = getattr(sec, "content", "") or ""
-            tbl_headers = getattr(sec, "headers", []) or []
-            tbl_rows = getattr(sec, "rows", []) or []
+    # 4. Footer Section
+    # Add Criticality legend and Document Revision code to Word Footer
+    sec_footer = doc.sections[0].footer
+    
+    # Criticality Legend
+    p_leg = sec_footer.paragraphs[0] if sec_footer.paragraphs else sec_footer.add_paragraph()
+    p_leg.text = ""
+    p_leg.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p_leg.paragraph_format.space_before = Pt(0)
+    p_leg.paragraph_format.space_after = Pt(2)
+    p_leg.paragraph_format.line_spacing = 1.0
+    r_leg = p_leg.add_run("SC- Safety Critical, FC- Function Critical, NC- Not Critical")
+    r_leg.font.name = "Arial"
+    r_leg.font.size = Pt(8.5)
+    r_leg.font.italic = True
+    r_leg.font.color.rgb = RGBColor(80, 80, 80)
 
-        if s_title:
-            sec_p = doc.add_paragraph()
-            add_text(sec_p, s_title, font_size=11, bold=True, color=RGBColor(15, 23, 42), space_after=3)
-
-        if s_content:
-            cnt_p = doc.add_paragraph()
-            add_text(cnt_p, s_content, font_size=9.5, space_after=6)
-
-        if tbl_headers:
-            tbl = doc.add_table(rows=1 + len(tbl_rows), cols=len(tbl_headers))
-            tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-            tbl.autofit = False
-
-            hdr_row = tbl.rows[0]
-            for c_idx, h_text in enumerate(tbl_headers):
-                cell = hdr_row.cells[c_idx]
-                set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-                set_cell_shading(cell, "E2E8F0")
-                set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-                add_text(cell, h_text, font_size=8.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-
-            for r_idx, r_data in enumerate(tbl_rows):
-                data_row = tbl.rows[r_idx + 1]
-                for c_idx, val_text in enumerate(r_data):
-                    if c_idx < len(data_row.cells):
-                        cell = data_row.cells[c_idx]
-                        set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-                        set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-                        add_text(cell, str(val_text or ""), font_size=8.5)
-
-            doc.add_paragraph().paragraph_format.space_after = Pt(8)
-
-    doc.add_paragraph().paragraph_format.space_after = Pt(10)
-
-    # Add ISO Footer Signature Block Table
-    doc_code_footer = doc_code or f"CMTI-{header_group}-QMS-{doc_no}/Rev00"
-    add_footer_table(
-        doc,
-        prepared_name=prepared_by,
-        approved_name=approved_by,
-        group_name=header_group,
-        doc_code=doc_code_footer,
-        in_body=True
-    )
+    # ISO Revision Code
+    doc_code_str = doc_code or (f"CMTI-{header_group}-QMS-{final_doc_no}/Rev00" if header_group else f"CMTI-QMS-{final_doc_no}/Rev00")
+    p_rev = sec_footer.add_paragraph()
+    p_rev.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p_rev.paragraph_format.space_before = Pt(0)
+    p_rev.paragraph_format.space_after = Pt(0)
+    p_rev.paragraph_format.line_spacing = 1.0
+    r_rev = p_rev.add_run(doc_code_str)
+    r_rev.font.name = "Arial"
+    r_rev.font.size = Pt(8.5)
+    r_rev.font.color.rgb = RGBColor(80, 80, 80)
 
     return doc
 
@@ -267,7 +303,7 @@ def generate_bom_bytes(
     customer_name: str = "",
     assembly_name: str = "",
     bom_rev: str = "Rev00",
-    items: Optional[List[Dict[str, Any]]] = None,
+    items: Optional[Any] = None,
     sections: Optional[List[Dict[str, Any]]] = None,
     total_estimated_cost: str = "",
     prepared_by: str = "",
@@ -317,7 +353,6 @@ async def generate_bom_doc_get(
     customer_name: str = Query(""),
     assembly_name: str = Query(""),
     bom_rev: str = Query("Rev00"),
-    total_estimated_cost: str = Query(""),
     prepared_by: str = Query(""),
     approved_by: str = Query(""),
     group_name: str = Query(""),
@@ -333,7 +368,6 @@ async def generate_bom_doc_get(
         customer_name=customer_name,
         assembly_name=assembly_name,
         bom_rev=bom_rev,
-        total_estimated_cost=total_estimated_cost,
         prepared_by=prepared_by,
         approved_by=approved_by,
         group_name=group_name,
@@ -366,25 +400,22 @@ async def generate_bom_doc_post(
     if not filename.lower().endswith(".docx"):
         filename += ".docx"
 
-    item_dicts = [i.dict() if hasattr(i, 'dict') else i for i in payload.items] if (payload.items and isinstance(payload.items, list)) else payload.items
-    sec_dicts = [s.dict() if hasattr(s, 'dict') else s for s in payload.sections] if payload.sections else None
-
     buffer = generate_bom_bytes(
         project_title=payload.project_title,
         project_no=payload.project_no,
         customer_name=payload.customer_name,
         assembly_name=payload.assembly_name,
-        bom_rev=payload.bom_rev,
-        items=item_dicts,
-        sections=sec_dicts,
+        bom_rev=payload.bom_rev or "Rev00",
+        items=payload.items,
+        sections=payload.sections,
         total_estimated_cost=payload.total_estimated_cost,
         prepared_by=payload.prepared_by,
         approved_by=payload.approved_by,
         group_name=payload.group_name,
         centre_dept=payload.centre_dept,
-        doc_no=payload.doc_no,
+        doc_no=payload.doc_no or "063",
         doc_date=payload.doc_date,
-        doc_code=payload.doc_code or payload.group_name or ""
+        doc_code=payload.doc_code
     )
 
     headers = {
