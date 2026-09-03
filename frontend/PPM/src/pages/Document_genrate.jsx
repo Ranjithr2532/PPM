@@ -213,6 +213,31 @@ export default function DocumentGenerate({
             lines_raw: '',
         },
     ]);
+    const [scientistsList, setScientistsList] = useState([]);
+
+    // Helper to format designation
+    const formatDesignation = (desig) => {
+        if (!desig) return '';
+        const trimmed = desig.trim();
+        if (/^scientist[\s-]*([a-z])$/i.test(trimmed)) {
+            const letter = trimmed.match(/^scientist[\s-]*([a-z])$/i)[1].toUpperCase();
+            return `Scientist-${letter}`;
+        }
+        return trimmed;
+    };
+
+    // Helper to format center
+    const formatCenter = (rawCenter) => {
+        if (!rawCenter) return '';
+        const trimmed = rawCenter.trim();
+        if (/^c-/i.test(trimmed)) {
+            return trimmed.toUpperCase();
+        }
+        if (/^centre|^center/i.test(trimmed)) {
+            return trimmed;
+        }
+        return `C-${trimmed.toUpperCase()}`;
+    };
 
     // Helper to extract designation from logged-in user
     const getUserDesignation = () => {
@@ -221,14 +246,7 @@ export default function DocumentGenerate({
             if (rawUser) {
                 const parsedUser = JSON.parse(rawUser);
                 const desig = parsedUser.designation || parsedUser.role || parsedUser.user_role || '';
-                if (desig) {
-                    const trimmed = desig.trim();
-                    if (/^scientist[\s-]*([a-z])$/i.test(trimmed)) {
-                        const letter = trimmed.match(/^scientist[\s-]*([a-z])$/i)[1].toUpperCase();
-                        return `Scientist-${letter}`;
-                    }
-                    return trimmed;
-                }
+                return formatDesignation(desig);
             }
         } catch (err) {
             console.error('Error reading user designation:', err);
@@ -243,13 +261,7 @@ export default function DocumentGenerate({
             if (rawUser) {
                 const parsedUser = JSON.parse(rawUser);
                 const rawCenter = parsedUser.center || parsedUser.centre || parsedUser.group || '';
-                if (rawCenter) {
-                    const trimmed = rawCenter.trim();
-                    if (/^c-/i.test(trimmed)) {
-                        return trimmed.toUpperCase();
-                    }
-                    return `C-${trimmed.toUpperCase()}`;
-                }
+                return formatCenter(rawCenter);
             }
         } catch (err) {
             console.error('Error reading user center:', err);
@@ -385,6 +397,24 @@ export default function DocumentGenerate({
             }
         };
         fetchCustomers();
+
+        // Fetch scientists list for signatory selection
+        const fetchScientists = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const headers = {
+                    accept: 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                };
+                const res = await axios.get(`${API_BASE_URL}/users/`, { headers });
+                if (res.data && Array.isArray(res.data)) {
+                    setScientistsList(res.data);
+                }
+            } catch (err) {
+                console.error('Error loading scientists list:', err);
+            }
+        };
+        fetchScientists();
     }, [form, convertingDraftRecord]);
 
     // Handle searching customers by name, address, email or phone
@@ -800,6 +830,49 @@ export default function DocumentGenerate({
             return;
         }
         setSignatories(signatories.filter((_, i) => i !== index));
+    };
+
+    const scientistOptions = useMemo(() => {
+        return (scientistsList || [])
+            .filter((u) => u && u.name && u.name.trim())
+            .map((u) => {
+                const desig = formatDesignation(u.designation || u.role || '');
+                const center = formatCenter(u.center || u.centre || u.group || '');
+                const subText = [desig, center].filter(Boolean).join(' • ');
+                return {
+                    value: u.name,
+                    label: subText ? `${u.name} (${subText})` : u.name,
+                    user: u,
+                };
+            });
+    }, [scientistsList]);
+
+    const handleSelectScientist = (index, selectedName) => {
+        if (!selectedName) {
+            handleSignatoryChange(index, 'name', '');
+            handleSignatoryChange(index, 'lines_raw', '');
+            return;
+        }
+
+        const foundUser = (scientistsList || []).find(
+            (u) => (u.name || '').trim().toLowerCase() === selectedName.trim().toLowerCase()
+        );
+
+        if (foundUser) {
+            const desig = formatDesignation(foundUser.designation || foundUser.role || '');
+            const center = formatCenter(foundUser.center || foundUser.centre || foundUser.group || '');
+            const lines = [desig, center, 'CMTI, Bengaluru'].filter(Boolean).join('\n');
+
+            const updated = [...signatories];
+            updated[index] = {
+                ...updated[index],
+                name: foundUser.name,
+                lines_raw: lines,
+            };
+            setSignatories(updated);
+        } else {
+            handleSignatoryChange(index, 'name', selectedName);
+        }
     };
 
     const handleSignatoryChange = (index, field, value) => {
@@ -2103,7 +2176,7 @@ export default function DocumentGenerate({
                                         <Row gutter={[12, 12]}>
                                             {signatories.map((sig, idx) => (
                                                 <Col xs={24} sm={12} key={idx}>
-                                                    <div className="border border-slate-900 p-2.5 bg-slate-50 space-y-1.5">
+                                                    <div className="border border-slate-900 p-3 bg-slate-50 space-y-2">
                                                         <div className="flex items-center justify-between">
                                                             <span className="text-[11px] font-bold text-slate-700">Signatory #{idx + 1}</span>
                                                             {signatories.length > 1 && (
@@ -2116,19 +2189,47 @@ export default function DocumentGenerate({
                                                                 />
                                                             )}
                                                         </div>
-                                                        <Input
-                                                            value={sig.name}
-                                                            onChange={(e) => handleSignatoryChange(idx, 'name', e.target.value)}
-                                                            placeholder="Signatory Full Name"
-                                                            className="text-xs rounded-none border border-slate-400 font-semibold"
-                                                        />
-                                                        <TextArea
-                                                            rows={2}
-                                                            value={sig.lines_raw}
-                                                            onChange={(e) => handleSignatoryChange(idx, 'lines_raw', e.target.value)}
-                                                            placeholder="Scientist-E&#10;Centre for Precision Machining&#10;CMTI, Bengaluru"
-                                                            className="text-[11px] rounded-none border border-slate-400"
-                                                        />
+                                                        <div>
+                                                            <label className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider block mb-0.5">
+                                                                Select Scientist:
+                                                            </label>
+                                                            <Select
+                                                                showSearch
+                                                                allowClear
+                                                                placeholder="Choose Scientist to auto-fill..."
+                                                                className="w-full text-xs"
+                                                                optionFilterProp="children"
+                                                                filterOption={(input, option) =>
+                                                                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                                                }
+                                                                value={sig.name || undefined}
+                                                                onChange={(selectedName) => handleSelectScientist(idx, selectedName)}
+                                                                options={scientistOptions}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider block mb-0.5">
+                                                                Signatory Full Name:
+                                                            </label>
+                                                            <Input
+                                                                value={sig.name}
+                                                                onChange={(e) => handleSignatoryChange(idx, 'name', e.target.value)}
+                                                                placeholder="Signatory Full Name"
+                                                                className="text-xs rounded-none border border-slate-400 font-semibold"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider block mb-0.5">
+                                                                Designation, Center & Details:
+                                                            </label>
+                                                            <TextArea
+                                                                rows={3}
+                                                                value={sig.lines_raw}
+                                                                onChange={(e) => handleSignatoryChange(idx, 'lines_raw', e.target.value)}
+                                                                placeholder="Scientist-E&#10;C-SMPM&#10;CMTI, Bengaluru"
+                                                                className="text-[11px] rounded-none border border-slate-400"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </Col>
                                             ))}

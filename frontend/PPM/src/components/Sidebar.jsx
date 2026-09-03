@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Typography, message, Select, Drawer, Modal, Form, Input, Avatar } from 'antd'
+import { Layout, Menu, Button, Typography, message, Select, Drawer, Modal, Form, Input, Avatar, Badge } from 'antd'
 import {
   ProfileOutlined,
   SettingOutlined,
@@ -16,6 +16,7 @@ import {
   EditOutlined
 } from '@ant-design/icons'
 import cmtiLogo from '../assets/waitro-member-cmti.png'
+import messagingLogo from '../assets/messaging.png'
 import { useLocation, useNavigate } from 'react-router-dom'
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
@@ -152,6 +153,8 @@ function Sidebar() {
   // Treat Scientist as same as GH
   const isGHOrScientist = basePath === 'gh' || basePath === 'scientist'
   const isScientistOrCoordinator = basePath === 'scientist' || userRole === 'scientist' || userRole === 'coordinator' || userRole === 'project coordinator' || userRole === 'project_coordinator' || userRole === 'pi'
+  const showNotification = isGHOrScientist || normalizedBasePath === 'admin'
+  const notificationPath = isGHOrScientist ? `/${basePath}/gh-notification` : `/${basePath}/notification`
 
   // Determine role-specific User Manual PDF URL
   const activeRole = (basePath || userRole || '').toLowerCase()
@@ -334,70 +337,7 @@ function Sidebar() {
           }}
           items={[
             { key: 'proposals', icon: <ProfileOutlined />, label: 'Proposals / Projects' },
-            { key: 'ai-proposal', icon: <RobotOutlined />, label: 'AI Proposal' },
-            ...(!isGuest && !isDirector ? [{
-              key: 'chats',
-              icon: <MessageOutlined />,
-              label: (
-                <span>
-                  Chats
-                  {unreadChatCount > 0 && (
-                    <span
-                      style={{
-                        backgroundColor: '#ff4d4f',
-                        borderRadius: '50%',
-                        color: 'white',
-                        padding: '0 6px',
-                        marginLeft: '8px',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      {unreadChatCount}
-                    </span>
-                  )}
-                </span>
-              )
-            }] : []),
             ...(!isDirector ? [{ key: 'projects', icon: <ProjectOutlined />, label: 'Projects Documents' }] : []),
-            { key: 'iso-generation', icon: <FileWordOutlined />, label: 'ISO Generation' },
-            ...(isScientistOrCoordinator ? [{ key: 'team-members', icon: <TeamOutlined />, label: 'Team Members' }] : []),
-
-            ...(isGHOrScientist
-              ? [
-                {
-                  key: 'gh-notification',
-                  icon: <ProfileOutlined />,
-                  label: (
-                    <span>
-                      Notification
-                      {notificationCount > 0 && (
-                        <span
-                          style={{
-                            backgroundColor: '#ff4d4f',
-                            borderRadius: '10px',
-                            color: 'white',
-                            padding: '0 6px',
-                            marginLeft: '8px',
-                            fontSize: '10px',
-                            lineHeight: '14px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            minWidth: '16px',
-                            height: '16px',
-                            fontWeight: 'bold',
-                            verticalAlign: 'middle',
-                          }}
-                        >
-                          {notificationCount}
-                        </span>
-                      )}
-                    </span>
-                  ),
-                },
-              ]
-              : []),
 
             ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
               ? [
@@ -456,40 +396,6 @@ function Sidebar() {
               ]
               : []),
 
-            ...((normalizedBasePath === 'admin')
-              ? [
-                {
-                  key: 'notification',
-                  icon: <BellOutlined />,
-                  label: (
-                    <span>
-                      Notification
-                      {notificationCount > 0 && (
-                        <span style={{
-                          backgroundColor: '#ff4d4f',
-                          borderRadius: '10px',
-                          color: 'white',
-                          padding: '0 6px',
-                          marginLeft: '8px',
-                          fontSize: '10px',
-                          lineHeight: '14px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          minWidth: '16px',
-                          height: '16px',
-                          fontWeight: 'bold',
-                          verticalAlign: 'middle',
-                        }}>
-                          {notificationCount}
-                        </span>
-                      )}
-                    </span>
-                  ),
-                },
-              ]
-              : []),
-
             ...((normalizedBasePath === 'admin' || normalizedBasePath === 'guest')
               ? [
                 {
@@ -515,8 +421,66 @@ function Sidebar() {
 
       {/* Footer & Logout */}
       <div className="px-4 pb-6 border-t border-slate-100 pt-4 bg-slate-50/50 flex flex-col gap-2.5">
-        {/* Profile Icon Trigger */}
-        <div className="flex justify-end py-1">
+        {/* Actions (Team, Notification, Chat & Profile Trigger) */}
+        <div className="flex justify-between items-center py-1">
+          {isScientistOrCoordinator && (
+            <Button
+              type="default"
+              shape="circle"
+              size="large"
+              icon={<TeamOutlined className="text-slate-600 text-lg" />}
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(`/${basePath}/team-members`);
+              }}
+              title="Team Members"
+              style={{
+                backgroundColor: "#ffffff",
+                borderColor: "#cbd5e1",
+              }}
+              className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:!text-blue-600 hover:scale-105"
+            />
+          )}
+          {showNotification && (
+            <Badge count={notificationCount} size="small" offset={[-2, 2]}>
+              <Button
+                type="default"
+                shape="circle"
+                size="large"
+                icon={<BellOutlined className="text-slate-600 text-lg" />}
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate(notificationPath);
+                }}
+                title="Notifications"
+                style={{
+                  backgroundColor: "#ffffff",
+                  borderColor: "#cbd5e1",
+                }}
+                className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:!text-blue-600 hover:scale-105"
+              />
+            </Badge>
+          )}
+          {!isGuest && !isDirector && (
+            <Badge count={unreadChatCount} size="small" offset={[-2, 2]}>
+              <Button
+                type="default"
+                shape="circle"
+                size="large"
+                icon={<img src={messagingLogo} alt="Chats" className="w-5 h-5 object-contain" />}
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate(`/${basePath}/chats`);
+                }}
+                title="Chats"
+                style={{
+                  backgroundColor: "#ffffff",
+                  borderColor: "#cbd5e1",
+                }}
+                className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:scale-105"
+              />
+            </Badge>
+          )}
           <Button
             type="default"
             shape="circle"
@@ -582,6 +546,40 @@ function Sidebar() {
           <img src={cmtiLogo} alt="CMTI logo" className="h-8 w-auto object-contain" />
         </div>
         <div className="flex items-center gap-2">
+          {isScientistOrCoordinator && (
+            <Button
+              size="small"
+              type="text"
+              icon={<TeamOutlined style={{ fontSize: '18px' }} />}
+              onClick={() => navigate(`/${basePath}/team-members`)}
+              className="flex items-center justify-center p-1 text-slate-700 hover:text-blue-600"
+              title="Team Members"
+            />
+          )}
+          {showNotification && (
+            <Badge count={notificationCount} size="small" offset={[-2, 2]}>
+              <Button
+                size="small"
+                type="text"
+                icon={<BellOutlined style={{ fontSize: '18px' }} />}
+                onClick={() => navigate(notificationPath)}
+                className="flex items-center justify-center p-1 text-slate-700 hover:text-blue-600"
+                title="Notifications"
+              />
+            </Badge>
+          )}
+          {!isGuest && !isDirector && (
+            <Badge count={unreadChatCount} size="small" offset={[-2, 2]}>
+              <Button
+                size="small"
+                type="text"
+                icon={<img src={messagingLogo} alt="Chats" className="w-5 h-5 object-contain" />}
+                onClick={() => navigate(`/${basePath}/chats`)}
+                className="flex items-center justify-center p-1 hover:opacity-80"
+                title="Chats"
+              />
+            </Badge>
+          )}
           {manualPdfUrl && (
             <Button
               size="small"

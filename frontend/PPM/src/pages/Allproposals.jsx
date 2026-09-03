@@ -2526,32 +2526,6 @@ export default function Allproposals() {
                 title="Manage Team Members"
               />
             )}
-            {userRole === 'scientist' && (
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: 'costEstimation',
-                      label: 'Cost Estimation Generator',
-                      onClick: (e) => {
-                        e.domEvent.stopPropagation()
-                        setSelectedProposalForCostEstimation(record)
-                        setCostEstimationModalOpen(true)
-                      },
-                    },
-                  ],
-                }}
-                trigger={['click']}
-              >
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<FileOutlined />}
-                  onClick={(e) => e.stopPropagation()}
-                  title="Generate/Estimate Cost"
-                />
-              </Dropdown>
-            )}
           </Space>
         ),
       })
@@ -2653,32 +2627,6 @@ export default function Allproposals() {
                     }}
                     title="Manage Team Members"
                   />
-                )}
-                {userRole === 'scientist' && (
-                  <Dropdown
-                    menu={{
-                      items: [
-                        {
-                          key: 'costEstimation',
-                          label: 'Cost Estimation Generator',
-                          onClick: (e) => {
-                            e.domEvent.stopPropagation()
-                            setSelectedProposalForCostEstimation(record)
-                            setCostEstimationModalOpen(true)
-                          },
-                        },
-                      ],
-                    }}
-                    trigger={['click']}
-                  >
-                    <Button
-                      size="small"
-                      type="link"
-                      icon={<FileOutlined />}
-                      onClick={(e) => e.stopPropagation()}
-                      title="Generate/Estimate Cost"
-                    />
-                  </Dropdown>
                 )}
               </>
             )}
