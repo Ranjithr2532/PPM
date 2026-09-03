@@ -105,6 +105,48 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const [docViewType, setDocViewType] = useState('iframe'); // 'iframe' | 'html' | 'loading' | 'error'
     const [docHtmlContent, setDocHtmlContent] = useState('');
 
+    // Draggable window state
+    const [poViewerPos, setPoViewerPos] = useState({ x: 200, y: 80 });
+    const [isDraggingDocWin, setIsDraggingDocWin] = useState(false);
+    const dragStartRef = React.useRef({ x: 0, y: 0, posStartX: 200, posStartY: 80 });
+
+    const handleMouseDownDocHeader = (e) => {
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        setIsDraggingDocWin(true);
+        dragStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            posStartX: poViewerPos.x,
+            posStartY: poViewerPos.y
+        };
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isDraggingDocWin) return;
+            const dx = e.clientX - dragStartRef.current.x;
+            const dy = e.clientY - dragStartRef.current.y;
+            setPoViewerPos({
+                x: Math.max(10, dragStartRef.current.posStartX + dx),
+                y: Math.max(10, dragStartRef.current.posStartY + dy)
+            });
+        };
+
+        const handleMouseUp = () => {
+            if (isDraggingDocWin) setIsDraggingDocWin(false);
+        };
+
+        if (isDraggingDocWin) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingDocWin]);
+
     // Details state
     const [quoteNo, setQuoteNo] = useState('');
     const [quoteDate, setQuoteDate] = useState('');
@@ -433,6 +475,8 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             fileUrl = `${API_BASE_URL}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
         }
         setPoViewerUrl(fileUrl);
+        // Default position floating on the right side of the screen
+        setPoViewerPos({ x: Math.max(20, window.innerWidth - 660), y: 80 });
         setShowPoViewer(true);
 
         const cleanUrl = fileUrl.split('?')[0].toLowerCase();
@@ -1155,33 +1199,43 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
 
             </div>
             
-            {/* PO Viewer Modal */}
+            {/* Draggable & Non-Blocking PO Viewer Window */}
             {showPoViewer && (
-                <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
-                        <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                <FileTextOutlined /> Document Preview
-                            </h3>
-                            <div className="flex items-center gap-4">
+                <div className="fixed inset-0 z-[999] pointer-events-none">
+                    <div 
+                        style={{ left: `${poViewerPos.x}px`, top: `${poViewerPos.y}px` }}
+                        className="pointer-events-auto fixed bg-white rounded-2xl shadow-2xl border border-slate-300 w-[640px] h-[680px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden transition-shadow duration-150"
+                    >
+                        <div 
+                            onMouseDown={handleMouseDownDocHeader}
+                            className={`flex items-center justify-between p-3.5 border-b border-slate-700 bg-slate-900 text-white select-none ${isDraggingDocWin ? 'cursor-grabbing' : 'cursor-grab'}`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span className="text-slate-400 font-mono text-xs cursor-grab">⠿⠿</span>
+                                <h3 className="font-bold text-xs flex items-center gap-1.5 text-white">
+                                    <FileTextOutlined className="text-indigo-400" /> PO Document Preview <span className="text-[10px] text-slate-400 font-normal">(Drag header to move)</span>
+                                </h3>
+                            </div>
+                            <div className="flex items-center gap-3">
                                 <a 
                                     href={poViewerUrl} 
                                     download
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                                    className="text-[11px] font-bold text-indigo-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-all border border-slate-700"
                                 >
-                                    Download / Open External
+                                    Download File
                                 </a>
                                 <button
                                     onClick={() => setShowPoViewer(false)}
-                                    className="text-slate-400 hover:text-slate-600 font-bold text-lg leading-none ml-2"
+                                    className="text-slate-400 hover:text-white font-bold text-base leading-none px-2 py-1 rounded hover:bg-rose-600/80 transition-all"
+                                    title="Close Window"
                                 >
                                     ✕
                                 </button>
                             </div>
                         </div>
-                        <div className="flex-1 bg-slate-100 p-4 overflow-auto">
+                        <div className="flex-1 bg-slate-100 p-3 overflow-auto">
                             {docViewType === 'loading' && (
                                 <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 font-semibold text-sm">
                                     <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -1189,16 +1243,16 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                                 </div>
                             )}
                             {docViewType === 'html' && (
-                                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-4xl mx-auto overflow-auto text-slate-800 space-y-4">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 max-w-full overflow-auto text-slate-800 space-y-4">
                                     <div 
-                                        className="prose prose-slate max-w-none [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2"
+                                        className="prose prose-slate max-w-none text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-slate-300 [&_th]:p-1.5 [&_th]:bg-slate-100 [&_td]:border [&_td]:border-slate-300 [&_td]:p-1.5"
                                         dangerouslySetInnerHTML={{ __html: docHtmlContent }}
                                     />
                                 </div>
                             )}
                             {docViewType === 'error' && (
-                                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600">
-                                    <p className="font-semibold text-rose-600">Could not render file directly in browser preview.</p>
+                                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600 text-center p-4">
+                                    <p className="font-semibold text-rose-600 text-xs">Could not render preview directly.</p>
                                     <a 
                                         href={poViewerUrl} 
                                         download
