@@ -522,20 +522,21 @@ def create_cost_estimation_sheet_document(
     clean_container_cell(c_left, [t_info, t_ah])
 
     # -------------------------------------------------------------------------
-    # COLUMN 2 (MIDDLE, 2.40 in): REVENUE + INFRASTRUCTURE + TECHNICAL HR + STAFF CHARGES
+    # COLUMN 2 (MIDDLE, 2.35 in container): REVENUE + INFRASTRUCTURE + TECHNICAL HR + STAFF CHARGES
+    # (Tables set to 2.22 in width to leave breathing room from outer container boundary)
     # -------------------------------------------------------------------------
-    # Table 3: Estimated Revenue Projection (2.40 in)
+    # Table 3: Estimated Revenue Projection (2.22 in)
     rev_data = revenue_projection or {}
     t_rev = doc.add_table(rows=5, cols=2)
     t_rev.alignment = WD_TABLE_ALIGNMENT.LEFT
     t_rev.autofit = False
-    set_table_fixed_grid(t_rev, [1.50, 0.85])
+    set_table_fixed_grid(t_rev, [1.44, 0.78])
 
     for r in t_rev.rows:
         r.height = Pt(13.0)
         r.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
-        set_cell_width(r.cells[0], 1.50)
-        set_cell_width(r.cells[1], 0.85)
+        set_cell_width(r.cells[0], 1.44)
+        set_cell_width(r.cells[1], 0.78)
         for c in r.cells:
             set_cell_border(c, top=border_black, bottom=border_black, left=border_black, right=border_black)
             set_cell_margins(c, top=10, bottom=10, start=5, end=5)
@@ -543,7 +544,7 @@ def create_cost_estimation_sheet_document(
 
     # Row 0: Header (Merged)
     t_rev.rows[0].cells[0].merge(t_rev.rows[0].cells[1])
-    set_cell_width(t_rev.rows[0].cells[0], 2.35)
+    set_cell_width(t_rev.rows[0].cells[0], 2.22)
     set_cell_shading(t_rev.rows[0].cells[0], grey_shd)
     add_text(t_rev.rows[0].cells[0], "Estimated Revenue Projection", font_size=7.3, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
@@ -567,8 +568,8 @@ def create_cost_estimation_sheet_document(
     add_text(t_rev.rows[4].cells[0], "Total", font_size=6.7, bold=True)
     add_text(t_rev.rows[4].cells[1], format_val(tot_rev), font_size=6.7, bold=True, alignment=WD_ALIGN_PARAGRAPH.RIGHT)
 
-    # Table 4: Details of Infrastructure Development (2.35 in)
-    sub_col_widths_mid = [0.28, 1.22, 0.85]
+    # Table 4: Details of Infrastructure Development (2.22 in)
+    sub_col_widths_mid = [0.26, 1.18, 0.78]
     infra = infra_details or {}
     
     infra_total_val = infra.get("total_c1_c2") or infra.get("total_c1") or ""
@@ -601,7 +602,7 @@ def create_cost_estimation_sheet_document(
 
     # Header Row 0 (Merged)
     t_inf.rows[0].cells[0].merge(t_inf.rows[0].cells[1]).merge(t_inf.rows[0].cells[2])
-    set_cell_width(t_inf.rows[0].cells[0], 2.35)
+    set_cell_width(t_inf.rows[0].cells[0], 2.22)
     set_cell_shading(t_inf.rows[0].cells[0], grey_shd)
     add_text(t_inf.rows[0].cells[0], "Details of Infrastructure Development", font_size=7.3, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
@@ -622,7 +623,7 @@ def create_cost_estimation_sheet_document(
             for c in row.cells:
                 set_cell_shading(c, light_grey_shd)
 
-    # Table 5: Details of Technical HR (2.40 in)
+    # Table 5: Details of Technical HR (2.22 in)
     tech = tech_hr_details or {}
     tech_total_val = tech.get("total_r6", "")
     if (tech_total_val == "" or tech_total_val is None or str(tech_total_val) == "0") and account_heads:
@@ -654,7 +655,7 @@ def create_cost_estimation_sheet_document(
 
     # Header Row 0 (Merged)
     t_thr.rows[0].cells[0].merge(t_thr.rows[0].cells[1]).merge(t_thr.rows[0].cells[2])
-    set_cell_width(t_thr.rows[0].cells[0], 2.35)
+    set_cell_width(t_thr.rows[0].cells[0], 2.22)
     set_cell_shading(t_thr.rows[0].cells[0], grey_shd)
     add_text(t_thr.rows[0].cells[0], "Details of Technical HR", font_size=7.3, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
@@ -675,7 +676,7 @@ def create_cost_estimation_sheet_document(
             for c in row.cells:
                 set_cell_shading(c, light_grey_shd)
 
-    # Table 6: Regular Staff Charges (2.40 in)
+    # Table 6: Regular Staff Charges (2.22 in)
     staff = staff_charges or {}
     staff_total_val = staff.get("total_e1", "")
     if (staff_total_val == "" or staff_total_val is None or str(staff_total_val) == "0") and account_heads:
@@ -706,7 +707,7 @@ def create_cost_estimation_sheet_document(
 
     # Header Row 0 (Merged)
     t_stf.rows[0].cells[0].merge(t_stf.rows[0].cells[1]).merge(t_stf.rows[0].cells[2])
-    set_cell_width(t_stf.rows[0].cells[0], 2.35)
+    set_cell_width(t_stf.rows[0].cells[0], 2.22)
     set_cell_shading(t_stf.rows[0].cells[0], grey_shd)
     add_text(t_stf.rows[0].cells[0], "Regular Staff Charges", font_size=7.3, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 

@@ -1,18 +1,63 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DownloadOutlined,
-    ReloadOutlined,
     FileWordOutlined,
     ArrowLeftOutlined,
     CheckOutlined,
     CloseOutlined,
     CheckCircleOutlined,
-    LoadingOutlined
+    LoadingOutlined,
+    FolderOpenOutlined,
+    EyeOutlined,
+    PaperClipOutlined,
+    FilePdfOutlined,
+    FileExcelOutlined,
+    FileImageOutlined,
+    FileTextOutlined,
+    LinkOutlined,
+    ExpandOutlined,
+    CompressOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
+
+const resolveDocUrl = (url) => {
+    if (!url) return '';
+    if (typeof url !== 'string') return '';
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+        return url;
+    }
+    const cleanBase = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+    const cleanPath = url.startsWith('/') ? url : `/${url}`;
+    return `${cleanBase}${cleanPath}`;
+};
+
+const getFileTypeInfo = (url, name) => {
+    const target = (name || url || '').toLowerCase();
+    const clean = target.split('?')[0].split('#')[0];
+    const ext = clean.split('.').pop();
+
+    if (['pdf'].includes(ext)) {
+        return { type: 'pdf', label: 'PDF Document', color: 'red', icon: <FilePdfOutlined /> };
+    }
+    if (['doc', 'docx'].includes(ext)) {
+        return { type: 'word', label: 'Word Document', color: 'blue', icon: <FileWordOutlined /> };
+    }
+    if (['xls', 'xlsx', 'csv'].includes(ext)) {
+        return { type: 'excel', label: 'Excel Spreadsheet', color: 'green', icon: <FileExcelOutlined /> };
+    }
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+        return { type: 'image', label: 'Image', color: 'purple', icon: <FileImageOutlined /> };
+    }
+    if (['txt', 'log', 'json', 'md'].includes(ext)) {
+        return { type: 'text', label: 'Text File', color: 'slate', icon: <FileTextOutlined /> };
+    }
+    return { type: 'generic', label: 'File', color: 'default', icon: <FileTextOutlined /> };
+};
 
 
 
@@ -145,6 +190,82 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const [projectNumber, setProjectNumber] = useState('');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
+
+    // Project Stage-Wise Documents States
+    const [projectStages, setProjectStages] = useState([]);
+    const [selectedStageId, setSelectedStageId] = useState(null);
+    const [selectedDocId, setSelectedDocId] = useState('');
+    const [showDocListMenu, setShowDocListMenu] = useState(false);
+    const docListMenuRef = useRef(null);
+
+    // Floating & Draggable Document Viewer States
+    const [showDocViewer, setShowDocViewer] = useState(false);
+    const [activeViewerDoc, setActiveViewerDoc] = useState(null);
+    const [docViewerUrl, setDocViewerUrl] = useState('');
+    const [docViewType, setDocViewType] = useState('loading'); // 'loading' | 'html' | 'excel' | 'pdf' | 'image' | 'iframe' | 'error'
+    const [docHtmlContent, setDocHtmlContent] = useState('');
+    const [excelWorkbook, setExcelWorkbook] = useState(null);
+    const [excelSheetNames, setExcelSheetNames] = useState([]);
+    const [activeSheetName, setActiveSheetName] = useState('');
+    const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+
+    // Draggable window coordinates & drag handling
+    const [docViewerPos, setDocViewerPos] = useState({ x: 200, y: 80 });
+    const [isDraggingDocWin, setIsDraggingDocWin] = useState(false);
+    const dragStartRef = useRef({ x: 0, y: 0, posStartX: 200, posStartY: 80 });
+
+    const handleMouseDownDocHeader = (e) => {
+        if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input') || e.target.closest('select')) return;
+        if (isViewerMaximized) return;
+        setIsDraggingDocWin(true);
+        dragStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            posStartX: docViewerPos.x,
+            posStartY: docViewerPos.y
+        };
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isDraggingDocWin) return;
+            const dx = e.clientX - dragStartRef.current.x;
+            const dy = e.clientY - dragStartRef.current.y;
+            setDocViewerPos({
+                x: Math.max(10, Math.min(window.innerWidth - 300, dragStartRef.current.posStartX + dx)),
+                y: Math.max(10, Math.min(window.innerHeight - 100, dragStartRef.current.posStartY + dy))
+            });
+        };
+
+        const handleMouseUp = () => {
+            if (isDraggingDocWin) setIsDraggingDocWin(false);
+        };
+
+        if (isDraggingDocWin) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingDocWin]);
+
+    // Close document list dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (docListMenuRef.current && !docListMenuRef.current.contains(event.target)) {
+                setShowDocListMenu(false);
+            }
+        };
+        if (showDocListMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showDocListMenu]);
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
@@ -457,6 +578,177 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             .catch(err => console.error('Error fetching proposal details:', err));
     }, [selectedProposalId, proposals]);
 
+    // Fetch project stage configuration and stage-wise documents strictly
+    const fetchProjectDocuments = useCallback(async (projId) => {
+        const pid = projId || selectedProposalId;
+        if (!pid) return;
+        try {
+            const token = localStorage.getItem('token');
+            const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+            // 1. Fetch stage configuration for ordering
+            let configs = [];
+            try {
+                const stageCfgRes = await axios.get(`${API_BASE_URL}/stages/`, { headers: authHeaders });
+                if (Array.isArray(stageCfgRes.data)) {
+                    configs = stageCfgRes.data;
+                }
+            } catch (cfgErr) {
+                console.warn('Could not fetch stage config:', cfgErr);
+            }
+
+            // 2. Fetch stage-wise documents strictly from /proposals/stage_wise/{pid}
+            const stageWiseRes = await axios.get(`${API_BASE_URL}/proposals/stage_wise/${pid}`, { headers: authHeaders });
+            const stagesData = Array.isArray(stageWiseRes.data) ? stageWiseRes.data : [];
+
+            const getStagePosition = (stageId, rawPos) => {
+                const matched = configs.find(c => c.id === stageId);
+                const pos = matched?.position ?? rawPos;
+                const num = Number(pos);
+                return isNaN(num) ? 999 : num;
+            };
+
+            const processedStages = stagesData
+                .filter(stg => (stg.stage_name || '').trim().toLowerCase() !== 'dgdfh')
+                .map((stg) => {
+                    const pos = getStagePosition(stg.stage_id, stg.position);
+                    const docs = Array.isArray(stg.documents) ? stg.documents : [];
+                    return {
+                        stage_id: stg.stage_id,
+                        stage_name: stg.stage_name,
+                        position: pos,
+                        documents: docs.map((d, idx) => ({
+                            ...d,
+                            version: d.version || (idx + 1),
+                            display_name: d.name || `Document v${d.version || idx + 1}`,
+                            stage_name: stg.stage_name,
+                            stage_position: pos
+                        }))
+                    };
+                })
+                .sort((a, b) => a.position - b.position);
+
+            setProjectStages(processedStages);
+
+            // Auto-select first stage that has documents, or the first stage
+            const firstWithDocs = processedStages.find(s => s.documents.length > 0);
+            if (firstWithDocs) {
+                setSelectedStageId(String(firstWithDocs.stage_id));
+                if (firstWithDocs.documents && firstWithDocs.documents.length > 0) {
+                    setSelectedDocId(String(firstWithDocs.documents[0].id || firstWithDocs.documents[0].name || firstWithDocs.documents[0].url));
+                }
+            } else if (processedStages.length > 0) {
+                setSelectedStageId(String(processedStages[0].stage_id));
+                setSelectedDocId('');
+            }
+        } catch (err) {
+            console.error('Error fetching stage-wise project documents:', err);
+            setProjectStages([]);
+        }
+    }, [selectedProposalId]);
+
+    // Automatically fetch documents when selectedProposalId changes
+    useEffect(() => {
+        if (selectedProposalId) {
+            fetchProjectDocuments(selectedProposalId);
+        }
+    }, [selectedProposalId, fetchProjectDocuments]);
+
+    // Switch active Excel sheet in viewer
+    const handleSwitchExcelSheet = (sheetName, wb = excelWorkbook) => {
+        if (!wb || !wb.Sheets[sheetName]) return;
+        setActiveSheetName(sheetName);
+        try {
+            const html = XLSX.utils.sheet_to_html(wb.Sheets[sheetName]);
+            setDocHtmlContent(html);
+        } catch (e) {
+            console.error('Error switching Excel sheet:', e);
+        }
+    };
+
+    // View specific document in draggable floating preview window
+    const handleViewDocument = async (doc, customUrl, customName) => {
+        const rawTargetUrl = customUrl || doc?.url || doc?.file;
+        if (!rawTargetUrl) {
+            alert('Document file URL is not available.');
+            return;
+        }
+        if (doc) {
+            setSelectedDocId(String(doc.id || doc.name || doc.url));
+            if (doc.stage_id) {
+                setSelectedStageId(String(doc.stage_id));
+            }
+        }
+        const resolvedUrl = resolveDocUrl(rawTargetUrl);
+        const docName = customName || doc?.display_name || doc?.name || 'Document';
+        const typeInfo = getFileTypeInfo(resolvedUrl, docName);
+
+        setActiveViewerDoc({
+            ...doc,
+            name: docName,
+            url: resolvedUrl,
+            typeInfo
+        });
+        setDocViewerUrl(resolvedUrl);
+        setDocViewerPos({
+            x: Math.max(20, window.innerWidth - 680),
+            y: 80
+        });
+        setIsViewerMaximized(false);
+        setShowDocViewer(true);
+
+        const cleanUrl = resolvedUrl.split('?')[0].split('#')[0].toLowerCase();
+        const ext = cleanUrl.split('.').pop();
+
+        if (ext === 'docx' || ext === 'doc') {
+            setDocViewType('loading');
+            setDocHtmlContent('');
+            setExcelWorkbook(null);
+            setExcelSheetNames([]);
+            try {
+                const res = await axios.get(resolvedUrl, { responseType: 'arraybuffer' });
+                const result = await mammoth.convertToHtml({ arrayBuffer: res.data });
+                setDocHtmlContent(result.value || '<p className="p-4 text-slate-500 italic">No readable text content found in Word document.</p>');
+                setDocViewType('html');
+            } catch (err) {
+                console.error('Error rendering Word document with mammoth:', err);
+                setDocViewType('error');
+            }
+        } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+            setDocViewType('loading');
+            setDocHtmlContent('');
+            try {
+                const res = await axios.get(resolvedUrl, { responseType: 'arraybuffer' });
+                const wb = XLSX.read(res.data, { type: 'array' });
+                setExcelWorkbook(wb);
+                const sheets = wb.SheetNames || [];
+                setExcelSheetNames(sheets);
+                if (sheets.length > 0) {
+                    const firstSheet = sheets[0];
+                    setActiveSheetName(firstSheet);
+                    const html = XLSX.utils.sheet_to_html(wb.Sheets[firstSheet]);
+                    setDocHtmlContent(html);
+                } else {
+                    setDocHtmlContent('<p className="p-4 text-slate-500 italic">Workbook contains no sheets.</p>');
+                }
+                setDocViewType('excel');
+            } catch (err) {
+                console.error('Error rendering Excel document with xlsx:', err);
+                setDocViewType('error');
+            }
+        } else if (ext === 'pdf') {
+            setDocViewType('pdf');
+        } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+            setDocViewType('image');
+        } else {
+            setDocViewType('iframe');
+        }
+    };
+
+    const activeStage = projectStages.find(s => String(s.stage_id) === String(selectedStageId)) || projectStages[0] || null;
+    const activeStageDocs = activeStage?.documents || [];
+    const totalProjectDocsCount = projectStages.reduce((acc, s) => acc + (s.documents ? s.documents.length : 0), 0);
+
     const handleReset = () => {
         setConclusion('Feasible');
         setFilename('CMTI_Feasibility_Report.docx');
@@ -545,14 +837,15 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 centreDept: loggedCentreDept || '',
                 isoSpec: '',
                 preparedName: preparedBy,
+                preparedRole: 'Scientist',
                 approvedName: approvedBy,
-                groupName: getLoggedUserGroup() || '',
+                approvedRole: 'CH/GH'
             };
 
             const reviewPointsList = REVIEW_POINTS_TEMPLATES.map(pt => ({
                 sl_no: pt.sl_no,
-                review_point: pt.point,
-                yes_no_na: responses[pt.key_resp] || '',
+                point: pt.point,
+                response: responses[pt.key_resp] || '',
                 details: responses[pt.key_det] || ''
             }));
 
@@ -560,8 +853,8 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 party_details: partyDetails,
                 enquiry_ref_no: enquiryRef,
                 description_of_the_enquiry: description,
-                conclusion: conclusion,
                 review_points: reviewPointsList,
+                conclusion: conclusion,
             };
 
             const payload = {
@@ -584,67 +877,58 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 }
             }
 
-            setStatus(response.data.status || targetStatus);
-            alert(`ISO Feasibility Form ${targetStatus === 'SUBMITTED' ? 'Submitted for Approval' : 'Saved as Draft'} successfully!`);
+            setStatus(targetStatus);
+            if (targetStatus === 'SUBMITTED') {
+                alert('Feasibility Report submitted successfully for Approval!');
+            } else {
+                alert('Draft saved successfully!');
+            }
         } catch (err) {
             console.error('Error saving submission:', err);
-            alert(err.response?.data?.detail || 'Failed to save submission.');
+            alert('Failed to save document. Please try again.');
         } finally {
             setSubmitting(false);
         }
     };
 
-    // Approval / Rejection handlers for CH / GH / Admin
-    const handleFormStatusUpdate = async (newStatus) => {
-        if (!submissionId) return;
-        let rejectComment = null;
-        if (newStatus === 'REJECTED') {
-            rejectComment = prompt('Please enter the reason for rejection:');
-            if (!rejectComment) return;
+    // Handle approver (CH/GH) approve or reject actions
+    const handleFormStatusUpdate = async (nextStatus) => {
+        if (!submissionId) {
+            alert('Cannot update status of unsaved document.');
+            return;
         }
 
         setSubmitting(true);
         try {
             const rawUser = window.localStorage.getItem('ppm_user');
-            const userId = rawUser ? JSON.parse(rawUser)?.id : null;
-            const currentApproverName = getLoggedUserName();
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const approverName = currentUser.name || getLoggedUserName();
 
-            if (newStatus === 'APPROVED' && currentApproverName) {
-                setApprovedBy(currentApproverName);
-                // Also update form_data with approved_by name
-                await isoSubmissionService.updateSubmission(submissionId, {
-                    form_data: {
-                        party_details: partyDetails,
-                        enquiry_ref: enquiryRef,
-                        description: description,
-                        conclusion: conclusion,
-                        prepared_by: preparedBy || getLoggedUserName(),
-                        approved_by: currentApproverName,
-                        review_points: Object.keys(responses).map(k => ({ key: k, val: responses[k] }))
-                    },
-                    header_data: {
-                        docNo: docNo,
-                        dateStr: docDate,
-                        centreDept: loggedCentreDept,
-                        preparedName: preparedBy || getLoggedUserName(),
-                        approvedName: currentApproverName
-                    }
-                });
+            await isoSubmissionService.updateStatus(
+                submissionId,
+                nextStatus,
+                nextStatus === 'APPROVED' ? `Approved by ${approverName}` : `Rejected by ${approverName}`
+            );
+
+            setStatus(nextStatus);
+            if (nextStatus === 'APPROVED') {
+                setApprovedBy(approverName);
+                alert('Feasibility Report approved successfully!');
+            } else {
+                alert('Feasibility Report rejected.');
             }
-
-            await isoSubmissionService.updateStatus(submissionId, newStatus, rejectComment, userId);
-            setStatus(newStatus);
-            alert(`ISO Document marked as ${newStatus} successfully!`);
         } catch (err) {
-            console.error('Status update error:', err);
-            alert('Failed to update status.');
+            console.error('Error updating status:', err);
+            alert('Failed to update status. Please try again.');
         } finally {
             setSubmitting(false);
         }
     };
 
+    const isFeasible = conclusion === 'Feasible';
+
     return (
-        <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
+        <div className="flex flex-col items-center bg-slate-100 min-h-screen p-4 md:p-8 font-sans">
             {/* Status Alert Banner */}
             {isApproved && (
                 <div className="w-full max-w-4xl bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
@@ -659,8 +943,8 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 </div>
             )}
 
-            {/* Top Toolbar Control Bar */}
-            <div className="w-full max-w-4xl bg-white border border-slate-200 p-4 rounded-2xl mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Top Toolbar */}
+            <div className="w-full max-w-[21cm] bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
                     {onBack && (
                         <button
@@ -677,11 +961,24 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                         </button>
                     )}
 
-                    {projectNumber && (
+                    {proposals.length > 1 ? (
+                        <select
+                            value={selectedProposalId}
+                            onChange={(e) => setSelectedProposalId(e.target.value)}
+                            className="text-xs font-mono font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl border border-slate-300 outline-none cursor-pointer transition-all max-w-[220px] truncate"
+                            title="Select Project / Proposal"
+                        >
+                            {proposals.map(p => (
+                                <option key={p.id} value={p.id}>
+                                    {p.project_number ? `Proj: ${p.project_number}` : `Proposal #${p.id}`} {p.customer_name ? `- ${p.customer_name}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    ) : projectNumber ? (
                         <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
                             Project: {projectNumber}
                         </span>
-                    )}
+                    ) : null}
 
                     <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
                             status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
@@ -690,41 +987,25 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                         }`}>
                         {status}
                     </span>
-
-                    {/* Auto-Save Draft Status Badge */}
-                    <div className="ml-1">
-                        {autoSaveState === 'saving' && (
-                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
-                                <LoadingOutlined className="text-[10px]" /> Saving draft...
-                            </span>
-                        )}
-                        {autoSaveState === 'saved' && (
-                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
-                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
-                            </span>
-                        )}
-                    </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
-                    {/* Scientist Create / Edit Controls */}
                     {!isReadOnly && !isApprover && (
                         <button
                             onClick={() => handleSaveSubmission('SUBMITTED')}
                             disabled={submitting}
-                            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
                         >
                             {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
                         </button>
                     )}
 
-                    {/* CH / GH Approver Review Controls */}
                     {isApprover && isSubmitted && (
                         <>
                             <button
                                 onClick={() => handleFormStatusUpdate('APPROVED')}
                                 disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
                             >
                                 <CheckOutlined /> Approve Document
                             </button>
@@ -732,7 +1013,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                             <button
                                 onClick={() => handleFormStatusUpdate('REJECTED')}
                                 disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-rose-600/10"
+                                className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-rose-600/10 cursor-pointer"
                             >
                                 <CloseOutlined /> Reject Document
                             </button>
@@ -742,15 +1023,98 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                     <button
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10"
+                        className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
                     >
                         {generating ? 'Generating...' : <><DownloadOutlined /> Download Word</>}
                     </button>
+
+                    {/* View Docs Button with Interactive Stage-Wise Document List Dropdown */}
+                    <div className="relative inline-block" ref={docListMenuRef}>
+                        <button
+                            type="button"
+                            onClick={() => setShowDocListMenu(!showDocListMenu)}
+                            className="flex items-center justify-center gap-1.5 bg-cyan-600 hover:bg-cyan-700 active:bg-cyan-800 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-md shadow-cyan-600/10 cursor-pointer"
+                            title="Touch to view stage-wise project documents"
+                        >
+                            <FolderOpenOutlined className="text-xs" />
+                            <span>View Docs</span>
+                            <span className="text-[10px] opacity-75 ml-0.5">{showDocListMenu ? '▲' : '▼'}</span>
+                        </button>
+
+                        {/* Interactive Stage-Wise Document List Dropdown Menu */}
+                        {showDocListMenu && (
+                            <div className="absolute top-full right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-[9998] p-3 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <FolderOpenOutlined className="text-cyan-600" />
+                                        <span>Project Documents List</span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-semibold">
+                                        {totalProjectDocsCount} Total
+                                    </span>
+                                </div>
+
+                                <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                                    {projectStages.length === 0 || totalProjectDocsCount === 0 ? (
+                                        <div className="text-center py-6 text-slate-400 text-xs italic">
+                                            No documents available for this project.
+                                        </div>
+                                    ) : (
+                                        projectStages.map((stg) => {
+                                            const docs = stg.documents || [];
+                                            if (docs.length === 0) return null;
+                                            return (
+                                                <div key={stg.stage_id} className="space-y-1">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md flex items-center justify-between">
+                                                        <span>{stg.position < 900 ? `Stage ${stg.position}` : 'Stage'}: {stg.stage_name}</span>
+                                                        <span className="text-slate-400">({docs.length})</span>
+                                                    </div>
+                                                    <div className="space-y-1 pl-1">
+                                                        {docs.map((doc, dIdx) => {
+                                                            const tInfo = getFileTypeInfo(doc.url, doc.name);
+                                                            return (
+                                                                <div
+                                                                    key={doc.id || dIdx}
+                                                                    onClick={() => {
+                                                                        setShowDocListMenu(false);
+                                                                        setSelectedStageId(String(stg.stage_id));
+                                                                        handleViewDocument(doc);
+                                                                    }}
+                                                                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-cyan-50 border border-transparent hover:border-cyan-200 cursor-pointer transition-all group"
+                                                                >
+                                                                    <div className={`p-1 rounded text-xs flex items-center justify-center shrink-0 ${
+                                                                        tInfo.type === 'pdf' ? 'bg-red-50 text-red-600' :
+                                                                        tInfo.type === 'word' ? 'bg-blue-50 text-blue-600' :
+                                                                        tInfo.type === 'excel' ? 'bg-emerald-50 text-emerald-600' :
+                                                                        tInfo.type === 'image' ? 'bg-purple-50 text-purple-600' :
+                                                                        'bg-slate-100 text-slate-600'
+                                                                    }`}>
+                                                                        {tInfo.icon}
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="text-xs font-semibold text-slate-700 group-hover:text-cyan-800 truncate" title={doc.display_name || doc.name}>
+                                                                            {doc.display_name || doc.name || 'Document'}
+                                                                        </div>
+                                                                        <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                                                                            {doc.version && <span>v{doc.version}</span>}
+                                                                            {doc.created_at && <span>{new Date(doc.created_at).toLocaleDateString()}</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <EyeOutlined className="text-slate-400 group-hover:text-cyan-600 text-xs shrink-0" />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
-
-
-
 
             {/* Simulated Word A4 Document Canvas */}
             <div className="w-full max-w-[21cm] bg-white shadow-2xl border border-slate-200 p-[1.5cm] flex flex-col font-sans text-slate-800 text-xs leading-relaxed min-h-[29.7cm]">
@@ -1008,6 +1372,283 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 </div>
 
             </div>
+
+            {/* ========================================================================= */}
+            {/* DRAGGABLE & NON-BLOCKING DOCUMENT VIEWER WINDOW (z-[9999]) */}
+            {/* ========================================================================= */}
+            {showDocViewer && (
+                <div className="fixed inset-0 z-[9999] pointer-events-none">
+                    <div
+                        style={isViewerMaximized ? {} : { left: `${docViewerPos.x}px`, top: `${docViewerPos.y}px` }}
+                        className={
+                            isViewerMaximized
+                                ? 'pointer-events-auto fixed inset-4 bg-white rounded-2xl shadow-2xl border border-slate-300 flex flex-col overflow-hidden transition-all z-[9999]'
+                                : 'pointer-events-auto fixed bg-white rounded-2xl shadow-2xl border border-slate-300 w-[680px] h-[740px] max-w-[95vw] max-h-[92vh] flex flex-col overflow-hidden transition-shadow duration-150 z-[9999]'
+                        }
+                    >
+                        {/* Header Bar (Drag handle) */}
+                        <div
+                            onMouseDown={handleMouseDownDocHeader}
+                            className={`flex items-center justify-between px-4 py-3 bg-slate-900 text-white select-none border-b border-slate-700 ${
+                                isViewerMaximized ? 'cursor-default' : isDraggingDocWin ? 'cursor-grabbing' : 'cursor-grab'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                {!isViewerMaximized && (
+                                    <span className="text-slate-400 font-mono text-xs cursor-grab" title="Drag to move">⠿⠿</span>
+                                )}
+                                <div className={`p-1 rounded-md text-xs flex items-center justify-center shrink-0 ${
+                                    activeViewerDoc?.typeInfo?.type === 'pdf' ? 'bg-red-500/20 text-red-400' :
+                                    activeViewerDoc?.typeInfo?.type === 'word' ? 'bg-blue-500/20 text-blue-400' :
+                                    activeViewerDoc?.typeInfo?.type === 'excel' ? 'bg-emerald-500/20 text-emerald-400' :
+                                    activeViewerDoc?.typeInfo?.type === 'image' ? 'bg-purple-500/20 text-purple-400' :
+                                    'bg-slate-700 text-slate-300'
+                                }`}>
+                                    {activeViewerDoc?.typeInfo?.icon || <FileTextOutlined />}
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-xs text-white truncate max-w-[280px]" title={activeViewerDoc?.name}>
+                                        {activeViewerDoc?.name || 'Document Preview'}
+                                    </h3>
+                                    {!isViewerMaximized && (
+                                        <span className="text-[10px] text-slate-400 font-normal block leading-tight">
+                                            Drag header to move window
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                {/* Maximize / Restore Toggle */}
+                                <button
+                                    onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+                                    className="text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 p-1.5 rounded-lg text-xs transition-all border border-slate-700 cursor-pointer"
+                                    title={isViewerMaximized ? 'Restore Window' : 'Maximize Window'}
+                                >
+                                    {isViewerMaximized ? <CompressOutlined /> : <ExpandOutlined />}
+                                </button>
+
+                                {/* Open in New Tab */}
+                                <a
+                                    href={docViewerUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-all border border-slate-700 flex items-center gap-1"
+                                    title="Open in new browser tab"
+                                >
+                                    <LinkOutlined />
+                                </a>
+
+                                {/* Download File */}
+                                <a
+                                    href={docViewerUrl}
+                                    download={activeViewerDoc?.name || 'document'}
+                                    className="text-[11px] font-bold text-cyan-300 hover:text-white bg-slate-800 hover:bg-cyan-900/60 px-2.5 py-1 rounded-lg transition-all border border-slate-700 flex items-center gap-1"
+                                    title="Download File"
+                                >
+                                    <DownloadOutlined /> Download
+                                </a>
+
+                                {/* Close Button */}
+                                <button
+                                    onClick={() => setShowDocViewer(false)}
+                                    className="text-slate-400 hover:text-white font-bold text-base leading-none px-2 py-1 rounded-lg hover:bg-rose-600/80 transition-all cursor-pointer ml-1"
+                                    title="Close Window"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* In-Viewer Dropdown Quick Switcher Sub-Header Bar */}
+                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 border-b border-slate-700 flex-wrap text-xs select-none">
+                            {/* Stage Switcher Dropdown */}
+                            <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold">Stage:</span>
+                                <select
+                                    value={selectedStageId || ''}
+                                    onChange={(e) => {
+                                        const stgId = e.target.value;
+                                        setSelectedStageId(stgId);
+                                        const stg = projectStages.find(s => String(s.stage_id) === String(stgId));
+                                        if (stg && stg.documents && stg.documents.length > 0) {
+                                            handleViewDocument(stg.documents[0]);
+                                        }
+                                    }}
+                                    className="text-[11px] font-semibold text-slate-200 bg-slate-900 px-2 py-1 rounded border border-slate-700 outline-none cursor-pointer max-w-[150px] truncate"
+                                >
+                                    {projectStages.map((stg) => (
+                                        <option key={stg.stage_id} value={stg.stage_id}>
+                                            {stg.position < 900 ? `S${stg.position}` : 'Stage'}: {stg.stage_name} ({stg.documents?.length || 0})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Doc Switcher Dropdown */}
+                            <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold">Doc:</span>
+                                <select
+                                    value={selectedDocId || ''}
+                                    onChange={(e) => {
+                                        const docKey = e.target.value;
+                                        const doc = activeStageDocs.find(d => String(d.id || d.name || d.url) === String(docKey));
+                                        if (doc) handleViewDocument(doc);
+                                    }}
+                                    disabled={activeStageDocs.length === 0}
+                                    className="text-[11px] font-semibold text-slate-200 bg-slate-900 px-2 py-1 rounded border border-slate-700 outline-none cursor-pointer max-w-[180px] truncate disabled:text-slate-600"
+                                >
+                                    {activeStageDocs.length === 0 ? (
+                                        <option value="">No docs</option>
+                                    ) : (
+                                        activeStageDocs.map((doc, idx) => (
+                                            <option key={doc.id || idx} value={String(doc.id || doc.name || doc.url)}>
+                                                {doc.display_name || doc.name || `Document v${doc.version || idx + 1}`}
+                                            </option>
+                                        ))
+                                    )}
+                                </select>
+                            </div>
+
+                            {/* Attachments pills if active doc has any */}
+                            {activeViewerDoc && (activeViewerDoc.attachment || activeViewerDoc.attachments) && (
+                                (() => {
+                                    let atts = activeViewerDoc.attachment || activeViewerDoc.attachments || [];
+                                    if (typeof atts === 'string') {
+                                        try { atts = JSON.parse(atts); } catch { atts = [atts]; }
+                                    }
+                                    if (!Array.isArray(atts)) atts = atts ? [atts] : [];
+                                    const validAtts = atts.filter(a => a && typeof a === 'string');
+                                    if (validAtts.length === 0) return null;
+                                    return (
+                                        <div className="flex items-center gap-1 ml-auto flex-wrap">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-0.5">
+                                                <PaperClipOutlined /> Attachments:
+                                            </span>
+                                            {validAtts.map((attUrl, attIdx) => {
+                                                const attName = decodeURIComponent(attUrl.split('/').pop().split('?')[0]) || `File ${attIdx + 1}`;
+                                                return (
+                                                    <button
+                                                        key={attIdx}
+                                                        onClick={() => handleViewDocument(activeViewerDoc, attUrl, attName)}
+                                                        className="text-[10px] font-medium bg-slate-700 hover:bg-cyan-700 text-slate-200 px-2 py-0.5 rounded transition-all cursor-pointer truncate max-w-[120px]"
+                                                        title={`View ${attName}`}
+                                                    >
+                                                        {attName}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })()
+                            )}
+                        </div>
+
+                        {/* Excel Multi-Sheet Switcher Bar */}
+                        {docViewType === 'excel' && excelSheetNames.length > 1 && (
+                            <div className="flex items-center gap-1.5 px-4 py-2 bg-slate-200 border-b border-slate-300 overflow-x-auto select-none">
+                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                    <FileExcelOutlined className="text-emerald-700" /> Sheets:
+                                </span>
+                                {excelSheetNames.map((sName) => (
+                                    <button
+                                        key={sName}
+                                        onClick={() => handleSwitchExcelSheet(sName)}
+                                        className={`text-[11px] font-bold px-3 py-1 rounded-md border transition-all cursor-pointer shrink-0 ${
+                                            activeSheetName === sName
+                                                ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        {sName}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Viewer Body Content */}
+                        <div className="flex-1 bg-slate-100 p-3 overflow-auto">
+                            {docViewType === 'loading' && (
+                                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 font-semibold text-xs">
+                                    <div className="w-8 h-8 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Loading and parsing document content...</span>
+                                </div>
+                            )}
+
+                            {docViewType === 'html' && (
+                                <div className="bg-white p-6 rounded-xl shadow-xs border border-slate-200 overflow-auto text-slate-800 max-w-full">
+                                    <div
+                                        className="prose prose-slate max-w-none text-xs leading-relaxed [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100 [&_th]:font-bold [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_p]:my-1.5 [&_h1]:text-base [&_h1]:font-bold [&_h2]:text-sm [&_h2]:font-bold [&_h3]:text-xs [&_h3]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                                        dangerouslySetInnerHTML={{ __html: docHtmlContent }}
+                                    />
+                                </div>
+                            )}
+
+                            {docViewType === 'excel' && (
+                                <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 overflow-auto text-slate-800 max-w-full">
+                                    <div
+                                        className="text-xs overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_table]:text-left [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100 [&_th]:font-bold [&_th]:text-slate-800 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_td]:text-slate-700 [&_tr:nth-child(even)]:bg-slate-50/70 [&_tr:hover]:bg-cyan-50/50 font-sans"
+                                        dangerouslySetInnerHTML={{ __html: docHtmlContent }}
+                                    />
+                                </div>
+                            )}
+
+                            {docViewType === 'pdf' && (
+                                <iframe
+                                    src={docViewerUrl}
+                                    title={activeViewerDoc?.name || 'PDF Document Viewer'}
+                                    className="w-full h-full bg-white rounded-xl border border-slate-300 shadow-inner"
+                                />
+                            )}
+
+                            {docViewType === 'image' && (
+                                <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950/90 rounded-xl">
+                                    <img
+                                        src={docViewerUrl}
+                                        alt={activeViewerDoc?.name || 'Document Image'}
+                                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                                    />
+                                </div>
+                            )}
+
+                            {docViewType === 'iframe' && (
+                                <iframe
+                                    src={docViewerUrl}
+                                    title={activeViewerDoc?.name || 'Document Viewer'}
+                                    className="w-full h-full bg-white rounded-xl border border-slate-300 shadow-inner"
+                                />
+                            )}
+
+                            {docViewType === 'error' && (
+                                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600 text-center p-6 bg-white rounded-xl border border-slate-200">
+                                    <div className="p-3 bg-rose-50 text-rose-600 rounded-full text-2xl">
+                                        <FileTextOutlined />
+                                    </div>
+                                    <p className="font-semibold text-rose-600 text-xs">Could not render direct preview for this document format.</p>
+                                    <p className="text-[11px] text-slate-400 max-w-sm">You can open the document in a new tab or download it directly to view on your device.</p>
+                                    <div className="flex items-center gap-2 pt-2">
+                                        <a
+                                            href={docViewerUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-900 transition-colors shadow-xs"
+                                        >
+                                            Open in New Tab
+                                        </a>
+                                        <a
+                                            href={docViewerUrl}
+                                            download={activeViewerDoc?.name || 'document'}
+                                            className="bg-cyan-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-cyan-700 transition-colors shadow-xs"
+                                        >
+                                            Download File
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
