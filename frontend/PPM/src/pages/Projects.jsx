@@ -42,6 +42,7 @@ import { ExcelRenderer } from 'react-excel-renderer'
 import mammoth from 'mammoth'
 import { NotConvertedDocumentsView } from '../utils/notconverteddocuments.jsx'
 import AllISODocuments from '../isopages/allisodocuments.jsx'
+import CostEstimationSheet from '../isopages/costestimationsheet.jsx'
 
 const { Title, Text } = Typography
 
@@ -171,7 +172,7 @@ function Projects() {
 
   // ISO Documents Full Page View state
   const [selectedIsoProject, setSelectedIsoProject] = useState(null)
-
+  const [selectedCostEstimationProject, setSelectedCostEstimationProject] = useState(null)
 
   // Upload
 
@@ -1497,6 +1498,62 @@ function Projects() {
     )
   }
 
+  // Full page view for Project Cost Estimation Sheet Template
+  if (selectedCostEstimationProject) {
+    return (
+      <div className="space-y-4">
+        {renderTopTabs()}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <Button
+              type="default"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => setSelectedCostEstimationProject(null)}
+              className="font-medium text-slate-700 hover:text-blue-600 border-slate-300"
+            >
+              Back to Project Details
+            </Button>
+          </div>
+          <CostEstimationSheet
+            proposalId={selectedCostEstimationProject.proposal_id || selectedCostEstimationProject.id}
+            docInfo={{
+              project_no: selectedCostEstimationProject.project_number || selectedCostEstimationProject.project_no || selectedCostEstimationProject.proposal_number || '',
+              project_title: selectedCostEstimationProject.project_title || selectedCostEstimationProject.activity || selectedCostEstimationProject.title || selectedCostEstimationProject.project_name || selectedCostEstimationProject.subject || selectedCostEstimationProject.name || ''
+            }}
+            onBack={() => setSelectedCostEstimationProject(null)}
+            onClose={() => setSelectedCostEstimationProject(null)}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Full page view for ISO Documents of selected project
+  if (selectedIsoProject) {
+    return (
+      <div className="space-y-4">
+        {renderTopTabs()}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <Button
+              type="default"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => setSelectedIsoProject(null)}
+              className="font-medium text-slate-700 hover:text-blue-600 border-slate-300"
+            >
+              Back to Projects List
+            </Button>
+          </div>
+          <AllISODocuments
+            proposalId={selectedIsoProject.id}
+            proposalNumber={selectedIsoProject.project_number}
+            onClose={() => setSelectedIsoProject(null)}
+          />
+        </div>
+      </div>
+    )
+  }
+
   // Project details view
   if (selectedProject) {
     const getAllotmentPaymentRow = (index) => {
@@ -1557,6 +1614,7 @@ function Projects() {
                 // Show Add Details button only for Payment stages (position 11)
                 const config = stageConfig.find((s) => s.id === stage.stage_id)
                 const stagePosition = config?.position ?? stage.position ?? 0
+                const isCostEstimationStage = stagePosition === 6 || stageNameLower.includes('cost estimation') || stageNameLower.includes('cost');
                 const canAddStageDetails = stagePosition === 11
                 const stageDetails = projectPaymentStageRows.filter((detail) =>
                   String(detail.project_no || '').trim() === String(selectedProject?.project_number || '').trim()
@@ -1574,16 +1632,22 @@ function Projects() {
                       </Title>
                       {!isReadOnly && (
                         <Space>
+                          {isCostEstimationStage && (
+                            <Button
+                              size="small"
+                              type="default"
+                              icon={<FileTextOutlined className="text-emerald-600" />}
+                              onClick={() => setSelectedCostEstimationProject(selectedProject)}
+                              className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-medium"
+                            >
+                              Template
+                            </Button>
+                          )}
                           {canUpload && (
                             <Button size="small" type="primary" icon={<UploadOutlined />} onClick={() => handleOpenUploadModal(stage)}>
                               Upload
                             </Button>
                           )}
-                          {/* {canAddStageDetails && (
-                          // <Button size="small" icon={<PlusOutlined />} onClick={() => handleOpenStageDetailModal(stage)}>
-                            
-                          // </Button>
-                        )} */}
                         </Space>
                       )}
                     </div>
@@ -2821,32 +2885,6 @@ function Projects() {
         </Modal>
 
       </div>
-      </div>
-    )
-  }
-
-  // Full page view for ISO Documents of selected project (just like View Details)
-  if (selectedIsoProject) {
-    return (
-      <div className="space-y-4">
-        {renderTopTabs()}
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <div className="mb-4">
-            <Button
-              type="default"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => setSelectedIsoProject(null)}
-              className="font-medium text-slate-700 hover:text-blue-600 border-slate-300"
-            >
-              Back to Projects List
-            </Button>
-          </div>
-          <AllISODocuments
-            proposalId={selectedIsoProject.id}
-            proposalNumber={selectedIsoProject.project_number}
-            onClose={() => setSelectedIsoProject(null)}
-          />
-        </div>
       </div>
     )
   }

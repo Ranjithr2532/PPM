@@ -358,6 +358,23 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
         )
         filename = f"ISO_Inspection_Report_{doc_no.replace('/', '_')}.docx"
 
+    elif doc_type in ["COST_ESTIMATION_SHEET", "PROJECT_COST_ESTIMATION_SHEET", "COST_ESTIMATION"]:
+        from iso.costestimationsheet import create_cost_estimation_sheet_document
+        doc = create_cost_estimation_sheet_document(
+            prepared_on=f_data.get("prepared_on") or date_str,
+            project_no=f_data.get("project_no", ""),
+            project_title=f_data.get("project_title", ""),
+            account_heads=f_data.get("account_heads"),
+            revenue_projection=f_data.get("revenue_projection"),
+            infra_details=f_data.get("infra_details"),
+            tech_hr_details=f_data.get("tech_hr_details"),
+            staff_charges=f_data.get("staff_charges"),
+            equipment_details=f_data.get("equipment_details"),
+            comments_notes=f_data.get("comments_notes", ""),
+            signatures=f_data.get("signatures")
+        )
+        filename = f"Project_Cost_Estimation_Sheet_{doc_no.replace('/', '_')}.docx"
+
     else:
         from iso.generic_iso import create_generic_iso_document
         clean_name = doc_type.replace('_', ' ').title()

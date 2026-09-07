@@ -176,9 +176,11 @@ def create_bom_document(
         date_str=doc_date
     )
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(14)
+    p_space = doc.add_paragraph()
+    p_space.paragraph_format.space_before = Pt(24)
+    p_space.paragraph_format.space_after = Pt(12)
 
-    # 2. Summary Paragraph
+    # 2. Cover / Summary Section on First Page
     proj_desc = project_title or "Project"
     if customer_name:
         summary_line = f"SUMMARY: This document details the bill of materials for {proj_desc} ({customer_name})"
@@ -186,14 +188,18 @@ def create_bom_document(
         summary_line = f"SUMMARY: This document details the bill of materials for {proj_desc}"
 
     p_sum = doc.add_paragraph()
-    p_sum.paragraph_format.space_before = Pt(0)
-    p_sum.paragraph_format.space_after = Pt(2)
-    add_text(p_sum, summary_line, font_size=10, bold=True, color=RGBColor(15, 23, 42))
+    p_sum.paragraph_format.space_before = Pt(12)
+    p_sum.paragraph_format.space_after = Pt(16)
+    p_sum.paragraph_format.line_spacing = 1.3
+    add_text(p_sum, summary_line, font_size=15, bold=True, color=RGBColor(15, 23, 42))
 
     p_conf = doc.add_paragraph()
-    p_conf.paragraph_format.space_before = Pt(0)
-    p_conf.paragraph_format.space_after = Pt(12)
-    add_text(p_conf, "CONFIDENTIAL", font_size=9, bold=True, color=RGBColor(100, 116, 139))
+    p_conf.paragraph_format.space_before = Pt(16)
+    p_conf.paragraph_format.space_after = Pt(24)
+    add_text(p_conf, "CONFIDENTIAL", font_size=14, bold=True, color=RGBColor(185, 28, 28), alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Page break so that BOM tables and details start from page 2
+    doc.add_page_break()
 
     # 3. BOM Table (5 Columns)
     custom_headers = list(DEFAULT_BOM_HEADERS)

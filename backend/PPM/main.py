@@ -52,6 +52,7 @@ from iso.sqap import router as iso_sqap_router
 from iso.bom import router as iso_bom_router
 from iso.drawingregister import router as iso_drawing_register_router
 from iso.Inspection_report import router as iso_inspection_report_router
+from iso.costestimationsheet import router as iso_cost_estimation_sheet_router
 from routes.email_extraction import router as email_extraction_router
 # from ai_routes.ai import router as ai_router
 
@@ -111,6 +112,7 @@ app.include_router(iso_sqap_router)
 app.include_router(iso_bom_router)
 app.include_router(iso_drawing_register_router)
 app.include_router(iso_inspection_report_router)
+app.include_router(iso_cost_estimation_sheet_router)
 app.include_router(email_extraction_router)
 
 
