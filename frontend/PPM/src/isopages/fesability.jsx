@@ -189,8 +189,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     useEffect(() => {
         if (docInfo) {
@@ -654,7 +653,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             )}
             {!isApproved && isSubmitted && (
                 <div className="w-full max-w-4xl bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
-                    <span>{isApprover ? '📋 Review Mode: ISO Document Submitted by Scientist. Read-Only View for CH/GH.' : '⏳ ISO Document Submitted. Pending approval review by CH / GH.'}</span>
+                    <span>📋 ISO Document Status: SUBMITTED (Editable before final approval).</span>
                     <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded font-mono uppercase">SUBMITTED</span>
                 </div>
             )}
@@ -707,14 +706,14 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
-                    {/* Scientist Create / Edit Controls */}
-                    {!isReadOnly && !isApprover && (
+                    {/* Create / Edit Controls */}
+                    {!isReadOnly && (
                         <button
                             onClick={() => handleSaveSubmission('SUBMITTED')}
                             disabled={submitting}
                             className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
                         >
-                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                            {submitting ? 'Saving...' : <><CheckOutlined /> {isSubmitted ? 'Save & Update' : 'Submit Form'}</>}
                         </button>
                     )}
 

@@ -81,7 +81,7 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin'].includes(userRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     useEffect(() => {
         if (docInfo?.code) setDocCode(docInfo.code);

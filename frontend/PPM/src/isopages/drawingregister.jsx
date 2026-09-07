@@ -82,7 +82,7 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin'].includes(userRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     // Load Proposals
     useEffect(() => {

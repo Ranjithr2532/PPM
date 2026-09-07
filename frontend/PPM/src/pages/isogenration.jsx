@@ -21,6 +21,7 @@ import ProjectPlan from '../isopages/projectplan.jsx';
 import Sqap from '../isopages/sqap.jsx';
 import Bom from '../isopages/bom.jsx';
 import DrawingRegister from '../isopages/drawingregister.jsx';
+import InspectionReport from '../isopages/inspectionreport.jsx';
 
 function DirectIsoUpload({ proposalId, docInfo, onBack }) {
     const [proposals, setProposals] = useState([]);
@@ -214,6 +215,8 @@ export default function Isogenration() {
             setActiveForm({ type: 'bom', doc });
         } else if (docNo.startsWith('064') || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) {
             setActiveForm({ type: 'drawingregister', doc });
+        } else if (docNo.startsWith('085') || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) {
+            setActiveForm({ type: 'inspectionreport', doc });
         } else {
             setActiveForm({ type: 'generic', doc });
         }
@@ -252,6 +255,7 @@ export default function Isogenration() {
                 {formType === 'sqap' && <Sqap proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'bom' && <Bom proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'drawingregister' && <DrawingRegister proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'inspectionreport' && <InspectionReport proposalId={urlProposalId} docInfo={docData} />}
                 {formType === 'generic' && (
                     <DirectIsoUpload proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />
                 )}
@@ -288,7 +292,7 @@ export default function Isogenration() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {isoDocs.map((doc) => {
-                        const isSpecific = ['049', '050', '051', '045', '037', '009', '053', '055', '063', '064'].some(d => (doc.document_no || '').startsWith(d));
+                        const isSpecific = ['049', '050', '051', '045', '037', '009', '053', '055', '063', '064', '085'].some(d => (doc.document_no || '').startsWith(d));
                         return (
                             <div 
                                 key={doc.id}

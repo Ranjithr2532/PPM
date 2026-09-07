@@ -137,9 +137,6 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
                 if (urlId) {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
                     if (res.data) rec = res.data;
-                } else if (urlPropId) {
-                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: urlPropId, doc_type: 'MOM' });
-                    if (Array.isArray(subs) && subs.length > 0) rec = subs[0];
                 }
 
                 if (rec) {
@@ -200,7 +197,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     // Auto-Save Draft to Database
     const performAutoSave = useCallback(async () => {
@@ -485,7 +482,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
             )}
             {isSubmitted && !isApproved && (
                 <div className="w-full max-w-4xl bg-indigo-50 border border-indigo-300 text-indigo-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
-                    <span>📋 Review Mode: ISO Document Submitted by Scientist. Read-Only View for CH/GH.</span>
+                    <span>📋 ISO Document Status: SUBMITTED (Editable before final approval).</span>
                     <span className="text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded font-mono uppercase">SUBMITTED</span>
                 </div>
             )}
@@ -525,13 +522,13 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
                 </div>
 
                 <div className="flex items-center gap-2.5">
-                    {!isReadOnly && !isApprover && (
+                    {!isReadOnly && (
                         <button
                             onClick={() => handleSaveSubmission('SUBMITTED')}
                             disabled={submitting}
                             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
                         >
-                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                            {submitting ? 'Saving...' : <><CheckOutlined /> {isSubmitted ? 'Save & Update' : 'Submit Form'}</>}
                         </button>
                     )}
 

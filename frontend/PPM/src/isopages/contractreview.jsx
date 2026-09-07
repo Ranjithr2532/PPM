@@ -231,7 +231,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);

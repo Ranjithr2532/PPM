@@ -38,7 +38,7 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
     const userRole = getCurrentUserRole();
     const isAdmin = ['admin', 'director'].includes(userRole);
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin'].includes(userRole);
-    const isReadOnly = isAdmin ? false : (status === 'APPROVED' || (status === 'SUBMITTED' && isApprover));
+    const isReadOnly = isAdmin ? false : status === 'APPROVED';
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);

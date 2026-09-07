@@ -92,7 +92,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin'].includes(userRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
     const isActual = planType === 'ACTUAL';
     const isComparison = planType === 'COMPARISON';
 

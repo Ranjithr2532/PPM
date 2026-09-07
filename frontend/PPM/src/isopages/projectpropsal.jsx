@@ -209,8 +209,7 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(userRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     // Helper to wrap current text in bold formatting (**bold text**)
     const wrapBoldText = (val, setter) => {

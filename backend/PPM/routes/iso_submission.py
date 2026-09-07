@@ -604,16 +604,21 @@ async def upload_iso_document_file(
     # Upload file directly to MinIO (same as routes/documents.py)
     object_name, minio_url = await upload_file_to_minio(file)
 
-    query = db.query(ISOSubmission).filter(ISOSubmission.doc_type == doc_type.upper())
-    if proposal_id:
-        query = query.filter(ISOSubmission.proposal_id == proposal_id)
-    rec = query.first()
+    is_multi_doc = doc_type.upper() in ["MOM", "MINUTES_OF_MEETING", "037"]
+
+    rec = None
+    if not is_multi_doc:
+        query = db.query(ISOSubmission).filter(ISOSubmission.doc_type == doc_type.upper())
+        if proposal_id:
+            query = query.filter(ISOSubmission.proposal_id == proposal_id)
+        rec = query.first()
 
     form_payload = {
         "file_path": minio_url,
         "uploaded_filename": file.filename,
         "object_name": object_name,
-        "is_uploaded": True
+        "is_uploaded": True,
+        "agenda": f"Uploaded MOM: {file.filename}" if is_multi_doc else None
     }
 
     if rec:
