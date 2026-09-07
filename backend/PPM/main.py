@@ -52,9 +52,15 @@ from iso.sqap import router as iso_sqap_router
 from iso.bom import router as iso_bom_router
 from iso.drawingregister import router as iso_drawing_register_router
 from iso.Inspection_report import router as iso_inspection_report_router
+from iso.technical_specification import router as iso_technical_specification_router
+from iso.master_drawing_index import router as iso_master_drawing_index_router
+from iso.engineering_change_note import router as iso_engineering_change_note_router
 from iso.costestimationsheet import router as iso_cost_estimation_sheet_router
+from iso.customer_complaint_register import router as iso_customer_complaint_register_router
+from iso.customer_feedback import router as iso_customer_feedback_router
+from iso.acceptance_test_report import router as iso_acceptance_test_report_router
 from routes.email_extraction import router as email_extraction_router
-# from ai_routes.ai import router as ai_router
+# from ai_router import router as ai_router
 
 
 
@@ -68,6 +74,7 @@ try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS make_in_india VARCHAR;"))
         conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS tender_images VARCHAR;"))
+        conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS customer_type VARCHAR;"))
         conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS customer_type VARCHAR;"))
         conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS gst TEXT;"))
         conn.execute(text("ALTER TABLE customer1 ADD COLUMN IF NOT EXISTS pan TEXT;"))
@@ -112,7 +119,13 @@ app.include_router(iso_sqap_router)
 app.include_router(iso_bom_router)
 app.include_router(iso_drawing_register_router)
 app.include_router(iso_inspection_report_router)
+app.include_router(iso_technical_specification_router)
+app.include_router(iso_master_drawing_index_router)
+app.include_router(iso_engineering_change_note_router)
 app.include_router(iso_cost_estimation_sheet_router)
+app.include_router(iso_customer_complaint_register_router)
+app.include_router(iso_customer_feedback_router)
+app.include_router(iso_acceptance_test_report_router)
 app.include_router(email_extraction_router)
 
 

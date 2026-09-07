@@ -24,10 +24,13 @@ const getTodayDateString = () => {
     return `${dd}.${mm}.${yyyy}`;
 };
 
-export default function DrawingRegister({ proposalId: propProposalId, submissionId: propSubmissionId, onClose, onBack }) {
+export default function DrawingRegister({ proposalId: propProposalId, submissionId: propSubmissionId, docInfo, onClose, onBack }) {
+    const effectiveProposalId = propProposalId || docInfo?.proposalId || docInfo?.proposal_id || '';
+    const effectiveSubmissionId = propSubmissionId || docInfo?.submissionId || docInfo?.submission_id || null;
+
     const [proposals, setProposals] = useState([]);
-    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
-    const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
+    const [selectedProposalId, setSelectedProposalId] = useState(effectiveProposalId ? String(effectiveProposalId) : '');
+    const [submissionId, setSubmissionId] = useState(effectiveSubmissionId);
     const [status, setStatus] = useState('DRAFT');
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -55,19 +58,23 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
     const [subSystem, setSubSystem] = useState('');
     const [registerRev, setRegisterRev] = useState('Rev00');
 
-    // Dynamic Drawing Register Table Headers & Rows
+    // Dynamic Drawing Register Table Headers & Rows (Exact 10 columns)
     const [dwgHeaders, setDwgHeaders] = useState([
-        "Sl. No.",
-        "Drawing No.",
-        "Title / Description of Drawing",
-        "Rev No.",
+        "Sl.No.",
+        "Drawing No",
+        "Drawing Name",
+        "Rev. No",
+        "Rev.Date",
+        "Issued By",
         "Date of Issue",
-        "Issued To / Department",
-        "No. of Copies",
-        "Remarks"
+        "Issued to Department (Internal/External) Name & Address",
+        "Mode",
+        "Name & Signature of (Issued by)"
     ]);
 
-    const [dwgRows, setDwgRows] = useState([]);
+    const [dwgRows, setDwgRows] = useState([
+        ["1", "", "", "", "", "", "", "", "", ""]
+    ]);
 
     // Custom Flexible Sections
     const [sections, setSections] = useState([]);
@@ -84,39 +91,41 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
     const isSubmitted = status === 'SUBMITTED';
     const isReadOnly = isAdmin ? false : isApproved;
 
-    // Load Proposals
+    // Auto-fill project info directly from proposal
     useEffect(() => {
-        const fetchProposals = async () => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlProposalId = searchParams.get('proposal_id') || searchParams.get('proposalId') || searchParams.get('id') || '';
+        const targetPid = effectiveProposalId || selectedProposalId || urlProposalId;
+        if (!targetPid) return;
+
+        const fetchProposal = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/proposals/`);
-                if (Array.isArray(res.data)) setProposals(res.data);
+                const res = await axios.get(`${API_BASE_URL}/proposals/${targetPid}`);
+                const p = res.data;
+                if (p) {
+                    setProjectTitle(prev => prev || p.title_of_project || p.quote_description || p.project_name || '');
+                    setCustomerName(prev => prev || p.customer_name || '');
+                    setProjectNo(prev => prev || p.project_number || '');
+                }
             } catch (err) {
-                console.error('Failed to load proposals:', err);
+                console.error('Failed to load proposal details:', err);
             }
         };
-        fetchProposals();
-    }, []);
-
-    // Load Proposal Details when selected
-    useEffect(() => {
-        if (!selectedProposalId) return;
-        const p = proposals.find(item => String(item.id) === String(selectedProposalId));
-        if (p) {
-            setProjectTitle(p.title_of_project || p.quote_description || p.project_name || '');
-            setCustomerName(p.customer_name || '');
-            setProjectNo(p.project_number || '');
-        }
-    }, [selectedProposalId, proposals]);
+        fetchProposal();
+    }, [effectiveProposalId, selectedProposalId]);
 
     // Load Existing Submission if editing or proposal linked
     useEffect(() => {
         const loadSubmission = async () => {
             try {
                 let sub = null;
-                if (propSubmissionId) {
-                    sub = await isoSubmissionService.getSubmissionById(propSubmissionId);
-                } else if (propProposalId || selectedProposalId) {
-                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: propProposalId || selectedProposalId, doc_type: 'DRAWING_REGISTER' });
+                const targetSubId = propSubmissionId || docInfo?.submissionId || docInfo?.submission_id || null;
+                const targetPropId = propProposalId || docInfo?.proposalId || docInfo?.proposal_id || selectedProposalId;
+
+                if (targetSubId) {
+                    sub = await isoSubmissionService.getSubmissionById(targetSubId);
+                } else if (targetPropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: targetPropId, doc_type: 'DRAWING_REGISTER' });
                     if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
                 }
 
@@ -135,9 +144,9 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                     if (fd.register_rev) setRegisterRev(fd.register_rev);
 
                     const it = fd.items;
-                    if (it && typeof it === 'object' && Array.isArray(it.headers)) {
+                    if (it && typeof it === 'object' && Array.isArray(it.headers) && it.headers.length > 0) {
                         setDwgHeaders(it.headers);
-                        setDwgRows(Array.isArray(it.rows) ? it.rows : []);
+                        setDwgRows(Array.isArray(it.rows) && it.rows.length > 0 ? it.rows : [Array(it.headers.length).fill('')]);
                     }
 
                     if (Array.isArray(fd.sections)) setSections(fd.sections);
@@ -154,7 +163,7 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
         };
 
         loadSubmission();
-    }, [propSubmissionId, propProposalId]);
+    }, [propSubmissionId, propProposalId, docInfo]);
 
     // Column & Row Handlers
     const handleAddColumn = () => {
@@ -403,6 +412,22 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
         }
     };
 
+    const getColWidthClass = (colIdx) => {
+        switch (colIdx) {
+            case 0: return 'min-w-[55px] w-14';
+            case 1: return 'min-w-[130px]';
+            case 2: return 'min-w-[170px]';
+            case 3: return 'min-w-[75px] w-20';
+            case 4: return 'min-w-[105px]';
+            case 5: return 'min-w-[130px]';
+            case 6: return 'min-w-[110px]';
+            case 7: return 'min-w-[260px]';
+            case 8: return 'min-w-[90px]';
+            case 9: return 'min-w-[180px]';
+            default: return 'min-w-[120px]';
+        }
+    };
+
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
             {/* Header Controls */}
@@ -511,23 +536,6 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                     {/* Metadata Section */}
                     <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/50">
                         <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Link Proposal</label>
-                            <select
-                                value={selectedProposalId}
-                                onChange={(e) => setSelectedProposalId(e.target.value)}
-                                disabled={isReadOnly}
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
-                            >
-                                <option value="">-- Select Proposal --</option>
-                                {proposals.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.project_number ? `${p.project_number} - ` : ''}{p.quote_description || p.customer_name || `Proposal #${p.id}`}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Project Title</label>
                             <input
                                 type="text"
@@ -547,7 +555,7 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                                 onChange={(e) => setProjectNo(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="e.g. GST2502201"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-800"
                             />
                         </div>
 
@@ -586,6 +594,18 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-bold"
                             />
                         </div>
+
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Date</label>
+                            <input
+                                type="text"
+                                value={docDate}
+                                onChange={(e) => setDocDate(e.target.value)}
+                                disabled={isReadOnly}
+                                placeholder="DD.MM.YYYY"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -618,7 +638,7 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                             <thead>
                                 <tr className="bg-slate-100 text-slate-700 border-b border-slate-300">
                                     {dwgHeaders.map((hText, colIdx) => (
-                                        <th key={colIdx} className="p-2 border-r border-slate-300 text-center bg-slate-200/70 font-bold min-w-[110px]">
+                                        <th key={colIdx} className={`p-2 border-r border-slate-300 text-center bg-slate-200/70 font-bold ${getColWidthClass(colIdx)}`}>
                                             <div className="flex items-center justify-between gap-1">
                                                 <input
                                                     type="text"
@@ -653,13 +673,15 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                                     dwgRows.map((row, rowIdx) => (
                                         <tr key={rowIdx} className="border-b border-slate-200 hover:bg-slate-50">
                                             {row.map((cellVal, colIdx) => (
-                                                <td key={colIdx} className="p-1 border-r border-slate-200">
+                                                <td key={colIdx} className={`p-1 border-r border-slate-200 ${getColWidthClass(colIdx)}`}>
                                                     <input
                                                         type="text"
                                                         value={cellVal || ''}
                                                         onChange={(e) => handleCellChange(rowIdx, colIdx, e.target.value)}
                                                         disabled={isReadOnly}
-                                                        className="w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-indigo-500 rounded p-1"
+                                                        className={`w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-indigo-500 rounded p-1 ${
+                                                            [0, 3, 4, 6, 8].includes(colIdx) ? 'text-center' : 'text-left'
+                                                        }`}
                                                     />
                                                 </td>
                                             ))}

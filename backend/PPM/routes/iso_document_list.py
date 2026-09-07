@@ -130,6 +130,46 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
         db.add(dwg_doc)
         db.commit()
 
+    existing_065 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "065").first()
+    if not existing_065:
+        spec_doc = ISODocumentList(
+            name="Technical Specification",
+            initial="TS",
+            code="CMTI-SMC-QMS-065/Rev00",
+            document_no="065",
+            is_active=True,
+        )
+        db.add(spec_doc)
+        db.commit()
+
+    existing_066 = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "066") | (ISODocumentList.name.ilike("%master drawing%"))
+    ).first()
+    if not existing_066:
+        mdi_doc = ISODocumentList(
+            name="Master Drawing Index",
+            initial="MDI",
+            code="CMTI-SMC-QMS-066/Rev00",
+            document_no="066",
+            is_active=True,
+        )
+        db.add(mdi_doc)
+        db.commit()
+
+    existing_068 = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "068") | (ISODocumentList.name.ilike("%engineering change%"))
+    ).first()
+    if not existing_068:
+        ecn_doc = ISODocumentList(
+            name="Engineering Change Note",
+            initial="ECN",
+            code="CMTI-SMC-QMS-068/Rev00",
+            document_no="068",
+            is_active=True,
+        )
+        db.add(ecn_doc)
+        db.commit()
+
     existing_085 = db.query(ISODocumentList).filter(ISODocumentList.document_no == "085").first()
     if not existing_085:
         insp_doc = ISODocumentList(
@@ -140,6 +180,48 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
             is_active=True,
         )
         db.add(insp_doc)
+        db.commit()
+
+    existing_086 = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "086") | (ISODocumentList.name.ilike("%customer complaint%"))
+    ).first()
+    if not existing_086:
+        complaint_doc = ISODocumentList(
+            name="Customer Complaint Register",
+            initial="CCR",
+            code="CMTI-QMS-SMC-086/Rev00",
+            document_no="086",
+            is_active=True,
+        )
+        db.add(complaint_doc)
+        db.commit()
+
+    existing_087 = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "087") | (ISODocumentList.name.ilike("%acceptance test%")) | (ISODocumentList.name.ilike("%atr%"))
+    ).first()
+    if not existing_087:
+        atr_doc = ISODocumentList(
+            name="Acceptance Test Report",
+            initial="ATR",
+            code="CMTI-QMS-SMC-087/Rev00",
+            document_no="087",
+            is_active=True,
+        )
+        db.add(atr_doc)
+        db.commit()
+
+    existing_088 = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "088") | (ISODocumentList.name.ilike("%customer feedback%")) | (ISODocumentList.name.ilike("%feedback form%"))
+    ).first()
+    if not existing_088:
+        feedback_doc = ISODocumentList(
+            name="Customer Feedback Form",
+            initial="CF",
+            code="CMTI-SMC-QMS-088/Rev00",
+            document_no="088",
+            is_active=True,
+        )
+        db.add(feedback_doc)
         db.commit()
 
     query = db.query(ISODocumentList)

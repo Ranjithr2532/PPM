@@ -23,10 +23,13 @@ const getTodayDateString = () => {
     return `${dd}.${mm}.${yyyy}`;
 };
 
-export default function InspectionReport({ proposalId: propProposalId, submissionId: propSubmissionId, onClose, onBack }) {
+export default function InspectionReport({ proposalId: propProposalId, submissionId: propSubmissionId, docInfo, onClose, onBack }) {
+    const effectiveProposalId = propProposalId || docInfo?.proposalId || docInfo?.proposal_id || '';
+    const effectiveSubmissionId = propSubmissionId || null;
+
     const [proposals, setProposals] = useState([]);
-    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
-    const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
+    const [selectedProposalId, setSelectedProposalId] = useState(effectiveProposalId ? String(effectiveProposalId) : '');
+    const [submissionId, setSubmissionId] = useState(effectiveSubmissionId);
     const [status, setStatus] = useState('DRAFT');
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -74,38 +77,40 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
     const isSubmitted = status === 'SUBMITTED';
     const isReadOnly = isAdmin ? false : isApproved;
 
-    // Load Proposals list
+    // Auto-fill project info directly from proposal
     useEffect(() => {
-        const fetchProposals = async () => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlProposalId = searchParams.get('proposal_id') || searchParams.get('proposalId') || searchParams.get('id') || '';
+        const targetPid = effectiveProposalId || selectedProposalId || urlProposalId;
+        if (!targetPid) return;
+
+        const fetchProposal = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/proposals/`);
-                if (Array.isArray(res.data)) setProposals(res.data);
+                const res = await axios.get(`${API_BASE_URL}/proposals/${targetPid}`);
+                const p = res.data;
+                if (p) {
+                    setProjectNo(prev => prev || p.project_number || '');
+                    setDrawingName(prev => prev || p.quote_description || p.project_name || p.title_of_project || '');
+                }
             } catch (err) {
-                console.error('Failed to load proposals:', err);
+                console.error('Failed to load proposal details:', err);
             }
         };
-        fetchProposals();
-    }, []);
-
-    // Auto-fill project info when a proposal is selected
-    useEffect(() => {
-        if (!selectedProposalId) return;
-        const p = proposals.find(item => String(item.id) === String(selectedProposalId));
-        if (p) {
-            setProjectNo(p.project_number || '');
-            setDrawingName(p.quote_description || p.project_name || '');
-        }
-    }, [selectedProposalId, proposals]);
+        fetchProposal();
+    }, [effectiveProposalId, selectedProposalId]);
 
     // Load existing submission data if editing or linked to proposal
     useEffect(() => {
         const loadSubmission = async () => {
             try {
                 let sub = null;
-                if (propSubmissionId) {
-                    sub = await isoSubmissionService.getSubmissionById(propSubmissionId);
-                } else if (propProposalId || selectedProposalId) {
-                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: propProposalId || selectedProposalId, doc_type: 'INSPECTION_REPORT' });
+                const targetSubId = propSubmissionId || null;
+                const targetPropId = propProposalId || selectedProposalId;
+
+                if (targetSubId) {
+                    sub = await isoSubmissionService.getSubmissionById(targetSubId);
+                } else if (targetPropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: targetPropId, doc_type: 'INSPECTION_REPORT' });
                     if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
                 }
 
@@ -125,7 +130,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                     if (fd.drawing_name) setDrawingName(fd.drawing_name);
                     if (fd.quantity) setQuantity(fd.quantity);
 
-                    if (Array.isArray(fd.rows)) {
+                    if (Array.isArray(fd.rows) && fd.rows.length > 0) {
                         setRows(fd.rows);
                     }
                     if (fd.prepared_by) setPreparedBy(fd.prepared_by);
@@ -141,7 +146,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
         };
 
         loadSubmission();
-    }, [propSubmissionId, propProposalId]);
+    }, [propSubmissionId, propProposalId, docInfo]);
 
     // Measurement Row Handlers
     const handleAddRow = () => {
@@ -181,6 +186,8 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
             rows: rows,
             prepared_by: preparedBy,
             approved_by: approvedBy,
+            group_name: getLoggedUserGroup(),
+            centre_dept: getLoggedUserCentreDept(),
             doc_no: docNo,
             doc_date: docDate,
             filename: `ISO_Inspection_Report_${projectNo || reportNo || '085'}.docx`
@@ -448,25 +455,8 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                         </div>
                     </div>
 
-                    {/* Metadata Section */}
+                    {/* Metadata Section - Matching 085 Template Fields */}
                     <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/50">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Link Proposal</label>
-                            <select
-                                value={selectedProposalId}
-                                onChange={(e) => setSelectedProposalId(e.target.value)}
-                                disabled={isReadOnly}
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
-                            >
-                                <option value="">-- Select Proposal --</option>
-                                {proposals.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.project_number ? `${p.project_number} - ` : ''}{p.quote_description || p.customer_name || `Proposal #${p.id}`}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Report No.</label>
                             <input
@@ -475,7 +465,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                                 onChange={(e) => setReportNo(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="Report Number"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-medium"
                             />
                         </div>
 
@@ -499,7 +489,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                                 onChange={(e) => setProjectNo(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="e.g. GST2502201"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-semibold text-slate-800"
                             />
                         </div>
 
@@ -527,18 +517,6 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             />
                         </div>
 
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Drawing Name / Item Description</label>
-                            <input
-                                type="text"
-                                value={drawingName}
-                                onChange={(e) => setDrawingName(e.target.value)}
-                                disabled={isReadOnly}
-                                placeholder="Drawing Name"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
-                            />
-                        </div>
-
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Quantity</label>
                             <input
@@ -548,6 +526,18 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                                 disabled={isReadOnly}
                                 placeholder="Quantity"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
+                            />
+                        </div>
+
+                        <div className="md:col-span-3">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Drawing Name / Item Description</label>
+                            <input
+                                type="text"
+                                value={drawingName}
+                                onChange={(e) => setDrawingName(e.target.value)}
+                                disabled={isReadOnly}
+                                placeholder="Drawing Name / Description"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-medium text-slate-800"
                             />
                         </div>
                     </div>

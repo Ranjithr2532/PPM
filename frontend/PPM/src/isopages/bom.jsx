@@ -88,29 +88,28 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
         if (docInfo?.document_no) setDocNo(docInfo.document_no);
     }, [docInfo]);
 
-    // Load Proposals
+    // Auto-fill project info directly from proposal
     useEffect(() => {
-        const fetchProposals = async () => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlProposalId = searchParams.get('proposal_id') || searchParams.get('proposalId') || searchParams.get('id') || '';
+        const targetPid = propProposalId || docInfo?.proposalId || docInfo?.proposal_id || selectedProposalId || urlProposalId;
+        if (!targetPid) return;
+
+        const fetchProposal = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/proposals/`);
-                if (Array.isArray(res.data)) setProposals(res.data);
+                const res = await axios.get(`${API_BASE_URL}/proposals/${targetPid}`);
+                const p = res.data;
+                if (p) {
+                    setProjectTitle(prev => prev || p.title_of_project || p.quote_description || p.project_name || '');
+                    setCustomerName(prev => prev || p.customer_name || '');
+                    setProjectNo(prev => prev || p.project_number || '');
+                }
             } catch (err) {
-                console.error('Failed to load proposals:', err);
+                console.error('Failed to load proposal details:', err);
             }
         };
-        fetchProposals();
-    }, []);
-
-    // Load Proposal Details when selected
-    useEffect(() => {
-        if (!selectedProposalId) return;
-        const p = proposals.find(item => String(item.id) === String(selectedProposalId));
-        if (p) {
-            setProjectTitle(p.title_of_project || p.quote_description || p.project_name || '');
-            setCustomerName(p.customer_name || '');
-            setProjectNo(p.project_number || '');
-        }
-    }, [selectedProposalId, proposals]);
+        fetchProposal();
+    }, [propProposalId, docInfo, selectedProposalId]);
 
     // Load Existing Submission if editing or proposal linked
     useEffect(() => {
@@ -698,24 +697,7 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                     </div>
 
                     {/* Metadata Section */}
-                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50/50">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Link Proposal</label>
-                            <select
-                                value={selectedProposalId}
-                                onChange={(e) => setSelectedProposalId(e.target.value)}
-                                disabled={isReadOnly}
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
-                            >
-                                <option value="">-- Select Proposal --</option>
-                                {proposals.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.project_number ? `${p.project_number} - ` : ''}{p.quote_description || p.customer_name || `Proposal #${p.id}`}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-slate-50/50">
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Project Title</label>
                             <input
@@ -736,7 +718,7 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                                 onChange={(e) => setProjectNo(e.target.value)}
                                 disabled={isReadOnly}
                                 placeholder="e.g. GST2502201"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-800"
                             />
                         </div>
 

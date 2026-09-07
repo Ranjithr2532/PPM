@@ -25,12 +25,14 @@ router = APIRouter(prefix="/iso", tags=["ISO Drawing Issue Register (Doc 064)"])
 class DrawingItemRequest(BaseModel):
     sl_no: str = ""
     drawing_no: str = ""
-    title_description: str = ""
+    drawing_name: str = ""
     rev_no: str = ""
-    issue_date: str = ""
-    issued_to: str = ""
-    no_of_copies: str = ""
-    remarks: str = ""
+    rev_date: str = ""
+    issued_by: str = ""
+    date_of_issue: str = ""
+    issued_to_dept: str = ""
+    mode: str = ""
+    name_and_signature: str = ""
 
 class DrawingSectionRequest(BaseModel):
     title: str = ""
@@ -53,6 +55,20 @@ class DrawingRegisterRequest(BaseModel):
     doc_no: str = "064"
     doc_date: str = ""
     filename: str = "ISO_Drawing_Issue_Register.docx"
+
+
+DEFAULT_DRAWING_HEADERS = [
+    "Sl.No.",
+    "Drawing No",
+    "Drawing Name",
+    "Rev. No",
+    "Rev.Date",
+    "Issued By",
+    "Date of Issue",
+    "Issued to Department (Internal/External) Name & Address",
+    "Mode",
+    "Name & Signature of (Issued by)"
+]
 
 
 def create_drawing_register_document(
@@ -134,7 +150,7 @@ def create_drawing_register_document(
     doc.add_paragraph().paragraph_format.space_after = Pt(8)
 
     # Main Drawing Register Table
-    custom_headers = ["Sl. No.", "Drawing No.", "Title / Description of Drawing", "Rev No.", "Date of Issue", "Issued To / Department", "No. of Copies", "Remarks"]
+    custom_headers = list(DEFAULT_DRAWING_HEADERS)
     custom_rows = []
 
     if isinstance(items, dict):
@@ -145,13 +161,15 @@ def create_drawing_register_document(
             if isinstance(item, dict):
                 sl = item.get("sl_no") or str(r_idx + 1)
                 dno = item.get("drawing_no") or ""
-                tdesc = item.get("title_description") or ""
+                dname = item.get("drawing_name") or item.get("title_description") or ""
                 rno = item.get("rev_no") or ""
-                idate = item.get("issue_date") or ""
-                ito = item.get("issued_to") or ""
-                ncopies = item.get("no_of_copies") or ""
-                rem = item.get("remarks") or ""
-                custom_rows.append([sl, dno, tdesc, rno, idate, ito, ncopies, rem])
+                rdate = item.get("rev_date") or ""
+                issued_by = item.get("issued_by") or ""
+                doi = item.get("date_of_issue") or item.get("issue_date") or ""
+                issued_to = item.get("issued_to_dept") or item.get("issued_to") or ""
+                mode = item.get("mode") or ""
+                sig = item.get("name_and_signature") or item.get("signature") or item.get("remarks") or ""
+                custom_rows.append([sl, dno, dname, rno, rdate, issued_by, doi, issued_to, mode, sig])
             elif isinstance(item, list):
                 custom_rows.append([str(v or "") for v in item])
 
@@ -160,14 +178,30 @@ def create_drawing_register_document(
         tbl_dwg.alignment = WD_TABLE_ALIGNMENT.CENTER
         tbl_dwg.autofit = False
 
+        # Predefined column widths for landscape A4
+        col_widths = [
+            Inches(0.5),   # Sl.No.
+            Inches(1.1),   # Drawing No
+            Inches(1.5),   # Drawing Name
+            Inches(0.6),   # Rev. No
+            Inches(0.85),  # Rev.Date
+            Inches(1.0),   # Issued By
+            Inches(0.85),  # Date of Issue
+            Inches(2.0),   # Issued to Department (Internal/External) Name & Address
+            Inches(0.8),   # Mode
+            Inches(1.49)   # Name & Signature of (Issued by)
+        ]
+
         # Header Row
         hdr_row = tbl_dwg.rows[0]
         for c_idx, h_text in enumerate(custom_headers):
             cell = hdr_row.cells[c_idx]
+            if c_idx < len(col_widths) and len(custom_headers) == len(col_widths):
+                cell.width = col_widths[c_idx]
             set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
             set_cell_shading(cell, "D9E2EC")
-            set_cell_margins(cell, top=30, start=25, bottom=30, end=25)
-            add_text(cell, str(h_text), font_size=8.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_margins(cell, top=30, start=20, bottom=30, end=20)
+            add_text(cell, str(h_text), font_size=8.0, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
         # Data Rows
         for r_idx, r_data in enumerate(custom_rows):
@@ -175,17 +209,21 @@ def create_drawing_register_document(
             for c_idx, val in enumerate(r_data):
                 if c_idx < len(data_row.cells):
                     cell = data_row.cells[c_idx]
+                    if c_idx < len(col_widths) and len(custom_headers) == len(col_widths):
+                        cell.width = col_widths[c_idx]
                     set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-                    set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-                    add_text(cell, str(val or ""), font_size=8.5)
+                    set_cell_margins(cell, top=25, start=20, bottom=25, end=20)
+                    add_text(cell, str(val or ""), font_size=8.0)
 
         if not custom_rows:
             data_row = tbl_dwg.rows[1]
             for c_idx in range(len(custom_headers)):
                 cell = data_row.cells[c_idx]
+                if c_idx < len(col_widths) and len(custom_headers) == len(col_widths):
+                    cell.width = col_widths[c_idx]
                 set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
-                set_cell_margins(cell, top=25, start=25, bottom=25, end=25)
-                add_text(cell, "-", font_size=8.5, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                set_cell_margins(cell, top=25, start=20, bottom=25, end=20)
+                add_text(cell, "-", font_size=8.0, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(8)
 

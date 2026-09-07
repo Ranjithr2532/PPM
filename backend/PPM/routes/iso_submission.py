@@ -361,6 +361,85 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
         )
         filename = f"ISO_Inspection_Report_{doc_no.replace('/', '_')}.docx"
 
+    elif doc_type in ["TECHNICAL_SPECIFICATION", "TECHNICAL_SPECIFICATION_FORMAT", "065"]:
+        from iso.technical_specification import create_technical_specification_document
+        doc = create_technical_specification_document(
+            project_title=f_data.get("project_title", ""),
+            project_no=f_data.get("project_no", ""),
+            customer_name=f_data.get("customer_name", ""),
+            item_description=f_data.get("item_description", ""),
+            specs=f_data.get("specs"),
+            scope_of_supply=f_data.get("scope_of_supply"),
+            boi_checklist=f_data.get("boi_checklist"),
+            mfg_checklist=f_data.get("mfg_checklist"),
+            prepared_by=prepared_by,
+            approved_by=approved_by,
+            group_name=group_name,
+            centre_dept=centre_dept,
+            doc_no=doc_no,
+            doc_date=date_str
+        )
+        filename = f"ISO_Technical_Specification_{doc_no.replace('/', '_')}.docx"
+
+    elif doc_type in ["MASTER_DRAWING_INDEX", "DRAWING_INDEX", "MASTER_DRAWING", "066"]:
+        from iso.master_drawing_index import create_master_drawing_index_document
+        doc = create_master_drawing_index_document(
+            project_title=f_data.get("project_title") or f_data.get("title_of_project") or "",
+            project_no=f_data.get("project_no", ""),
+            customer_name=f_data.get("customer_name", ""),
+            sub_system=f_data.get("sub_system", ""),
+            items=f_data.get("items"),
+            prepared_by=prepared_by,
+            approved_by=approved_by,
+            group_name=group_name,
+            centre_dept=centre_dept,
+            doc_no=doc_no,
+            doc_date=date_str
+        )
+        filename = f"ISO_Master_Drawing_Index_{doc_no.replace('/', '_')}.docx"
+
+    elif doc_type in ["ENGINEERING_CHANGE_NOTE", "ECN", "CHANGE_NOTE", "068"]:
+        from iso.engineering_change_note import create_engineering_change_note_document
+        doc = create_engineering_change_note_document(
+            project_title=f_data.get("project_title") or f_data.get("title_of_project") or "",
+            project_no=f_data.get("project_no", ""),
+            customer_name=f_data.get("customer_name", ""),
+            sub_system=f_data.get("sub_system", ""),
+            ecn_no=f_data.get("ecn_no", ""),
+            ecn_date=f_data.get("ecn_date", ""),
+            part_description=f_data.get("part_description", ""),
+            original_part_no_name=f_data.get("original_part_no_name", ""),
+            original_rev_no=f_data.get("original_rev_no", "Rev00"),
+            changed_part_no_name=f_data.get("changed_part_no_name", ""),
+            changed_rev_no=f_data.get("changed_rev_no", "Rev01"),
+            reason_for_change=f_data.get("reason_for_change", ""),
+            description_of_change=f_data.get("description_of_change", ""),
+            affected_po=bool(f_data.get("affected_po", False)),
+            affected_po_details=f_data.get("affected_po_details", ""),
+            affected_drawing=bool(f_data.get("affected_drawing", False)),
+            affected_drawing_details=f_data.get("affected_drawing_details", ""),
+            affected_bom=bool(f_data.get("affected_bom", False)),
+            affected_bom_details=f_data.get("affected_bom_details", ""),
+            affected_other=bool(f_data.get("affected_other", False)),
+            affected_other_details=f_data.get("affected_other_details", ""),
+            team_member_name=f_data.get("team_member_name") or prepared_by or "",
+            team_member_date=f_data.get("team_member_date") or date_str or "",
+            ecn_filled_completely=bool(f_data.get("ecn_filled_completely", True)),
+            original_drawing_attached=bool(f_data.get("original_drawing_attached", True)),
+            updated_drawing_attached=bool(f_data.get("updated_drawing_attached", True)),
+            due_date_understood=bool(f_data.get("due_date_understood", True)),
+            execution_option=f_data.get("execution_option", "A"),
+            execution_details=f_data.get("execution_details", ""),
+            prepared_by=prepared_by,
+            reviewed_by=f_data.get("reviewed_by", ""),
+            approved_by=approved_by,
+            group_name=group_name,
+            centre_dept=centre_dept,
+            doc_no=doc_no,
+            doc_date=date_str
+        )
+        filename = f"ISO_Engineering_Change_Note_{doc_no.replace('/', '_')}.docx"
+
     elif doc_type in ["COST_ESTIMATION_SHEET", "PROJECT_COST_ESTIMATION_SHEET", "COST_ESTIMATION"]:
         from iso.costestimationsheet import create_cost_estimation_sheet_document
         doc = create_cost_estimation_sheet_document(
@@ -377,6 +456,65 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
             signatures=f_data.get("signatures")
         )
         filename = f"Project_Cost_Estimation_Sheet_{doc_no.replace('/', '_')}.docx"
+
+    elif doc_type in ["CUSTOMER_COMPLAINT_REGISTER", "COMPLAINT_REGISTER", "086", "CCR"]:
+        from iso.customer_complaint_register import create_customer_complaint_register_document
+        doc = create_customer_complaint_register_document(
+            project_title=f_data.get("project_title") or f_data.get("title_of_project") or "",
+            project_no=f_data.get("project_no", ""),
+            customer_name=f_data.get("customer_name", ""),
+            doc_no=doc_no or "086",
+            doc_date=date_str,
+            doc_code=f_data.get("doc_code") or "CMTI-QMS-SMC-086/Rev00",
+            centre_dept=centre_dept or "C-SMPM/SMC",
+            group_name=group_name or "SMC",
+            page_str=f_data.get("page_str") or "1 of 1",
+            rows=f_data.get("rows"),
+            prepared_by=prepared_by,
+            approved_by=approved_by
+        )
+        filename = f"ISO_Customer_Complaint_Register_{doc_no.replace('/', '_')}.docx"
+
+    elif doc_type in ["CUSTOMER_FEEDBACK", "CUSTOMER_FEEDBACK_FORM", "FEEDBACK_FORM", "088", "CF"]:
+        from iso.customer_feedback import create_customer_feedback_document
+        doc = create_customer_feedback_document(
+            project_title=f_data.get("project_title") or f_data.get("title_of_project") or "",
+            project_no=f_data.get("project_no", ""),
+            company_name_address=f_data.get("company_name_address") or f_data.get("customer_name") or "",
+            customer_name=f_data.get("customer_name", ""),
+            doc_no=doc_no or "088",
+            doc_date=date_str,
+            doc_code=f_data.get("doc_code") or "CMTI-SMC-QMS-088/Rev00",
+            ratings=f_data.get("ratings"),
+            comments=f_data.get("comments", ""),
+            customer_rep_name=f_data.get("customer_rep_name", ""),
+            office_use=f_data.get("office_use"),
+            prepared_by=prepared_by,
+            approved_by=approved_by,
+            group_name=group_name or "SMC",
+            centre_dept=centre_dept or "C-SMPM/SMC"
+        )
+        filename = f"ISO_Customer_Feedback_{doc_no.replace('/', '_')}.docx"
+
+    elif doc_type in ["ACCEPTANCE_TEST_REPORT", "ACCEPTANCE_TEST", "ATR", "087"]:
+        from iso.acceptance_test_report import create_acceptance_test_report_document
+        doc = create_acceptance_test_report_document(
+            project_title=f_data.get("project_title") or f_data.get("title_of_project") or "",
+            project_no=f_data.get("project_no", ""),
+            customer_name=f_data.get("customer_name", ""),
+            product_id_no=f_data.get("product_id_no", ""),
+            doc_no=doc_no or "087",
+            doc_date=date_str,
+            doc_code=f_data.get("doc_code") or "CMTI-QMS-SMC-087/Rev00",
+            centre_dept=centre_dept or "C-SMPM/SMC",
+            group_name=group_name or "SMC",
+            page_str=f_data.get("page_str") or "Page 1 of 1",
+            rows=f_data.get("rows"),
+            prepared_by=prepared_by,
+            inspected_by=f_data.get("inspected_by", ""),
+            approved_by=approved_by
+        )
+        filename = f"ISO_Acceptance_Test_Report_{doc_no.replace('/', '_')}.docx"
 
     else:
         from iso.generic_iso import create_generic_iso_document
@@ -604,7 +742,7 @@ async def upload_iso_document_file(
     # Upload file directly to MinIO (same as routes/documents.py)
     object_name, minio_url = await upload_file_to_minio(file)
 
-    is_multi_doc = doc_type.upper() in ["MOM", "MINUTES_OF_MEETING", "037"]
+    is_multi_doc = doc_type.upper() in ["MOM", "MINUTES_OF_MEETING", "037", "ENGINEERING_CHANGE_NOTE", "ECN", "068"]
 
     rec = None
     if not is_multi_doc:
