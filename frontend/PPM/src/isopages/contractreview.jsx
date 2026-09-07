@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DownloadOutlined,
     ReloadOutlined,
@@ -7,7 +7,9 @@ import {
     CheckOutlined,
     CloseOutlined,
     UploadOutlined,
-    FileTextOutlined
+    FileTextOutlined,
+    CheckCircleOutlined,
+    LoadingOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import mammoth from 'mammoth';
@@ -96,6 +98,22 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
 
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
+
     // Document state for PO check
     const [proposalDocs, setProposalDocs] = useState([]);
     const [poDocument, setPoDocument] = useState(null);
@@ -149,12 +167,12 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
 
     // Details state
     const [quoteNo, setQuoteNo] = useState('');
-    const [quoteDate, setQuoteDate] = useState('');
+    const [quoteDate, setQuoteDate] = useState(getTodayDateString());
     const [poNumber, setPoNumber] = useState('');
-    const [poDate, setPoDate] = useState('');
+    const [poDate, setPoDate] = useState(getTodayDateString());
     const [customerName, setCustomerName] = useState('');
     const [selectType, setSelectType] = useState('Quotation'); // 'Quotation' | 'Tender' | 'Proposal'
-    const [filename, setFilename] = useState('Customer_Contract_Review_Checklist.docx');
+    const [filename, setFilename] = useState('CMTI_Contract_Review_Checklist.docx');
     const loggedCentreDept = getLoggedUserCentreDept();
     const [docNo, setDocNo] = useState(() => docInfo?.document_no || '051');
     const [revisionCode, setRevisionCode] = useState(() => getDefaultRevisionCode(docInfo?.document_no || '051'));
@@ -162,8 +180,15 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
 
-    // Checklist values (defaulting Item 3 to 'No' and Item 9 to 'NIL' as requested)
-    const [reviewValues, setReviewValues] = useState({ q3_val: 'No', q9_val: 'NIL' });
+    const [reviewValues, setReviewValues] = useState(() => {
+        const init = {};
+        REVIEW_ITEMS_TEMPLATES.forEach(item => {
+            init[item.key_q] = item.default_q;
+            init[item.key_p] = item.default_p;
+            init[item.key_d] = item.default_d;
+        });
+        return init;
+    });
 
     useEffect(() => {
         if (docInfo) {
@@ -194,62 +219,172 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
             .catch(err => console.error('Error fetching ISO document list for Contract Review:', err));
     }, []);
 
-    // Check props or URL parameters to load existing submission
+    const currentUserRole = (() => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+    const isAdmin = ['admin', 'director'].includes(currentUserRole);
+    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
+    const isApproved = status === 'APPROVED';
+    const isSubmitted = status === 'SUBMITTED';
+    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const urlId = propSubmissionId || searchParams.get('id') || searchParams.get('submission_id');
         const urlPropId = propProposalId || searchParams.get('proposal_id');
 
-        if (urlPropId) {
-            setSelectedProposalId(String(urlPropId));
-        }
+        if (urlPropId) setSelectedProposalId(String(urlPropId));
 
-        if (urlId) {
-            async function loadSubmission() {
-                try {
+        async function loadSubmission() {
+            try {
+                let sub = null;
+                if (urlId) {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
-                    if (res.data) {
-
-                        const sub = res.data;
-                        setSubmissionId(sub.id);
-                        setStatus(sub.status || 'DRAFT');
-                        setDocNo(sub.document_no || '');
-                        if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
-
-                        const hData = sub.header_data || {};
-                        if (hData.dateStr) setDocDate(hData.dateStr);
-                        if (hData.preparedName) setPreparedBy(hData.preparedName);
-                        if (hData.approvedName) setApprovedBy(hData.approvedName);
-
-                        const fData = sub.form_data || {};
-                        if (fData.po_number) setPoNumber(fData.po_number);
-                        if (fData.po_date) setPoDate(fData.po_date);
-                        if (fData.customer_name) setCustomerName(fData.customer_name);
-                        if (fData.quote_no) setQuoteNo(fData.quote_no);
-                        if (fData.quote_date) setQuoteDate(fData.quote_date);
-
-                        const rList = fData.review_points || [];
-                        const updatedValues = { q3_val: 'No', q9_val: 'NIL' };
-                        rList.forEach((pt, idx) => {
-                            const template = REVIEW_ITEMS_TEMPLATES[idx];
-                            if (template) {
-                                updatedValues[template.key_q] = pt.quotation_clause !== undefined ? pt.quotation_clause : (pt.yes_no_na || pt.response || '');
-                                updatedValues[template.key_p] = pt.po_clause !== undefined ? pt.po_clause : (pt.details || '');
-                                updatedValues[template.key_d] = pt.deviations || '';
-                            }
-                        });
-                        setReviewValues(updatedValues);
-
-                    }
-                } catch (err) {
-                    console.error('Failed to load ISO Contract Review submission:', err);
+                    if (res.data) sub = res.data;
+                } else if (urlPropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: urlPropId, doc_type: 'CONTRACT_REVIEW' });
+                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
                 }
+
+                if (sub) {
+                    setSubmissionId(sub.id);
+                    submissionIdRef.current = sub.id;
+                    setStatus(sub.status || 'DRAFT');
+                    statusRef.current = sub.status || 'DRAFT';
+                    setDocNo(sub.document_no || '');
+                    if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
+
+                    const hData = sub.header_data || {};
+                    if (hData.dateStr) setDocDate(hData.dateStr);
+                    if (hData.preparedName) setPreparedBy(hData.preparedName);
+                    if (hData.approvedName) setApprovedBy(hData.approvedName);
+
+                    const fData = sub.form_data || {};
+                    if (fData.po_number) setPoNumber(fData.po_number);
+                    if (fData.po_date) setPoDate(fData.po_date);
+                    if (fData.customer_name) setCustomerName(fData.customer_name);
+                    if (fData.quote_no) setQuoteNo(fData.quote_no);
+                    if (fData.quote_date) setQuoteDate(fData.quote_date);
+
+                    const rList = fData.review_points || [];
+                    const updatedValues = { ...reviewValues };
+                    rList.forEach((pt, idx) => {
+                        const template = REVIEW_ITEMS_TEMPLATES[idx];
+                        if (template) {
+                            updatedValues[template.key_q] = pt.quotation_clause || '';
+                            updatedValues[template.key_p] = pt.po_clause || '';
+                            updatedValues[template.key_d] = pt.deviations || '';
+                        }
+                    });
+                    setReviewValues(updatedValues);
+                }
+            } catch (err) {
+                console.error('Failed to load ISO Contract Review submission:', err);
+            } finally {
+                setTimeout(() => { isHydratedRef.current = true; }, 400);
             }
-            loadSubmission();
         }
+        loadSubmission();
     }, [propSubmissionId, propProposalId]);
 
-    // Read and load quotation details from backend quotation reader
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'CONTRACT REVIEW CHECKLIST',
+                docNo: docNo || '',
+                code: revisionCode,
+                dateStr: docDate,
+                pageStr: '1 of 2',
+                centreDept: loggedCentreDept || '',
+                isoSpec: '',
+                groupName: getLoggedUserGroup() || '',
+                preparedName: preparedBy || getLoggedUserName(),
+                approvedName: approvedBy || '',
+            };
+
+            const reviewPointsList = REVIEW_ITEMS_TEMPLATES.map((item) => ({
+                s_no: item.s_no,
+                aspect: item.aspect,
+                quotation_clause: reviewValues[item.key_q] || '',
+                po_clause: reviewValues[item.key_p] || '',
+                deviations: reviewValues[item.key_d] || ''
+            }));
+
+            const formDataPayload = {
+                quote_no: quoteNo,
+                quote_date: quoteDate,
+                po_number: poNumber,
+                po_date: poDate,
+                customer_name: customerName,
+                select_type: selectType,
+                review_points: reviewPointsList,
+            };
+
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                doc_type: 'CONTRACT_REVIEW',
+                document_no: docNo || '',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formDataPayload,
+                status: currentDocStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionIdRef.current) {
+                response = await axios.put(`${API_BASE_URL}/iso-submissions/${submissionIdRef.current}`, payload);
+            } else {
+                response = await axios.post(`${API_BASE_URL}/iso-submissions/`, payload);
+                if (response.data && response.data.id) {
+                    setSubmissionId(response.data.id);
+                    submissionIdRef.current = response.data.id;
+                }
+            }
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save error in ContractReview:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
+        }
+    }, [isReadOnly, docNo, revisionCode, docDate, loggedCentreDept, preparedBy, approvedBy, reviewValues, quoteNo, quoteDate, poNumber, poDate, customerName, selectType, selectedProposalId]);
+
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        return () => clearTimeout(timer);
+    }, [quoteNo, quoteDate, poNumber, poDate, customerName, selectType, reviewValues, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
+
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+    }, [performAutoSave, isReadOnly]);
+
     const handleLoadQuotationData = useCallback(async (proposalIdToLoad = null) => {
         const pId = proposalIdToLoad || selectedProposalId;
         if (!pId) return;
@@ -762,24 +897,7 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
         } finally {
             setSubmitting(false);
         }
-
     };
-
-    // Check user role
-    const currentUserRole = (() => {
-        try {
-            const rawUser = window.localStorage.getItem('ppm_user');
-            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
-        } catch (e) {
-            return '';
-        }
-    })();
-    const isAdmin = ['admin', 'director'].includes(currentUserRole);
-    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
-    const isApproved = status === 'APPROVED';
-    const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
 
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
@@ -802,8 +920,14 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                 <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
                     {onBack && (
                         <button
-                            onClick={onBack}
+                            onClick={async () => {
+                                if (isHydratedRef.current && !isReadOnly) {
+                                    await performAutoSave();
+                                }
+                                onBack();
+                            }}
                             className="flex items-center gap-1.5 text-slate-600 hover:text-indigo-600 font-semibold text-xs bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 transition-all"
+                            title="Back (Auto-saves draft)"
                         >
                             <ArrowLeftOutlined /> Back
                         </button>
@@ -822,6 +946,20 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                         }`}>
                         {status}
                     </span>
+
+                    {/* Auto-Save Draft Status Badge */}
+                    <div className="ml-1">
+                        {autoSaveState === 'saving' && (
+                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                <LoadingOutlined className="text-[10px]" /> Saving draft...
+                            </span>
+                        )}
+                        {autoSaveState === 'saved' && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                            </span>
+                        )}
+                    </div>
 
                     {!isReadOnly && (
                         <>
@@ -852,24 +990,13 @@ export default function ContractReview({ proposalId: propProposalId, submissionI
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
                     {/* Scientist Create / Edit Controls */}
                     {!isReadOnly && !isApprover && (
-                        <>
-                            <button
-                                onClick={() => handleSaveSubmission('DRAFT')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                            >
-                                {submitting ? 'Saving...' : 'Save Draft'}
-                            </button>
-
-
-                            <button
-                                onClick={() => handleSaveSubmission('SUBMITTED')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
-                            >
-                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
-                            </button>
-                        </>
+                        <button
+                            onClick={() => handleSaveSubmission('SUBMITTED')}
+                            disabled={submitting}
+                            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                        >
+                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                        </button>
                     )}
 
                     {/* CH / GH Approver Review Controls */}

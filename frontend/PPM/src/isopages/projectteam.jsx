@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DownloadOutlined,
     ReloadOutlined,
@@ -7,8 +7,9 @@ import {
     PlusOutlined,
     DeleteOutlined,
     CheckOutlined,
-    CloseOutlined
-
+    CloseOutlined,
+    CheckCircleOutlined,
+    LoadingOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
@@ -29,35 +30,20 @@ const getLoggedUserCentreDept = () => {
     try {
         const rawUser = window.localStorage.getItem('ppm_user');
         if (!rawUser) return '';
-        const parsedUser = JSON.parse(rawUser);
-        const center = (parsedUser.center || parsedUser.centre || '').trim();
-        const group = (parsedUser.group || '').trim();
-        let combined = '';
-        if (group && center) {
-            combined = `${center}/${group}`;
-        } else {
-            combined = group || center || '';
-        }
-        return normalizeCentreDept(combined);
+        const parsed = JSON.parse(rawUser);
+        const centre = parsed.center || parsed.centre || parsed.centreDept || parsed.department || '';
+        return normalizeCentreDept(centre);
     } catch (e) {
         return '';
     }
-};
-
-const getTodayDateString = () => {
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yyyy = today.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
 };
 
 const getLoggedUserGroup = () => {
     try {
         const rawUser = window.localStorage.getItem('ppm_user');
         if (!rawUser) return '';
-        const parsedUser = JSON.parse(rawUser);
-        return (parsedUser.group || '').trim().toUpperCase();
+        const parsed = JSON.parse(rawUser);
+        return (parsed.group || parsed.groupName || '').trim();
     } catch (e) {
         return '';
     }
@@ -69,14 +55,68 @@ const getDefaultRevisionCode = (docCode) => {
     return `CMTI-QMS-${groupStr}-${docCode}/Rev00`;
 };
 
-export default function ProjectTeam({ proposalId: propProposalId, submissionId: propSubmissionId, onBack }) {
+const getTodayDateString = () => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    return `${dd}.${mm}.${yyyy}`;
+};
+
+const getCurrentUserRole = () => {
+    try {
+        const rawUser = window.localStorage.getItem('ppm_user');
+        if (!rawUser) return 'scientist';
+        const parsed = JSON.parse(rawUser);
+        const r = (parsed.role || '').toLowerCase().trim();
+        if (r === 'centre head' || r === 'center head') return 'ch';
+        if (r === 'group head') return 'gh';
+        return r || 'scientist';
+    } catch (e) {
+        return 'scientist';
+    }
+};
+
+export default function ProjectTeam({ submissionId: propSubmissionId, proposalId: propProposalId, onBack, onSuccess, docInfo }) {
     const [proposals, setProposals] = useState([]);
+    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
     const [proposalsLoading, setProposalsLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [status, setStatus] = useState('DRAFT');
+
+    // Check user role
+    const currentUserRole = (() => {
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+    const isAdmin = ['admin', 'director'].includes(currentUserRole);
+    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
+    const isApproved = status === 'APPROVED';
+    const isSubmitted = status === 'SUBMITTED';
+    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
+    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     // Details state
     const [projectNo, setProjectNo] = useState('');
@@ -256,39 +296,145 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
             setSelectedProposalId(String(urlPropId));
         }
 
-        if (urlId) {
-            async function loadSubmission() {
-                try {
+        async function loadSubmission() {
+            try {
+                let sub = null;
+                if (urlId) {
                     const res = await axios.get(`${API_BASE_URL}/iso-submissions/${urlId}`);
-                    if (res.data) {
+                    if (res.data) sub = res.data;
+                } else if (urlPropId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: urlPropId, doc_type: 'PROJECT_TEAM' });
+                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
+                }
 
-                        const sub = res.data;
-                        setSubmissionId(sub.id);
-                        setStatus(sub.status || 'DRAFT');
-                        setDocNo(sub.document_no || '');
-                        if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
+                if (sub) {
+                    setSubmissionId(sub.id);
+                    submissionIdRef.current = sub.id;
+                    setStatus(sub.status || 'DRAFT');
+                    statusRef.current = sub.status || 'DRAFT';
+                    setDocNo(sub.document_no || '');
+                    if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
 
-                        const hData = sub.header_data || {};
-                        if (hData.dateStr) setDocDate(hData.dateStr);
+                    const hData = sub.header_data || {};
+                    if (hData.dateStr) setDocDate(hData.dateStr);
 
-                        const fData = sub.form_data || {};
-                        if (fData.project_no) setProjectNo(fData.project_no);
-                        if (fData.project_title) setProjectTitle(fData.project_title);
-                        if (fData.customer_name) setCustomerName(fData.customer_name);
-                        if (fData.project_leader) setProjectLeader(fData.project_leader);
-                        if (fData.po_reference) setPoReference(fData.po_reference);
-                        if (fData.proposal_ref) setProposalRef(fData.proposal_ref);
-                        if (fData.subject) setSubject(fData.subject);
-                        if (fData.team_members) setTeamMembers(fData.team_members);
-                        if (fData.review_members) setReviewMembers(fData.review_members);
-                    }
-                } catch (err) {
-                    console.error('Failed to load ISO Project Team submission:', err);
+                    const fData = sub.form_data || {};
+                    if (fData.project_no) setProjectNo(fData.project_no);
+                    if (fData.project_title) setProjectTitle(fData.project_title);
+                    if (fData.customer_name) setCustomerName(fData.customer_name);
+                    if (fData.project_leader) setProjectLeader(fData.project_leader);
+                    if (fData.po_reference) setPoReference(fData.po_reference);
+                    if (fData.proposal_ref) setProposalRef(fData.proposal_ref);
+                    if (fData.subject) setSubject(fData.subject);
+                    if (fData.team_members) setTeamMembers(fData.team_members);
+                    if (fData.review_members) setReviewMembers(fData.review_members);
+                }
+            } catch (err) {
+                console.error('Failed to load ISO Project Team submission:', err);
+            } finally {
+                setTimeout(() => {
+                    isHydratedRef.current = true;
+                }, 400);
+            }
+        }
+        loadSubmission();
+    }, [propSubmissionId, propProposalId]);
+
+    // Auto-Save Draft to Database
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const headerData = {
+                documentTitle: 'PROJECT TEAM',
+                docNo: docNo || '',
+                code: revisionCode,
+                dateStr: docDate,
+                pageStr: '1 of 1',
+                centreDept: loggedCentreDept || '',
+                isoSpec: '',
+                groupName: getLoggedUserGroup() || '',
+            };
+
+            const formDataPayload = {
+                project_no: projectNo,
+                project_title: projectTitle,
+                customer_name: customerName,
+                project_leader: projectLeader,
+                po_reference: poReference,
+                proposal_ref: proposalRef,
+                subject: subject,
+                team_members: teamMembers,
+                review_members: reviewMembers,
+            };
+
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                doc_type: 'PROJECT_TEAM',
+                document_no: docNo || '',
+                proposal_id: selectedProposalId ? parseInt(selectedProposalId) : null,
+                header_data: headerData,
+                form_data: formDataPayload,
+                status: currentDocStatus,
+                created_by: userId,
+            };
+
+            let response;
+            if (submissionIdRef.current) {
+                response = await axios.put(`${API_BASE_URL}/iso-submissions/${submissionIdRef.current}`, payload);
+            } else {
+                response = await axios.post(`${API_BASE_URL}/iso-submissions/`, payload);
+                if (response.data && response.data.id) {
+                    setSubmissionId(response.data.id);
+                    submissionIdRef.current = response.data.id;
                 }
             }
-            loadSubmission();
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save error in ProjectTeam:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
         }
-    }, []);
+    }, [isReadOnly, docNo, revisionCode, docDate, loggedCentreDept, projectNo, projectTitle, customerName, projectLeader, poReference, proposalRef, subject, teamMembers, reviewMembers, selectedProposalId]);
+
+    // Debounced Auto-Save
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+
+        const timer = setTimeout(() => {
+            performAutoSave();
+        }, 1000);
+
+        return () => clearTimeout(timer);
+    }, [projectNo, projectTitle, customerName, projectLeader, poReference, proposalRef, subject, teamMembers, reviewMembers, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
+
+    // Flush on page unload / refresh
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) {
+                performAutoSave();
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) {
+                performAutoSave();
+            }
+        };
+    }, [performAutoSave, isReadOnly]);
 
 
     // Fetch user details and load proposals
@@ -387,11 +533,11 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
                         // Fetch all users
-                        const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders });
+                        const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] }));
                         const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
 
                         // Fetch team members of proposal
-                        const membersRes = await axios.get(`${API_BASE_URL}/team-members/proposal/${selectedProposalId}`, { headers: authHeaders });
+                        const membersRes = await axios.get(`${API_BASE_URL}/team-members/proposal/${selectedProposalId}`, { headers: authHeaders }).catch(() => ({ data: [] }));
                         const dbMembers = Array.isArray(membersRes.data) ? membersRes.data : [];
 
                         const initialTeam = [];
@@ -434,7 +580,7 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
 
                         setTeamMembers(initialTeam);
                     } catch (err) {
-                        console.error('Failed to pre-populate project team:', err);
+                        console.warn('Could not auto-populate team members:', err);
                     }
                 }
                 fetchInitialTeam();
@@ -836,24 +982,7 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
         } finally {
             setSubmitting(false);
         }
-
     };
-
-    // Check user role
-    const currentUserRole = (() => {
-        try {
-            const rawUser = window.localStorage.getItem('ppm_user');
-            return rawUser ? (JSON.parse(rawUser)?.role || '').toLowerCase().trim() : '';
-        } catch (e) {
-            return '';
-        }
-    })();
-    const isAdmin = ['admin', 'director'].includes(currentUserRole);
-    const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
-    const isApproved = status === 'APPROVED';
-    const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
 
     return (
         <div className="bg-slate-100 min-h-screen py-8 px-4 flex flex-col items-center font-sans">
@@ -876,8 +1005,14 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     {onBack && (
                         <button
-                            onClick={onBack}
+                            onClick={async () => {
+                                if (isHydratedRef.current && !isReadOnly) {
+                                    await performAutoSave();
+                                }
+                                onBack();
+                            }}
                             className="mr-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-200"
+                            title="Back (Auto-saves draft)"
                         >
                             <ArrowLeftOutlined /> Back
                         </button>
@@ -908,28 +1043,32 @@ export default function ProjectTeam({ proposalId: propProposalId, submissionId: 
                         }`}>
                         {status}
                     </span>
+
+                    {/* Auto-Save Draft Status Badge */}
+                    <div className="ml-1">
+                        {autoSaveState === 'saving' && (
+                            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                <LoadingOutlined className="text-[10px]" /> Saving draft...
+                            </span>
+                        )}
+                        {autoSaveState === 'saved' && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
                     {/* Scientist Create / Edit Controls */}
                     {!isReadOnly && !isApprover && (
-                        <>
-                            <button
-                                onClick={() => handleSaveSubmission('DRAFT')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                            >
-                                {submitting ? 'Saving...' : 'Save Draft'}
-                            </button>
-
-                            <button
-                                onClick={() => handleSaveSubmission('SUBMITTED')}
-                                disabled={submitting}
-                                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
-                            >
-                                {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
-                            </button>
-                        </>
+                        <button
+                            onClick={() => handleSaveSubmission('SUBMITTED')}
+                            disabled={submitting}
+                            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                        >
+                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                        </button>
                     )}
 
                     {/* CH / GH Approver Review Controls */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     FileWordOutlined,
     ArrowLeftOutlined,
@@ -7,7 +7,9 @@ import {
     CheckOutlined,
     CloseOutlined,
     TableOutlined,
-    AlignLeftOutlined
+    AlignLeftOutlined,
+    CheckCircleOutlined,
+    LoadingOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
@@ -29,6 +31,22 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
     const [status, setStatus] = useState('DRAFT');
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    // Auto-save draft tracking states & refs
+    const isHydratedRef = useRef(false);
+    const submissionIdRef = useRef(submissionId);
+    const statusRef = useRef(status);
+    const isSavingRef = useRef(false);
+    const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
+    const [lastSavedAt, setLastSavedAt] = useState(null);
+
+    useEffect(() => {
+        submissionIdRef.current = submissionId;
+    }, [submissionId]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     // Metadata
     const [projectTitle, setProjectTitle] = useState('');
@@ -90,14 +108,23 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
         }
     }, [selectedProposalId, proposals]);
 
-    // Load Existing Submission if editing
+    // Load Existing Submission if editing or proposal linked
     useEffect(() => {
-        const loadSubmission = async (subId) => {
+        const loadSubmission = async () => {
             try {
-                const sub = await isoSubmissionService.getSubmissionById(subId);
+                let sub = null;
+                if (propSubmissionId) {
+                    sub = await isoSubmissionService.getSubmissionById(propSubmissionId);
+                } else if (propProposalId || selectedProposalId) {
+                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: propProposalId || selectedProposalId, doc_type: 'DRAWING_REGISTER' });
+                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
+                }
+
                 if (sub) {
                     setSubmissionId(sub.id);
+                    submissionIdRef.current = sub.id;
                     setStatus(sub.status || 'DRAFT');
+                    statusRef.current = sub.status || 'DRAFT';
                     if (sub.proposal_id) setSelectedProposalId(String(sub.proposal_id));
 
                     const fd = sub.form_data || {};
@@ -121,13 +148,13 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                 }
             } catch (err) {
                 console.error('Failed to load Drawing Register submission:', err);
+            } finally {
+                setTimeout(() => { isHydratedRef.current = true; }, 400);
             }
         };
 
-        if (propSubmissionId) {
-            loadSubmission(propSubmissionId);
-        }
-    }, [propSubmissionId]);
+        loadSubmission();
+    }, [propSubmissionId, propProposalId]);
 
     // Column & Row Handlers
     const handleAddColumn = () => {
@@ -246,6 +273,71 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
         }
     };
 
+    // Auto-Save Draft to Database
+    const performAutoSave = useCallback(async () => {
+        if (isReadOnly) return;
+        if (!isHydratedRef.current) return;
+        if (isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setAutoSaveState('saving');
+        try {
+            const rawUser = window.localStorage.getItem('ppm_user');
+            const currentUser = rawUser ? JSON.parse(rawUser) : {};
+            const userId = currentUser.id || currentUser.user_id || currentUser.userId;
+
+            const formDataPayload = buildPayload();
+            const currentDocStatus = (statusRef.current === 'APPROVED' || statusRef.current === 'SUBMITTED') ? statusRef.current : 'DRAFT';
+
+            const payload = {
+                proposal_id: selectedProposalId ? Number(selectedProposalId) : null,
+                doc_type: 'DRAWING_REGISTER',
+                document_no: docNo || '064',
+                form_data: formDataPayload,
+                status: currentDocStatus,
+                created_by: userId
+            };
+
+            let res;
+            if (submissionIdRef.current) {
+                res = await isoSubmissionService.updateSubmission(submissionIdRef.current, payload);
+            } else {
+                res = await isoSubmissionService.createSubmission(payload);
+                if (res && res.id) {
+                    setSubmissionId(res.id);
+                    submissionIdRef.current = res.id;
+                }
+            }
+
+            setAutoSaveState('saved');
+            setLastSavedAt(new Date());
+        } catch (err) {
+            console.error('Auto-save error in DrawingRegister:', err);
+            setAutoSaveState('error');
+        } finally {
+            isSavingRef.current = false;
+        }
+    }, [isReadOnly, projectTitle, projectNo, customerName, subSystem, registerRev, dwgHeaders, dwgRows, sections, preparedBy, approvedBy, docNo, docDate, selectedProposalId]);
+
+    // Debounced Auto-Save
+    useEffect(() => {
+        if (!isHydratedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        return () => clearTimeout(timer);
+    }, [projectTitle, projectNo, customerName, subSystem, registerRev, dwgHeaders, dwgRows, sections, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
+
+    // Flush on page unload / refresh
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+        };
+    }, [performAutoSave, isReadOnly]);
+
     const handleSaveOrSubmit = async (targetStatus = 'DRAFT') => {
         setSubmitting(true);
         try {
@@ -265,14 +357,19 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
             };
 
             let res;
-            if (submissionId) {
-                res = await isoSubmissionService.updateSubmission(submissionId, payload);
+            if (submissionIdRef.current || submissionId) {
+                res = await isoSubmissionService.updateSubmission(submissionIdRef.current || submissionId, payload);
             } else {
                 res = await isoSubmissionService.createSubmission(payload);
-                if (res && res.id) setSubmissionId(res.id);
+                if (res && res.id) {
+                    setSubmissionId(res.id);
+                    submissionIdRef.current = res.id;
+                }
             }
 
-            setStatus(res?.status || targetStatus);
+            const updatedStatus = res?.status || targetStatus;
+            setStatus(updatedStatus);
+            statusRef.current = updatedStatus;
             alert(`ISO Drawing Issue Register ${targetStatus === 'SUBMITTED' ? 'Submitted for Approval' : 'Saved'} successfully!`);
         } catch (err) {
             console.error('Save error:', err);
@@ -283,7 +380,8 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
     };
 
     const handleStatusUpdate = async (newStatus) => {
-        if (!submissionId) return;
+        const activeSubId = submissionIdRef.current || submissionId;
+        if (!activeSubId) return;
         let comment = null;
         if (newStatus === 'REJECTED') {
             comment = prompt('Please enter rejection reason:');
@@ -295,8 +393,9 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
             const currentUser = rawUser ? JSON.parse(rawUser) : {};
             const userId = currentUser.id || currentUser.user_id || currentUser.userId;
 
-            await isoSubmissionService.updateStatus(submissionId, newStatus, comment, userId);
+            await isoSubmissionService.updateStatus(activeSubId, newStatus, comment, userId);
             setStatus(newStatus);
+            statusRef.current = newStatus;
             alert(`ISO Drawing Register status updated to ${newStatus}`);
         } catch (err) {
             console.error('Status update error:', err);
@@ -310,13 +409,35 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
             <div className="w-full max-w-6xl flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={onClose || onBack}
+                        onClick={async () => {
+                            if (isHydratedRef.current && !isReadOnly) {
+                                await performAutoSave();
+                            }
+                            if (onClose) onClose();
+                            else if (onBack) onBack();
+                        }}
                         className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition"
+                        title="Back (Auto-saves draft)"
                     >
                         <ArrowLeftOutlined className="text-lg" />
                     </button>
                     <div>
-                        <h1 className="text-xl font-bold text-slate-800">Drawing Issue Register</h1>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-xl font-bold text-slate-800">Drawing Issue Register</h1>
+                            {/* Auto-Save Draft Status Badge */}
+                            <div>
+                                {autoSaveState === 'saving' && (
+                                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1 animate-pulse">
+                                        <LoadingOutlined className="text-[10px]" /> Saving draft...
+                                    </span>
+                                )}
+                                {autoSaveState === 'saved' && (
+                                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                        <CheckCircleOutlined className="text-[10px]" /> Draft saved
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                         <p className="text-xs text-slate-500">Document No: CMTI-SMC-QMS-064/Rev00</p>
                     </div>
                 </div>
@@ -340,22 +461,13 @@ export default function DrawingRegister({ proposalId: propProposalId, submission
                     </button>
 
                     {!isReadOnly && (
-                        <>
-                            <button
-                                onClick={() => handleSaveOrSubmit('DRAFT')}
-                                disabled={submitting}
-                                className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-2 rounded-lg transition"
-                            >
-                                Save Draft
-                            </button>
-                            <button
-                                onClick={() => handleSaveOrSubmit('SUBMITTED')}
-                                disabled={submitting}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition shadow-sm"
-                            >
-                                Submit
-                            </button>
-                        </>
+                        <button
+                            onClick={() => handleSaveOrSubmit('SUBMITTED')}
+                            disabled={submitting}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-sm"
+                        >
+                            {submitting ? 'Submitting...' : 'Submit'}
+                        </button>
                     )}
 
                     {isApprover && isSubmitted && (

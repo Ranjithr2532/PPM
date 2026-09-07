@@ -252,8 +252,9 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
         )
         filename = f"ISO_ProjectProposal_{doc_no.replace('/', '_')}.docx"
 
-    elif doc_type in ["PROJECT_PLAN", "PROJECTPLAN", "053"]:
+    elif doc_type in ["PROJECT_PLAN", "PROJECTPLAN", "053", "ACTUAL_PROJECT_PLAN", "PROJECT_PLAN_ACTUAL", "ACTUAL_PLAN"]:
         from iso.projectplan import create_project_plan_document
+        plan_type = f_data.get("plan_type") or ("ACTUAL" if "ACTUAL" in doc_type else "PLANNED")
         doc = create_project_plan_document(
             project_title=f_data.get("project_title") or f_data.get("title_of_project") or "",
             schedule_title=f_data.get("schedule_title", ""),
@@ -269,9 +270,11 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
             group_name=group_name,
             centre_dept=centre_dept,
             doc_no=doc_no,
-            doc_date=date_str
+            doc_date=date_str,
+            plan_type=plan_type
         )
-        filename = f"ISO_ProjectPlan_{doc_no.replace('/', '_')}.docx"
+        fn_prefix = "ISO_Actual_ProjectPlan" if (plan_type or "").upper() == "ACTUAL" else "ISO_ProjectPlan"
+        filename = f"{fn_prefix}_{doc_no.replace('/', '_')}.docx"
 
     elif doc_type in ["SQAP", "SOFTWARE_QUALITY_ASSURANCE_PLAN", "055"]:
         from iso.sqap import create_sqap_document
