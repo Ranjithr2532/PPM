@@ -310,8 +310,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin', 'dh'].includes(currentUserRole);
     const isApproved = status === 'APPROVED';
     const isSubmitted = status === 'SUBMITTED';
-    // Admin CAN edit any document; Scientists/Approvers viewing SUBMITTED or APPROVED docs are READ-ONLY
-    const isReadOnly = isAdmin ? false : (isApproved || isSubmitted || isApprover);
+    const isReadOnly = isAdmin ? false : isApproved;
 
     useEffect(() => {
         if (docInfo) {
@@ -938,7 +937,7 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
             )}
             {!isApproved && isSubmitted && (
                 <div className="w-full max-w-4xl bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded-2xl mb-4 text-xs font-bold flex items-center justify-between shadow-sm">
-                    <span>{isApprover ? '📋 Review Mode: ISO Document Submitted by Scientist. Read-Only View for CH/GH.' : '⏳ ISO Document Submitted. Pending approval review by CH / GH.'}</span>
+                    <span>📋 ISO Document Status: SUBMITTED (Editable before final approval).</span>
                     <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded font-mono uppercase">SUBMITTED</span>
                 </div>
             )}
@@ -981,22 +980,23 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                     ) : null}
 
                     <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
-                            status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                                status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
-                                    'bg-amber-100 text-amber-800'
+                        status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                            status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                'bg-amber-100 text-amber-800'
                         }`}>
                         {status}
                     </span>
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
-                    {!isReadOnly && !isApprover && (
+                    {/* Create / Edit Controls */}
+                    {!isReadOnly && (
                         <button
                             onClick={() => handleSaveSubmission('SUBMITTED')}
                             disabled={submitting}
                             className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
                         >
-                            {submitting ? 'Submitting...' : <><CheckOutlined /> Submit Form</>}
+                            {submitting ? 'Saving...' : <><CheckOutlined /> {isSubmitted ? 'Save & Update' : 'Submit Form'}</>}
                         </button>
                     )}
 
@@ -1082,13 +1082,12 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                                                                     }}
                                                                     className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-cyan-50 border border-transparent hover:border-cyan-200 cursor-pointer transition-all group"
                                                                 >
-                                                                    <div className={`p-1 rounded text-xs flex items-center justify-center shrink-0 ${
-                                                                        tInfo.type === 'pdf' ? 'bg-red-50 text-red-600' :
-                                                                        tInfo.type === 'word' ? 'bg-blue-50 text-blue-600' :
-                                                                        tInfo.type === 'excel' ? 'bg-emerald-50 text-emerald-600' :
-                                                                        tInfo.type === 'image' ? 'bg-purple-50 text-purple-600' :
-                                                                        'bg-slate-100 text-slate-600'
-                                                                    }`}>
+                                                                    <div className={`p-1 rounded text-xs flex items-center justify-center shrink-0 ${tInfo.type === 'pdf' ? 'bg-red-50 text-red-600' :
+                                                                            tInfo.type === 'word' ? 'bg-blue-50 text-blue-600' :
+                                                                                tInfo.type === 'excel' ? 'bg-emerald-50 text-emerald-600' :
+                                                                                    tInfo.type === 'image' ? 'bg-purple-50 text-purple-600' :
+                                                                                        'bg-slate-100 text-slate-600'
+                                                                        }`}>
                                                                         {tInfo.icon}
                                                                     </div>
                                                                     <div className="min-w-0 flex-1">
@@ -1240,8 +1239,8 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                                 <td className="border border-slate-800 p-1 text-center align-middle">
                                     {isReadOnly ? (
                                         <span className={`font-bold px-2 py-0.5 rounded ${responses[pt.key_resp] === 'Yes' ? 'text-emerald-700 bg-emerald-50' :
-                                                responses[pt.key_resp] === 'No' ? 'text-rose-700 bg-rose-50' :
-                                                    'text-slate-600'
+                                            responses[pt.key_resp] === 'No' ? 'text-rose-700 bg-rose-50' :
+                                                'text-slate-600'
                                             }`}>
                                             {responses[pt.key_resp] || '--'}
                                         </span>
@@ -1389,21 +1388,19 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                         {/* Header Bar (Drag handle) */}
                         <div
                             onMouseDown={handleMouseDownDocHeader}
-                            className={`flex items-center justify-between px-4 py-3 bg-slate-900 text-white select-none border-b border-slate-700 ${
-                                isViewerMaximized ? 'cursor-default' : isDraggingDocWin ? 'cursor-grabbing' : 'cursor-grab'
-                            }`}
+                            className={`flex items-center justify-between px-4 py-3 bg-slate-900 text-white select-none border-b border-slate-700 ${isViewerMaximized ? 'cursor-default' : isDraggingDocWin ? 'cursor-grabbing' : 'cursor-grab'
+                                }`}
                         >
                             <div className="flex items-center gap-2.5 min-w-0 pr-2">
                                 {!isViewerMaximized && (
                                     <span className="text-slate-400 font-mono text-xs cursor-grab" title="Drag to move">⠿⠿</span>
                                 )}
-                                <div className={`p-1 rounded-md text-xs flex items-center justify-center shrink-0 ${
-                                    activeViewerDoc?.typeInfo?.type === 'pdf' ? 'bg-red-500/20 text-red-400' :
-                                    activeViewerDoc?.typeInfo?.type === 'word' ? 'bg-blue-500/20 text-blue-400' :
-                                    activeViewerDoc?.typeInfo?.type === 'excel' ? 'bg-emerald-500/20 text-emerald-400' :
-                                    activeViewerDoc?.typeInfo?.type === 'image' ? 'bg-purple-500/20 text-purple-400' :
-                                    'bg-slate-700 text-slate-300'
-                                }`}>
+                                <div className={`p-1 rounded-md text-xs flex items-center justify-center shrink-0 ${activeViewerDoc?.typeInfo?.type === 'pdf' ? 'bg-red-500/20 text-red-400' :
+                                        activeViewerDoc?.typeInfo?.type === 'word' ? 'bg-blue-500/20 text-blue-400' :
+                                            activeViewerDoc?.typeInfo?.type === 'excel' ? 'bg-emerald-500/20 text-emerald-400' :
+                                                activeViewerDoc?.typeInfo?.type === 'image' ? 'bg-purple-500/20 text-purple-400' :
+                                                    'bg-slate-700 text-slate-300'
+                                    }`}>
                                     {activeViewerDoc?.typeInfo?.icon || <FileTextOutlined />}
                                 </div>
                                 <div className="min-w-0">
@@ -1554,11 +1551,10 @@ export default function Fesability({ proposalId: propProposalId, submissionId: p
                                     <button
                                         key={sName}
                                         onClick={() => handleSwitchExcelSheet(sName)}
-                                        className={`text-[11px] font-bold px-3 py-1 rounded-md border transition-all cursor-pointer shrink-0 ${
-                                            activeSheetName === sName
+                                        className={`text-[11px] font-bold px-3 py-1 rounded-md border transition-all cursor-pointer shrink-0 ${activeSheetName === sName
                                                 ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
                                                 : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                                        }`}
+                                            }`}
                                     >
                                         {sName}
                                     </button>

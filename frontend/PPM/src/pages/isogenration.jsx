@@ -21,6 +21,10 @@ import ProjectPlan from '../isopages/projectplan.jsx';
 import Sqap from '../isopages/sqap.jsx';
 import Bom from '../isopages/bom.jsx';
 import DrawingRegister from '../isopages/drawingregister.jsx';
+import MasterDrawingIndex from '../isopages/masterdrawingindex.jsx';
+import EngineeringChangeNote from '../isopages/engineeringchangenote.jsx';
+import InspectionReport from '../isopages/inspectionreport.jsx';
+import TechnicalSpecification from '../isopages/technicalspecification.jsx';
 
 function DirectIsoUpload({ proposalId, docInfo, onBack }) {
     const [proposals, setProposals] = useState([]);
@@ -178,14 +182,18 @@ export default function Isogenration() {
         const formParam = searchParams.get('form') || searchParams.get('doc_type');
         if (formParam) {
             const normalized = formParam.toLowerCase().replace('_', '');
-            if (['feasibility', 'contractreview', 'projectteam', 'projectproposal', 'projectpropsal', 'projectplan', '053', 'sqap', '055', 'bom', '063', 'drawingregister', '064', 'mom', '037'].includes(normalized)) {
+            if (['feasibility', 'contractreview', 'projectteam', 'projectproposal', 'projectpropsal', 'projectplan', '053', 'sqap', '055', 'bom', '063', 'drawingregister', '064', 'mom', '037', 'inspectionreport', 'inspection', '085', 'technicalspecification', 'techspec', '065', 'masterdrawingindex', '066', 'engineeringchangenote', 'ecn', '068'].includes(normalized)) {
                 setActiveForm(
                     normalized.includes('propsal') || normalized.includes('proposal') ? 'projectproposal' :
                     normalized.includes('sqap') || normalized.includes('assurance') || normalized.includes('055') ? 'sqap' :
                     normalized.includes('plan') || normalized.includes('053') ? 'projectplan' :
                     normalized.includes('bom') || normalized.includes('063') ? 'bom' :
+                    normalized.includes('master') || normalized.includes('066') ? 'masterdrawingindex' :
+                    normalized.includes('ecn') || normalized.includes('change') || normalized.includes('068') ? 'engineeringchangenote' :
                     normalized.includes('drawing') || normalized.includes('064') ? 'drawingregister' :
                     normalized.includes('mom') || normalized.includes('037') ? 'mom' :
+                    normalized.includes('inspection') || normalized.includes('085') ? 'inspectionreport' :
+                    normalized.includes('tech') || normalized.includes('specification') || normalized.includes('065') ? 'technicalspecification' :
                     normalized
                 );
             }
@@ -212,8 +220,16 @@ export default function Isogenration() {
             setActiveForm({ type: 'projectplan', doc });
         } else if (docNo.startsWith('063') || name.includes('BOM') || name.includes('BILL OF MATERIALS')) {
             setActiveForm({ type: 'bom', doc });
+        } else if (docNo.startsWith('066') || name.includes('MASTER DRAWING') || name.includes('DRAWING INDEX')) {
+            setActiveForm({ type: 'masterdrawingindex', doc });
+        } else if (docNo.startsWith('068') || name.includes('ENGINEERING CHANGE') || name.includes('ECN')) {
+            setActiveForm({ type: 'engineeringchangenote', doc });
         } else if (docNo.startsWith('064') || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) {
             setActiveForm({ type: 'drawingregister', doc });
+        } else if (docNo.startsWith('065') || name.includes('TECHNICAL SPECIFICATION') || name.includes('SPECIFICATION FORMAT')) {
+            setActiveForm({ type: 'technicalspecification', doc });
+        } else if (docNo.startsWith('085') || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) {
+            setActiveForm({ type: 'inspectionreport', doc });
         } else {
             setActiveForm({ type: 'generic', doc });
         }
@@ -243,15 +259,19 @@ export default function Isogenration() {
                         </div>
                     )}
                 </div>
-                {formType === 'feasibility' && <Fesability proposalId={urlProposalId} docInfo={docData} />}
-                {formType === 'contractreview' && <ContractReview proposalId={urlProposalId} docInfo={docData} />}
-                {formType === 'projectteam' && <ProjectTeam proposalId={urlProposalId} docInfo={docData} />}
-                {formType === 'mom' && <Mom proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'feasibility' && <Fesability proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'contractreview' && <ContractReview proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'projectteam' && <ProjectTeam proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'mom' && <Mom proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'projectproposal' && <ProjectProposal proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'projectplan' && <ProjectPlan proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'sqap' && <Sqap proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'bom' && <Bom proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
-                {formType === 'drawingregister' && <DrawingRegister proposalId={urlProposalId} docInfo={docData} />}
+                {formType === 'drawingregister' && <DrawingRegister proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'masterdrawingindex' && <MasterDrawingIndex proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'engineeringchangenote' && <EngineeringChangeNote proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'technicalspecification' && <TechnicalSpecification proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
+                {formType === 'inspectionreport' && <InspectionReport proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />}
                 {formType === 'generic' && (
                     <DirectIsoUpload proposalId={urlProposalId} docInfo={docData} onBack={() => setActiveForm(null)} />
                 )}
@@ -288,7 +308,7 @@ export default function Isogenration() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {isoDocs.map((doc) => {
-                        const isSpecific = ['049', '050', '051', '045', '037', '009', '053', '055', '063', '064'].some(d => (doc.document_no || '').startsWith(d));
+                        const isSpecific = ['049', '050', '051', '045', '037', '009', '053', '055', '063', '064', '065', '066', '068', '085'].some(d => (doc.document_no || '').startsWith(d));
                         return (
                             <div 
                                 key={doc.id}

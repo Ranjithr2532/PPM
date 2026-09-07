@@ -161,7 +161,7 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     const isApprover = userRole === 'ch' || userRole === 'gh' || userRole === 'admin' || userRole === 'director';
     const isSubmitted = status === 'SUBMITTED';
     const isApproved = status === 'APPROVED';
-    const isReadOnly = isApproved || (isSubmitted && !isApprover);
+    const isReadOnly = isApproved;
 
     // Initialize fyValues structure for current fyLabels
     const initFyValues = useCallback((labels) => {

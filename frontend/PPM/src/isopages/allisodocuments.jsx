@@ -26,7 +26,13 @@ import ProjectPlan from './projectplan.jsx';
 import Sqap from './sqap.jsx';
 import Bom from './bom.jsx';
 import DrawingRegister from './drawingregister.jsx';
+import MasterDrawingIndex from './masterdrawingindex.jsx';
+import EngineeringChangeNote from './engineeringchangenote.jsx';
 import InspectionReport from './inspectionreport.jsx';
+import TechnicalSpecification from './technicalspecification.jsx';
+import CustomerComplaintRegister from './customercomplaintregister.jsx';
+import CustomerFeedback from './customerfeedback.jsx';
+import AcceptanceTestReport from './acceptancetestreport.jsx';
 
 const getDocTypeKey = (doc) => {
     const name = (doc.name || '').toUpperCase();
@@ -40,8 +46,14 @@ const getDocTypeKey = (doc) => {
     if (docNo.startsWith('055') || name.includes('SQAP') || name.includes('ASSURANCE') || name.includes('SOFTWARE QUALITY')) return 'SQAP';
     if (docNo.startsWith('053') || name.includes('PLAN')) return 'PROJECT_PLAN';
     if (docNo.startsWith('063') || name.includes('BOM') || name.includes('BILL OF MATERIALS')) return 'BOM';
+    if (docNo.startsWith('066') || name.includes('MASTER DRAWING') || name.includes('DRAWING INDEX')) return 'MASTER_DRAWING_INDEX';
+    if (docNo.startsWith('068') || name.includes('ENGINEERING CHANGE') || name.includes('ECN')) return 'ENGINEERING_CHANGE_NOTE';
     if (docNo.startsWith('064') || name.includes('DRAWING') || name.includes('ISSUE REGISTER')) return 'DRAWING_REGISTER';
+    if (docNo.startsWith('065') || name.includes('TECHNICAL SPECIFICATION') || name.includes('SPECIFICATION FORMAT')) return 'TECHNICAL_SPECIFICATION';
     if (docNo.startsWith('085') || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) return 'INSPECTION_REPORT';
+    if (docNo.startsWith('086') || name.includes('COMPLAINT') || name.includes('CUSTOMER COMPLAINT')) return 'CUSTOMER_COMPLAINT_REGISTER';
+    if (docNo.startsWith('087') || name.includes('ACCEPTANCE') || name.includes('ACCEPTANCE TEST') || name.includes('ATR')) return 'ACCEPTANCE_TEST_REPORT';
+    if (docNo.startsWith('088') || name.includes('FEEDBACK') || name.includes('CUSTOMER FEEDBACK') || name.includes('SATISFACTION')) return 'CUSTOMER_FEEDBACK';
     return name.replace(/\s+/g, '_');
 };
 
@@ -55,7 +67,13 @@ const hasDedicatedForm = (docTypeKey) => {
         'PROJECT_PLAN',
         'BOM',
         'DRAWING_REGISTER',
-        'INSPECTION_REPORT'
+        'MASTER_DRAWING_INDEX',
+        'ENGINEERING_CHANGE_NOTE',
+        'TECHNICAL_SPECIFICATION',
+        'INSPECTION_REPORT',
+        'CUSTOMER_COMPLAINT_REGISTER',
+        'ACCEPTANCE_TEST_REPORT',
+        'CUSTOMER_FEEDBACK'
     ].includes(docTypeKey);
 };
 
@@ -397,8 +415,68 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             fetchData();
                         }}
                     />
+                ) : activeFormState.docTypeKey === 'MASTER_DRAWING_INDEX' ? (
+                    <MasterDrawingIndex
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'ENGINEERING_CHANGE_NOTE' ? (
+                    <EngineeringChangeNote
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'TECHNICAL_SPECIFICATION' ? (
+                    <TechnicalSpecification
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
                 ) : activeFormState.docTypeKey === 'INSPECTION_REPORT' ? (
                     <InspectionReport
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'CUSTOMER_COMPLAINT_REGISTER' ? (
+                    <CustomerComplaintRegister
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'CUSTOMER_FEEDBACK' ? (
+                    <CustomerFeedback
+                        proposalId={proposalId}
+                        submissionId={activeFormState.id}
+                        docInfo={activeFormState.docInfo}
+                        onBack={() => {
+                            setActiveFormState(null);
+                            fetchData();
+                        }}
+                    />
+                ) : activeFormState.docTypeKey === 'ACCEPTANCE_TEST_REPORT' ? (
+                    <AcceptanceTestReport
                         proposalId={proposalId}
                         submissionId={activeFormState.id}
                         docInfo={activeFormState.docInfo}
@@ -557,6 +635,15 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                                 {sub.form_data?.agenda || 'Minutes of Meeting'}
                                                             </span>
                                                             {getStatusBadge(sub.status)}
+                                                            {sub.form_data?.is_uploaded ? (
+                                                                <Tag color="cyan" className="font-semibold text-[10px]">
+                                                                    UPLOADED FILE
+                                                                </Tag>
+                                                            ) : (
+                                                                <Tag color="blue" className="font-semibold text-[10px]">
+                                                                    DIGITAL FORM
+                                                                </Tag>
+                                                            )}
                                                         </div>
 
                                                         <div className="text-[11px] text-slate-500 flex items-center gap-4 flex-wrap">
@@ -612,7 +699,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                             onClick={() => handleDownload(sub)}
                                                             className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
                                                         >
-                                                            {sub.form_data?.is_uploaded ? 'Download' : 'Word'}
+                                                            {sub?.form_data?.is_uploaded ? 'Download File' : 'Word'}
                                                         </Button>
 
                                                         {isApprover && sub.status === 'SUBMITTED' && (
@@ -685,11 +772,241 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             );
                         }
 
+                        // Multi-submission Document: ENGINEERING_CHANGE_NOTE (Doc 068)
+                        if (docTypeKey === 'ENGINEERING_CHANGE_NOTE') {
+                            const ecnSubs = submissions.filter(
+                                (s) =>
+                                    (s.doc_type || '').toUpperCase() === 'ENGINEERING_CHANGE_NOTE' ||
+                                    (s.doc_type || '').toUpperCase() === 'ECN' ||
+                                    (s.document_no || '').trim().startsWith('068') ||
+                                    (s.document_no || '').trim() === (doc.document_no || '').trim()
+                            );
+
+                            return (
+                                <div
+                                    key={doc.id}
+                                    className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-sm hover:shadow-md transition-all space-y-3"
+                                >
+                                    {/* Main Template Header */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200 uppercase font-mono">
+                                                    {doc.initial || 'ECN'}
+                                                </span>
+                                                <h4 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                                                    {doc.name}
+                                                </h4>
+                                                <span className="text-xs font-medium text-slate-500 font-mono">
+                                                    (Doc #{doc.document_no || '068'})
+                                                </span>
+                                                {ecnSubs.length > 0 ? (
+                                                    <Tag color="cyan" className="font-bold">
+                                                        {ecnSubs.length} {ecnSubs.length === 1 ? 'Change Note' : 'Change Notes'} Recorded
+                                                    </Tag>
+                                                ) : (
+                                                    <Tag color="default" className="font-medium">NOT CREATED</Tag>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 font-mono">
+                                                <span>Code: {doc.code || 'N/A'}</span>
+                                                <span className="ml-3 text-slate-400">
+                                                    • Multiple ECNs can be created for part modifications, redesigns, and drawing revisions
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 justify-end flex-wrap">
+                                            <Button
+                                                size="small"
+                                                icon={<UploadOutlined />}
+                                                onClick={() => handleOpenUploadModal(doc)}
+                                                className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                            >
+                                                Upload File
+                                            </Button>
+
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => handleCreateForm('ENGINEERING_CHANGE_NOTE', doc)}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-xs font-bold"
+                                            >
+                                                {ecnSubs.length > 0 ? '+ New Change Note (ECN)' : 'Create First ECN'}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* List of Created / Uploaded ECNs */}
+                                    {ecnSubs.length > 0 && (
+                                        <div className="space-y-2 pt-1 pl-1 sm:pl-3">
+                                            {ecnSubs.map((sub, idx) => (
+                                                <div
+                                                    key={sub.id}
+                                                    className="bg-slate-50/70 border border-slate-200/70 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 transition"
+                                                >
+                                                    <div className="space-y-1 flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs font-mono">
+                                                                {sub.form_data?.ecn_no || `ECN #${idx + 1}`}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-800">
+                                                                {sub.form_data?.part_description || sub.form_data?.changed_part_no_name || sub.form_data?.original_part_no_name || 'Engineering Change Note'}
+                                                            </span>
+                                                            {getStatusBadge(sub.status)}
+                                                            {sub.form_data?.is_uploaded ? (
+                                                                <Tag color="cyan" className="font-semibold text-[10px]">
+                                                                    UPLOADED FILE
+                                                                </Tag>
+                                                            ) : (
+                                                                <Tag color="blue" className="font-semibold text-[10px]">
+                                                                    DIGITAL FORM
+                                                                </Tag>
+                                                            )}
+                                                            {sub.form_data?.execution_option && (
+                                                                <Tag color="geekblue" className="text-[10px]">
+                                                                    Strategy: Option {sub.form_data.execution_option}
+                                                                </Tag>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="text-[11px] text-slate-500 flex items-center gap-4 flex-wrap">
+                                                            {sub.form_data?.ecn_date && (
+                                                                <span>📅 {sub.form_data.ecn_date}</span>
+                                                            )}
+                                                            {sub.form_data?.reason_for_change && (
+                                                                <span className="truncate max-w-xs text-slate-600">
+                                                                    Reason: {sub.form_data.reason_for_change}
+                                                                </span>
+                                                            )}
+                                                            <span>
+                                                                Updated: {new Date(sub.updated_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+
+                                                        {sub?.form_data?.is_uploaded && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownload(sub)}
+                                                                className="text-xs text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 font-medium cursor-pointer transition text-left"
+                                                            >
+                                                                <PaperClipOutlined />
+                                                                <span>Uploaded: <strong>{sub.form_data.uploaded_filename || 'ECN_Document.docx'}</strong></span>
+                                                            </button>
+                                                        )}
+
+                                                        {sub?.rejection_comment && (
+                                                            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-1.5 mt-1">
+                                                                <strong>Rejection Comment:</strong> {sub.rejection_comment}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 justify-end flex-wrap">
+                                                        <Button
+                                                            size="small"
+                                                            icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
+                                                            onClick={() => handleEditForm('ENGINEERING_CHANGE_NOTE', sub.id, doc)}
+                                                            className="text-xs font-medium border-slate-300 text-slate-800"
+                                                        >
+                                                            {isAdmin
+                                                                ? 'Edit'
+                                                                : sub.status === 'APPROVED'
+                                                                    ? 'View'
+                                                                    : sub.status === 'SUBMITTED'
+                                                                        ? isApprover ? 'Review' : 'View'
+                                                                        : 'Edit'}
+                                                        </Button>
+
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            icon={<DownloadOutlined />}
+                                                            onClick={() => handleDownload(sub)}
+                                                            className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
+                                                        >
+                                                            {sub?.form_data?.is_uploaded ? 'Download File' : 'Word'}
+                                                        </Button>
+
+                                                        {isApprover && sub.status === 'SUBMITTED' && (
+                                                            <>
+                                                                <Button
+                                                                    size="small"
+                                                                    type="primary"
+                                                                    icon={<CheckCircleOutlined />}
+                                                                    onClick={() => handleApprove(sub.id)}
+                                                                    loading={actionLoading}
+                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold"
+                                                                >
+                                                                    Approve
+                                                                </Button>
+                                                                <Popconfirm
+                                                                    title="Reject Engineering Change Note"
+                                                                    description={
+                                                                        <div className="space-y-2 py-1">
+                                                                            <p className="text-xs">Provide a reason for rejecting this ECN:</p>
+                                                                            <Input.TextArea
+                                                                                rows={2}
+                                                                                value={rejectComment}
+                                                                                onChange={(e) => setRejectComment(e.target.value)}
+                                                                                placeholder="Reason for rejection..."
+                                                                                className="text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    }
+                                                                    onConfirm={() => handleRejectConfirm(sub.id)}
+                                                                    okText="Reject"
+                                                                    cancelText="Cancel"
+                                                                    okButtonProps={{ danger: true, loading: actionLoading }}
+                                                                >
+                                                                    <Button
+                                                                        size="small"
+                                                                        danger
+                                                                        icon={<CloseCircleOutlined />}
+                                                                        className="text-xs font-semibold"
+                                                                    >
+                                                                        Reject
+                                                                    </Button>
+                                                                </Popconfirm>
+                                                            </>
+                                                        )}
+
+                                                        {(isAdmin || sub.status === 'DRAFT' || sub.status === 'REJECTED') && (
+                                                            <Popconfirm
+                                                                title="Delete ECN?"
+                                                                description="Are you sure you want to delete this Engineering Change Note?"
+                                                                onConfirm={() => handleDeleteSubmission(sub.id)}
+                                                                okText="Delete"
+                                                                cancelText="Cancel"
+                                                                okButtonProps={{ danger: true }}
+                                                            >
+                                                                <Button
+                                                                    size="small"
+                                                                    type="text"
+                                                                    danger
+                                                                    icon={<DeleteOutlined />}
+                                                                    className="text-xs text-rose-500 hover:text-rose-700"
+                                                                    title="Delete ECN"
+                                                                />
+                                                            </Popconfirm>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+
                         const sub = submissions.find(
                             (s) =>
                                 (s.doc_type || '').toUpperCase() === docTypeKey ||
                                 (s.document_no || '').trim() === (doc.document_no || '').trim()
                         );
+                        const isUploaded = !!sub?.form_data?.is_uploaded;
+                        const isFormCreated = !!sub && !isUploaded;
 
                         return (
                             <div
@@ -708,6 +1025,16 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                             (Doc #{doc.document_no || 'N/A'})
                                         </span>
                                         {sub ? getStatusBadge(sub.status) : <Tag color="default" className="font-medium">NOT CREATED</Tag>}
+                                        {isUploaded && (
+                                            <Tag color="cyan" className="font-semibold text-[10px]">
+                                                UPLOADED FILE
+                                            </Tag>
+                                        )}
+                                        {isFormCreated && (
+                                            <Tag color="blue" className="font-semibold text-[10px]">
+                                                DIGITAL FORM
+                                            </Tag>
+                                        )}
                                     </div>
 
                                     <div className="text-[11px] text-slate-500 font-mono">
@@ -719,7 +1046,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                         )}
                                     </div>
 
-                                    {sub?.form_data?.is_uploaded && (
+                                    {isUploaded && (
                                         <button
                                             type="button"
                                             onClick={() => handleDownload(sub)}
@@ -739,32 +1066,51 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                 </div>
 
                                 <div className="flex items-center gap-2 justify-end flex-wrap">
-                                    {/* Template Download for SQAP */}
-                                    {docTypeKey === 'SQAP' && (
-                                        <Button
-                                            size="small"
-                                            icon={<DownloadOutlined />}
-                                            onClick={() => handleDownloadSqapTemplate(doc)}
-                                            className="text-xs font-semibold bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                                        >
-                                            Download Template
-                                        </Button>
+                                    {/* CASE 1: No submission exists yet -> Show BOTH Create Form and Upload File */}
+                                    {!sub && (
+                                        <>
+                                            {/* Template Download for SQAP */}
+                                            {docTypeKey === 'SQAP' && (
+                                                <Button
+                                                    size="small"
+                                                    icon={<DownloadOutlined />}
+                                                    onClick={() => handleDownloadSqapTemplate(doc)}
+                                                    className="text-xs font-semibold bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                                >
+                                                    Download Template
+                                                </Button>
+                                            )}
+
+                                            {/* Upload Document Button */}
+                                            <Button
+                                                size="small"
+                                                icon={<UploadOutlined />}
+                                                onClick={() => handleOpenUploadModal(doc)}
+                                                className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                            >
+                                                Upload File
+                                            </Button>
+
+                                            {/* Create Form Button ONLY for documents with dedicated form templates */}
+                                            {hasDedicatedForm(docTypeKey) && (
+                                                <Button
+                                                    size="small"
+                                                    type="primary"
+                                                    icon={<PlusOutlined />}
+                                                    onClick={() => handleCreateForm(docTypeKey, doc)}
+                                                    className="bg-slate-900 hover:bg-indigo-600 text-xs font-bold"
+                                                >
+                                                    Create Form
+                                                </Button>
+                                            )}
+                                        </>
                                     )}
 
-                                    {/* Upload Document Button */}
-                                    <Button
-                                        size="small"
-                                        icon={<UploadOutlined />}
-                                        onClick={() => handleOpenUploadModal(doc)}
-                                        className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
-                                    >
-                                        Upload File
-                                    </Button>
-
-                                    {sub ? (
+                                    {/* CASE 2: Form Created -> Show Edit/View Form, Download Word, DO NOT SHOW Upload */}
+                                    {isFormCreated && (
                                         <>
-                                            {/* View / Edit Form for other docs only */}
-                                            {docTypeKey !== 'SQAP' && (
+                                            {/* View / Edit Form (for docs with dedicated forms) */}
+                                            {docTypeKey !== 'SQAP' && hasDedicatedForm(docTypeKey) && (
                                                 <Button
                                                     size="small"
                                                     icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
@@ -783,7 +1129,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 </Button>
                                             )}
 
-                                            {/* Download Word (.docx / uploaded file) */}
+                                            {/* Download Generated Word (.docx) */}
                                             <Button
                                                 size="small"
                                                 type="primary"
@@ -791,7 +1137,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 onClick={() => handleDownload(sub)}
                                                 className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
                                             >
-                                                {sub.form_data?.is_uploaded ? 'Download File' : 'Word (.docx)'}
+                                                Word (.docx)
                                             </Button>
 
                                             {/* Approver Actions (CH / DH / GH / Admin) */}
@@ -838,10 +1184,11 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 </>
                                             )}
 
+                                            {/* Delete button (allows resetting to uncreated so user can choose upload instead) */}
                                             {(isAdmin || sub.status === 'DRAFT') && (
                                                 <Popconfirm
                                                     title="Delete this document?"
-                                                    description="Are you sure you want to delete this ISO document submission?"
+                                                    description="Are you sure you want to delete this form submission? (This will allow you to recreate the form or upload a file)."
                                                     onConfirm={() => handleDeleteSubmission(sub.id)}
                                                     okText="Delete"
                                                     cancelText="Cancel"
@@ -858,18 +1205,100 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 </Popconfirm>
                                             )}
                                         </>
-                                    ) : hasDedicatedForm(docTypeKey) ? (
-                                        /* Create Form Button ONLY for documents with dedicated form templates */
-                                        <Button
-                                            size="small"
-                                            type="primary"
-                                            icon={<PlusOutlined />}
-                                            onClick={() => handleCreateForm(docTypeKey, doc)}
-                                            className="bg-slate-900 hover:bg-indigo-600 text-xs font-bold"
-                                        >
-                                            Create Form
-                                        </Button>
-                                    ) : null}
+                                    )}
+
+                                    {/* CASE 3: File Uploaded -> Show Download File & Re-upload, DO NOT SHOW Create/Edit Form */}
+                                    {isUploaded && (
+                                        <>
+                                            {/* Re-upload / Replace File Option (Draft or Admin) */}
+                                            {(isAdmin || sub.status === 'DRAFT' || sub.status === 'REJECTED') && (
+                                                <Button
+                                                    size="small"
+                                                    icon={<UploadOutlined />}
+                                                    onClick={() => handleOpenUploadModal(doc)}
+                                                    className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                                >
+                                                    Re-upload File
+                                                </Button>
+                                            )}
+
+                                            {/* Download Uploaded File */}
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                icon={<DownloadOutlined />}
+                                                onClick={() => handleDownload(sub)}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
+                                            >
+                                                Download File
+                                            </Button>
+
+                                            {/* Approver Actions (CH / DH / GH / Admin) */}
+                                            {isApprover && sub.status === 'SUBMITTED' && (
+                                                <>
+                                                    <Button
+                                                        size="small"
+                                                        type="primary"
+                                                        icon={<CheckCircleOutlined />}
+                                                        onClick={() => handleApprove(sub.id)}
+                                                        loading={actionLoading}
+                                                        className="bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold"
+                                                    >
+                                                        Approve
+                                                    </Button>
+
+                                                    <Popconfirm
+                                                        title="Reject ISO Document"
+                                                        description={
+                                                            <div className="pt-2">
+                                                                <Input.TextArea
+                                                                    rows={2}
+                                                                    placeholder="Reason for rejection..."
+                                                                    value={rejectComment}
+                                                                    onChange={(e) => setRejectComment(e.target.value)}
+                                                                    className="text-xs"
+                                                                />
+                                                            </div>
+                                                        }
+                                                        onConfirm={() => handleRejectConfirm(sub.id)}
+                                                        okText="Reject"
+                                                        cancelText="Cancel"
+                                                        okButtonProps={{ danger: true, loading: actionLoading }}
+                                                    >
+                                                        <Button
+                                                            size="small"
+                                                            danger
+                                                            icon={<CloseCircleOutlined />}
+                                                            className="text-xs font-semibold"
+                                                        >
+                                                            Reject
+                                                        </Button>
+                                                    </Popconfirm>
+                                                </>
+                                            )}
+
+                                            {/* Delete button (allows resetting so user can create digital form instead) */}
+                                            {(isAdmin || sub.status === 'DRAFT' || sub.status === 'REJECTED') && (
+                                                <Popconfirm
+                                                    title="Delete uploaded document?"
+                                                    description="Are you sure you want to delete this uploaded file? (This will allow you to create a form or re-upload a file)."
+                                                    onConfirm={() => handleDeleteSubmission(sub.id)}
+                                                    okText="Delete"
+                                                    cancelText="Cancel"
+                                                    okButtonProps={{ danger: true }}
+                                                >
+                                                    <Button
+                                                        size="small"
+                                                        type="text"
+                                                        danger
+                                                        icon={<DeleteOutlined />}
+                                                        className="text-xs text-rose-500 hover:text-rose-700"
+                                                        title="Delete uploaded file"
+                                                    />
+                                                </Popconfirm>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         );

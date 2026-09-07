@@ -18,10 +18,14 @@ import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName, getLoggedUserGroup, getCurrentUserRole } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
 
-export default function Sqap({ proposalId: propProposalId, submissionId: propSubmissionId, onClose, onBack }) {
-    const [proposals, setProposals] = useState([]);
-    const [selectedProposalId, setSelectedProposalId] = useState(propProposalId ? String(propProposalId) : '');
-    const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
+export default function Sqap({ proposalId: propProposalId, submissionId: propSubmissionId, docInfo, onClose, onBack }) {
+    const searchParams = new URLSearchParams(window.location.search);
+    const urlProposalId = searchParams.get('proposal_id') || searchParams.get('proposalId') || searchParams.get('id') || '';
+    const effectiveProposalId = propProposalId || docInfo?.proposalId || docInfo?.proposal_id || urlProposalId || '';
+    const effectiveSubmissionId = propSubmissionId || docInfo?.submissionId || docInfo?.submission_id || null;
+
+    const [selectedProposalId, setSelectedProposalId] = useState(effectiveProposalId ? String(effectiveProposalId) : '');
+    const [submissionId, setSubmissionId] = useState(effectiveSubmissionId);
     const [status, setStatus] = useState('DRAFT');
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -38,7 +42,7 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
     const userRole = getCurrentUserRole();
     const isAdmin = ['admin', 'director'].includes(userRole);
     const isApprover = ['ch', 'centre head', 'center head', 'gh', 'group head', 'admin'].includes(userRole);
-    const isReadOnly = isAdmin ? false : (status === 'APPROVED' || (status === 'SUBMITTED' && isApprover));
+    const isReadOnly = isAdmin ? false : status === 'APPROVED';
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
@@ -56,31 +60,26 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
         statusRef.current = status;
     }, [status]);
 
-    // Load Proposals
+    // Auto-fill project info directly from proposal
     useEffect(() => {
-        const fetchProposals = async () => {
+        const targetPid = effectiveProposalId || selectedProposalId;
+        if (!targetPid) return;
+
+        const fetchProposal = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/proposals/`);
-                if (Array.isArray(res.data)) {
-                    setProposals(res.data);
+                const res = await axios.get(`${API_BASE_URL}/proposals/${targetPid}`);
+                const p = res.data;
+                if (p) {
+                    setProjectTitle(prev => prev || p.title_of_project || p.quote_description || p.project_name || '');
+                    setCustomerName(prev => prev || p.customer_name || '');
+                    setSanctionLetterNo(prev => prev || p.sanction_letter_no || p.project_number || p.quote_number || p.po_number || '');
                 }
             } catch (err) {
-                console.error('Failed to load proposals:', err);
+                console.error('Failed to load proposal details:', err);
             }
         };
-        fetchProposals();
-    }, []);
-
-    // Load Proposal Details when selected
-    useEffect(() => {
-        if (!selectedProposalId) return;
-        const p = proposals.find(item => String(item.id) === String(selectedProposalId));
-        if (p) {
-            setProjectTitle(p.title_of_project || p.quote_description || p.project_name || '');
-            setCustomerName(p.customer_name || '');
-            setSanctionLetterNo(p.sanction_letter_no || p.project_number || p.quote_number || p.po_number || '');
-        }
-    }, [selectedProposalId, proposals]);
+        fetchProposal();
+    }, [effectiveProposalId, selectedProposalId]);
 
     // Load Existing Submission if editing
     const loadSubmission = async (subId) => {
@@ -406,28 +405,7 @@ export default function Sqap({ proposalId: propProposalId, submissionId: propSub
                 </div>
             </div>
 
-            {/* Proposal Selector Card */}
-            <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-                    <label className="text-xs font-bold text-slate-700 whitespace-nowrap">Link Proposal:</label>
-                    <select
-                        value={selectedProposalId}
-                        onChange={(e) => setSelectedProposalId(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none transition"
-                    >
-                        <option value="">-- Select Linked Proposal (Auto-Fill) --</option>
-                        {proposals.map(p => (
-                            <option key={p.id} value={p.id}>
-                                {p.project_number ? `${p.project_number} - ` : ''}{p.quote_description || p.customer_name || `Proposal #${p.id}`}
-                            </option>
-                        ))}
-                    </select>
-                </div>
 
-                <div className="text-xs text-slate-500 font-mono">
-                    <strong>Doc Code:</strong> CMTI-QMS-055/Rev00
-                </div>
-            </div>
 
             {/* Main Content: 2-Step Download & Upload Workflow Cards */}
             <div className="w-full max-w-4xl space-y-6">
