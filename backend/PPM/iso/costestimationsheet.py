@@ -307,7 +307,7 @@ def create_cost_estimation_sheet_document(
     t_info.rows[0].cells[0].merge(t_info.rows[0].cells[1])
     set_cell_width(t_info.rows[0].cells[0], 4.45)
     set_cell_shading(t_info.rows[0].cells[0], grey_shd)
-    add_text(t_info.rows[0].cells[0], "Central Manufacturing Technology Institute", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+    add_text(t_info.rows[0].cells[0], "Central Manufacturing Technology Institute\nISO 9001:2015", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Row 1: Prepared on: ______________ (Merged)
     t_info.rows[1].cells[0].merge(t_info.rows[1].cells[1])
@@ -818,17 +818,26 @@ def create_cost_estimation_sheet_document(
     t_sig.autofit = False
     set_table_fixed_grid(t_sig, [1.80] * 6)
 
-    # Determine CAO title from payload (user-editable)
-    cao_text = "CAO"
+    # Determine GH, CH, and CAO titles from payload (user-editable)
+    gh_text = "Group Head"
+    ch_text = "Centre Head"
+    cao_text = "Chief Accounts Officer"
     if isinstance(signatures, dict):
-        cao_text = signatures.get("cao_title") or signatures.get("cao") or "CAO"
-    elif kwargs.get("cao_title"):
-        cao_text = str(kwargs.get("cao_title"))
+        gh_text = signatures.get("group_head_title") or signatures.get("gh_title") or signatures.get("group_head") or "Group Head"
+        ch_text = signatures.get("centre_head_title") or signatures.get("ch_title") or signatures.get("centre_head") or "Centre Head"
+        cao_text = signatures.get("cao_title") or signatures.get("cao") or "Chief Accounts Officer"
+    else:
+        if kwargs.get("group_head_title"):
+            gh_text = str(kwargs.get("group_head_title"))
+        if kwargs.get("centre_head_title"):
+            ch_text = str(kwargs.get("centre_head_title"))
+        if kwargs.get("cao_title"):
+            cao_text = str(kwargs.get("cao_title"))
 
     sig_titles = [
         "Project Leader / Project Co-Ordinator",
-        "Group Head",
-        "Centre Head",
+        str(gh_text),
+        str(ch_text),
         str(cao_text),
         "Head (PPM)",
         "Director"
@@ -934,7 +943,7 @@ def create_cost_estimation_sheet_excel(
 
     fmt_hdr_title = workbook.add_format({
         'border': 1, 'font_name': font_name, 'font_size': 11, 'bold': True, 'align': 'center', 'valign': 'vcenter',
-        'bg_color': '#EFEFEF'
+        'bg_color': '#EFEFEF', 'text_wrap': True
     })
     fmt_hdr_section = workbook.add_format({
         'border': 1, 'font_name': font_name, 'font_size': 9.5, 'bold': True, 'align': 'center', 'valign': 'vcenter',
@@ -991,36 +1000,36 @@ def create_cost_estimation_sheet_excel(
     total_col_idx = 2 + num_fy
 
     # Column widths
-    ws.set_column(0, 0, 7)      # COD
-    ws.set_column(1, 1, 30)     # Account Heads
+    ws.set_column(0, 0, 8)      # COD
+    ws.set_column(1, 1, 36)     # Account Heads
     for i in range(num_fy):
-        ws.set_column(2 + i, 2 + i, 13)
-    ws.set_column(total_col_idx, total_col_idx, 14) # Total
+        ws.set_column(2 + i, 2 + i, 14)
+    ws.set_column(total_col_idx, total_col_idx, 15) # Total
 
     # Middle columns
     sep1_col = total_col_idx + 1
-    ws.set_column(sep1_col, sep1_col, 2) # Separator
+    ws.set_column(sep1_col, sep1_col, 2) # Separator 1
 
     mid_start = sep1_col + 1
-    ws.set_column(mid_start, mid_start, 6)        # SN
-    ws.set_column(mid_start + 1, mid_start + 1, 24) # Description / Technical HR / Levels
-    ws.set_column(mid_start + 2, mid_start + 2, 14) # Estimated Cost
+    ws.set_column(mid_start, mid_start, 6)         # SN / Sl. No
+    ws.set_column(mid_start + 1, mid_start + 1, 26)  # Description / Technical HR / Levels
+    ws.set_column(mid_start + 2, mid_start + 2, 16)  # Estimated Cost
 
     # Right columns
     sep2_col = mid_start + 3
-    ws.set_column(sep2_col, sep2_col, 2) # Separator
+    ws.set_column(sep2_col, sep2_col, 2) # Separator 2
 
     right_start = sep2_col + 1
-    ws.set_column(right_start, right_start, 5)        # Sl.
-    ws.set_column(right_start + 1, right_start + 1, 35) # Description of Equipment
-    ws.set_column(right_start + 2, right_start + 2, 14) # Estimated Cost
+    ws.set_column(right_start, right_start, 6)         # Sl.
+    ws.set_column(right_start + 1, right_start + 1, 36)  # Description of Equipment
+    ws.set_column(right_start + 2, right_start + 2, 16)  # Estimated Cost
 
     # -------------------------------------------------------------
     # 1. LEFT BLOCK (MAIN TABLE)
     # -------------------------------------------------------------
     # Row 0: Central Manufacturing Technology Institute
-    ws.merge_range(0, 0, 0, total_col_idx, "Central Manufacturing Technology Institute", fmt_hdr_title)
-    ws.set_row(0, 22)
+    ws.merge_range(0, 0, 0, total_col_idx, "Central Manufacturing Technology Institute\nISO 9001:2015", fmt_hdr_title)
+    ws.set_row(0, 32)
 
     # Row 1: Updated on: date
     updated_str = f"Updated on: {prepared_on}" if prepared_on else "Updated on: ______________"
@@ -1055,7 +1064,7 @@ def create_cost_estimation_sheet_excel(
     for i in range(num_fy):
         ws.write(5, 2 + i, str(i + 1), fmt_col_hdr)
     ws.write(5, total_col_idx, "", fmt_border_center)
-    ws.set_row(5, 16)
+    ws.set_row(5, 18)
 
     # Rows Definition
     ah_rows_def = [
@@ -1126,10 +1135,10 @@ def create_cost_estimation_sheet_excel(
 
         ws.write(cur_row, total_col_idx, tot_val, f_right)
 
-        if "\n" in desc:
-            ws.set_row(cur_row, 24)
+        if "\n" in desc or is_subtotal or is_grand_total:
+            ws.set_row(cur_row, 28)
         else:
-            ws.set_row(cur_row, 18)
+            ws.set_row(cur_row, 20)
 
     # Comments / Notes row below table
     notes_row = start_row + len(ah_rows_def)
@@ -1153,7 +1162,37 @@ def create_cost_estimation_sheet_excel(
             return float(v)
         return 0.0
 
-    # Sub-table 1: Details of Infrastructure Development
+    r_cur = 0
+
+    # Sub-table 1: Estimated Revenue Projection (TOP OF COLUMN 2, Row 0)
+    rev = revenue_projection or {}
+    rev_tot = rev.get("total", "")
+    rev_rows = [
+        ("External Work", rev.get("external_work", "")),
+        ("Internal Work", rev.get("internal_work", "")),
+    ]
+
+    ws.merge_range(r_cur, mid_start, r_cur, mid_start + 2, "Estimated Revenue Projection", fmt_col_hdr)
+    ws.set_row(r_cur, 28)
+    r_cur += 1
+
+    ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Description", fmt_col_hdr)
+    ws.write(r_cur, mid_start + 2, "Estimated Cost", fmt_col_hdr)
+    ws.set_row(r_cur, 18)
+    r_cur += 1
+
+    for desc, val in rev_rows:
+        ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, desc, fmt_border)
+        ws.write(r_cur, mid_start + 2, format_val_excel(val), fmt_border_right)
+        ws.set_row(r_cur, 20)
+        r_cur += 1
+
+    ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Total Revenue", fmt_subtot)
+    ws.write(r_cur, mid_start + 2, format_val_excel(rev_tot), fmt_subtot_right)
+    ws.set_row(r_cur, 20)
+    r_cur += 2  # Blank gap
+
+    # Sub-table 2: Details of Infrastructure Development
     infra = infra_details or {}
     infra_total_val = infra.get("total_c1_c2") or infra.get("total_c1") or ""
     if (infra_total_val == "" or infra_total_val is None or str(infra_total_val) == "0") and account_heads:
@@ -1168,7 +1207,6 @@ def create_cost_estimation_sheet_excel(
         ("4", "Furniture/utility\netc.", infra.get("furniture_utilities", "")),
     ]
 
-    r_cur = 3
     ws.merge_range(r_cur, mid_start, r_cur, mid_start + 2, "Details of Infrastructure Development", fmt_col_hdr)
     ws.set_row(r_cur, 20)
     r_cur += 1
@@ -1183,15 +1221,15 @@ def create_cost_estimation_sheet_excel(
         ws.write(r_cur, mid_start, sn, fmt_border_center)
         ws.write(r_cur, mid_start + 1, desc, workbook.add_format({'border': 1, 'font_name': font_name, 'font_size': 9, 'valign': 'vcenter', 'text_wrap': True}))
         ws.write(r_cur, mid_start + 2, format_val_excel(val), fmt_border_right)
-        ws.set_row(r_cur, 22 if "\n" in desc else 18)
+        ws.set_row(r_cur, 24 if "\n" in desc else 20)
         r_cur += 1
 
     ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Total (C1+C2)", fmt_subtot)
     ws.write(r_cur, mid_start + 2, format_val_excel(infra_total_val), fmt_subtot_right)
-    ws.set_row(r_cur, 18)
+    ws.set_row(r_cur, 20)
     r_cur += 2  # Blank gap
 
-    # Sub-table 2: Details of Technical HR
+    # Sub-table 3: Details of Technical HR
     tech = tech_hr_details or {}
     tech_total_val = tech.get("total_r6", "")
     if (tech_total_val == "" or tech_total_val is None or str(tech_total_val) == "0") and account_heads:
@@ -1220,15 +1258,15 @@ def create_cost_estimation_sheet_excel(
         ws.write(r_cur, mid_start, sn, fmt_border_center)
         ws.write(r_cur, mid_start + 1, desc, fmt_border)
         ws.write(r_cur, mid_start + 2, format_val_excel(val), fmt_border_right)
-        ws.set_row(r_cur, 18)
+        ws.set_row(r_cur, 20)
         r_cur += 1
 
     ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Total Tech. HR (R6)", fmt_subtot)
     ws.write(r_cur, mid_start + 2, format_val_excel(tech_total_val), fmt_subtot_right)
-    ws.set_row(r_cur, 18)
+    ws.set_row(r_cur, 20)
     r_cur += 2  # Blank gap
 
-    # Sub-table 3: Regular Staff Charges
+    # Sub-table 4: Regular Staff Charges
     staff = staff_charges or {}
     staff_total_val = staff.get("total_e1", "")
     if (staff_total_val == "" or staff_total_val is None or str(staff_total_val) == "0") and account_heads:
@@ -1256,40 +1294,12 @@ def create_cost_estimation_sheet_excel(
         ws.write(r_cur, mid_start, sn, fmt_border_center)
         ws.write(r_cur, mid_start + 1, desc, fmt_border)
         ws.write(r_cur, mid_start + 2, format_val_excel(val), fmt_border_right)
-        ws.set_row(r_cur, 18)
+        ws.set_row(r_cur, 20)
         r_cur += 1
 
     ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Scientific Input(Total E1)", fmt_subtot)
     ws.write(r_cur, mid_start + 2, format_val_excel(staff_total_val), fmt_subtot_right)
-    ws.set_row(r_cur, 18)
-    r_cur += 2  # Blank gap
-
-    # Sub-table 4: Estimated Revenue Projection (as requested)
-    rev = revenue_projection or {}
-    rev_tot = rev.get("total", "")
-    rev_rows = [
-        ("External Work", rev.get("external_work", "")),
-        ("Internal Work", rev.get("internal_work", "")),
-    ]
-
-    ws.merge_range(r_cur, mid_start, r_cur, mid_start + 2, "Estimated Revenue Projection", fmt_col_hdr)
     ws.set_row(r_cur, 20)
-    r_cur += 1
-
-    ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Description", fmt_col_hdr)
-    ws.write(r_cur, mid_start + 2, "Estimated Cost", fmt_col_hdr)
-    ws.set_row(r_cur, 18)
-    r_cur += 1
-
-    for desc, val in rev_rows:
-        ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, desc, fmt_border)
-        ws.write(r_cur, mid_start + 2, format_val_excel(val), fmt_border_right)
-        ws.set_row(r_cur, 18)
-        r_cur += 1
-
-    ws.merge_range(r_cur, mid_start, r_cur, mid_start + 1, "Total Revenue", fmt_subtot)
-    ws.write(r_cur, mid_start + 2, format_val_excel(rev_tot), fmt_subtot_right)
-    ws.set_row(r_cur, 18)
 
     # -------------------------------------------------------------
     # 3. RIGHT BLOCK (EQUIPMENTS)
@@ -1300,7 +1310,7 @@ def create_cost_estimation_sheet_excel(
 
     eq_r = 4
     ws.merge_range(eq_r, right_start, eq_r, right_start + 2, "Details of Equipments/Apparatus/Instruments/ Sub-systems", fmt_col_hdr)
-    ws.set_row(eq_r, 24)
+    ws.set_row(eq_r, 28)
     eq_r += 1
 
     ws.write(eq_r, right_start, "Sl.", fmt_col_hdr)
@@ -1323,7 +1333,7 @@ def create_cost_estimation_sheet_excel(
         ws.write(eq_r, right_start + 2, format_val_excel(c_val), fmt_equip_cost)
 
         lines = max(1, len(eq_desc) // 30 + eq_desc.count("\n") + 1)
-        ws.set_row(eq_r, max(20, lines * 16))
+        ws.set_row(eq_r, max(22, lines * 18))
         eq_r += 1
 
     final_eq_tot = eq_tot
@@ -1334,7 +1344,50 @@ def create_cost_estimation_sheet_excel(
 
     ws.merge_range(eq_r, right_start, eq_r, right_start + 1, "Total Equipment Cost (C3+C4)", fmt_subtot)
     ws.write(eq_r, right_start + 2, format_val_excel(final_eq_tot), fmt_subtot_right)
-    ws.set_row(eq_r, 20)
+    ws.set_row(eq_r, 22)
+
+    # -------------------------------------------------------------
+    # 4. SIGNATURES SECTION
+    # -------------------------------------------------------------
+    bottom_r = max(notes_row, r_cur, eq_r) + 2
+
+    # Signatures
+    sig_r = bottom_r + 2
+    ws.set_row(sig_r - 1, 35) # Blank signing space
+    ws.set_row(sig_r, 28)
+
+    gh_text = "Group Head"
+    ch_text = "Centre Head"
+    cao_text = "Chief Accounts Officer"
+    signatures = kwargs.get("signatures")
+    if isinstance(signatures, dict):
+        gh_text = signatures.get("group_head_title") or signatures.get("gh_title") or signatures.get("group_head") or "Group Head"
+        ch_text = signatures.get("centre_head_title") or signatures.get("ch_title") or signatures.get("centre_head") or "Centre Head"
+        cao_text = signatures.get("cao_title") or signatures.get("cao") or "Chief Accounts Officer"
+    else:
+        if kwargs.get("group_head_title"): gh_text = str(kwargs.get("group_head_title"))
+        if kwargs.get("centre_head_title"): ch_text = str(kwargs.get("centre_head_title"))
+        if kwargs.get("cao_title"): cao_text = str(kwargs.get("cao_title"))
+
+    sig_slots = [
+        (0, 1, "Project Leader / Project Co-Ordinator"),
+        (2, total_col_idx, str(gh_text)),
+        (mid_start, mid_start + 1, str(ch_text)),
+        (mid_start + 2, sep2_col, str(cao_text)),
+        (right_start, right_start + 1, "Head (PPM)"),
+        (right_start + 2, right_start + 2, "Director")
+    ]
+
+    fmt_sig = workbook.add_format({
+        'font_name': font_name, 'font_size': 9, 'bold': True, 'align': 'center', 'valign': 'top',
+        'top': 1, 'text_wrap': True
+    })
+
+    for c_start, c_end, title in sig_slots:
+        if c_start == c_end:
+            ws.write(sig_r, c_start, title, fmt_sig)
+        else:
+            ws.merge_range(sig_r, c_start, sig_r, c_end, title, fmt_sig)
 
     workbook.close()
     output.seek(0)
@@ -1420,6 +1473,7 @@ async def generate_cost_estimation_sheet_excel_post(payload: CostEstimationSheet
             staff_charges=payload.staff_charges,
             equipment_details=payload.equipment_details,
             comments_notes=payload.comments_notes or "",
+            signatures=payload.signatures
         )
 
         headers = {

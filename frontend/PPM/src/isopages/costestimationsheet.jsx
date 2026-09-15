@@ -153,7 +153,9 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     const [commentsNotes, setCommentsNotes] = useState('');
     const [preparedBy, setPreparedBy] = useState(getLoggedUserName() || '');
     const [approvedBy, setApprovedBy] = useState('');
-    const [caoTitle, setCaoTitle] = useState('CAO');
+    const [groupHeadTitle, setGroupHeadTitle] = useState('Group Head');
+    const [centreHeadTitle, setCentreHeadTitle] = useState('Centre Head');
+    const [caoTitle, setCaoTitle] = useState('Chief Accounts Officer');
     const [underflowFlags, setUnderflowFlags] = useState({ infra: false, techHr: false, staff: false, equip: false });
     const showUnderflowWarning = underflowFlags.infra || underflowFlags.techHr || underflowFlags.staff || underflowFlags.equip;
 
@@ -460,6 +462,8 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                 if (fd.comments_notes) setCommentsNotes(fd.comments_notes);
                 if (fd.prepared_by) setPreparedBy(fd.prepared_by);
                 if (fd.approved_by) setApprovedBy(fd.approved_by);
+                if (fd.group_head_title || fd.signatures?.group_head_title) setGroupHeadTitle(fd.group_head_title || fd.signatures?.group_head_title);
+                if (fd.centre_head_title || fd.signatures?.centre_head_title) setCentreHeadTitle(fd.centre_head_title || fd.signatures?.centre_head_title);
                 if (fd.cao_title || fd.signatures?.cao_title) setCaoTitle(fd.cao_title || fd.signatures?.cao_title);
             })
             .catch(err => console.error("Failed to load cost estimation sheet submission", err));
@@ -519,8 +523,14 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
             comments_notes: commentsNotes,
             prepared_by: preparedBy,
             approved_by: approvedBy,
+            group_head_title: groupHeadTitle,
+            centre_head_title: centreHeadTitle,
             cao_title: caoTitle,
-            signatures: { cao_title: caoTitle },
+            signatures: {
+                group_head_title: groupHeadTitle,
+                centre_head_title: centreHeadTitle,
+                cao_title: caoTitle
+            },
             fy_values: fyValues,
             revenue_data: revenueData,
             infra_data: infraData,
@@ -876,7 +886,8 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                         {/* 1. Institute Info Box */}
                         <div className="border border-slate-800 bg-white">
                             <div className="bg-slate-200 text-slate-900 font-bold p-1.5 text-center border-b border-slate-800 text-xs md:text-sm tracking-wide">
-                                Central Manufacturing Technology Institute
+                                <div>Central Manufacturing Technology Institute</div>
+                                <div className="text-[11px] font-semibold text-slate-700 tracking-normal">ISO 9001:2015</div>
                             </div>
                             <div className="p-1.5 border-b border-slate-800 flex items-center gap-2 bg-white">
                                 <span className="font-bold text-slate-800 shrink-0 text-xs">Prepared on:</span>
@@ -1391,9 +1402,9 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-center">
                         {[
                             { title: 'Project Leader / Project Co-Ordinator', editable: false },
-                            { title: 'Group head', editable: false },
-                            { title: 'Centre Head', editable: false },
-                            { title: caoTitle, editable: true },
+                            { title: groupHeadTitle, value: groupHeadTitle, setter: setGroupHeadTitle, editable: true, tooltip: 'Click to edit Group Head designation' },
+                            { title: centreHeadTitle, value: centreHeadTitle, setter: setCentreHeadTitle, editable: true, tooltip: 'Click to edit Centre Head designation' },
+                            { title: caoTitle, value: caoTitle, setter: setCaoTitle, editable: true, tooltip: 'Click to edit Chief Accounts Officer designation' },
                             { title: 'Head (PPM)', editable: false },
                             { title: 'Director', editable: false }
                         ].map((sig, idx) => (
@@ -1402,10 +1413,10 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                     {sig.editable ? (
                                         <input
                                             type="text"
-                                            value={caoTitle}
-                                            onChange={(e) => setCaoTitle(e.target.value)}
+                                            value={sig.value}
+                                            onChange={(e) => sig.setter(e.target.value)}
                                             disabled={isReadOnly}
-                                            title="Click to edit CAO designation (e.g. Jr. CAO, Sr. CAO)"
+                                            title={sig.tooltip}
                                             className="w-full text-center font-bold text-slate-900 border-b border-dashed border-slate-400 focus:border-indigo-500 outline-none bg-transparent hover:bg-amber-50/50 text-xs md:text-[12px]"
                                         />
                                     ) : (
