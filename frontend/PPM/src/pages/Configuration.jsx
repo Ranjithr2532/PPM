@@ -186,13 +186,16 @@ function Configuration({ projectRows = [] }) {
         throw new Error('Unable to fetch ISO documents')
       }
       const payload = await response.json()
-      const normalized = Array.isArray(payload)
-        ? payload.map((item, index) => ({
-          ...item,
-          key: item.id ?? index,
-          slNo: index + 1,
-        }))
-        : []
+      const sorted = (Array.isArray(payload) ? payload : []).sort((a, b) => {
+        const docNoA = (a.document_no || '').trim()
+        const docNoB = (b.document_no || '').trim()
+        return docNoA.localeCompare(docNoB, undefined, { numeric: true, sensitivity: 'base' })
+      })
+      const normalized = sorted.map((item, index) => ({
+        ...item,
+        key: item.id ?? index,
+        slNo: index + 1,
+      }))
       setIsoDocData(normalized)
     } catch (error) {
       console.error(error)

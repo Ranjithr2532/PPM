@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    DownloadOutlined,
     FileWordOutlined,
     ArrowLeftOutlined,
     PlusOutlined,
@@ -8,9 +7,6 @@ import {
     CheckOutlined,
     CloseOutlined,
     TableOutlined,
-    AlignLeftOutlined,
-    UpOutlined,
-    DownOutlined,
     CheckCircleOutlined,
     LoadingOutlined
 } from '@ant-design/icons';
@@ -37,6 +33,7 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
+    const hasUserEditedRef = useRef(false);
     const submissionIdRef = useRef(submissionId);
     const statusRef = useRef(status);
     const isSavingRef = useRef(false);
@@ -60,15 +57,12 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
     const [bomHeaders, setBomHeaders] = useState([
         "Part name/Part Number",
         "Specification",
-        "Make",
+        "Make/Model",
         "Quantity",
         "Function Criticality"
     ]);
 
     const [bomRows, setBomRows] = useState([]);
-
-    // Custom Flexible Sections & Attached Tables
-    const [sections, setSections] = useState([]);
 
     const [preparedBy, setPreparedBy] = useState(() => getLoggedUserName());
     const [approvedBy, setApprovedBy] = useState('');
@@ -137,37 +131,27 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
 
                     const it = fd.items;
                     if (it && typeof it === 'object' && Array.isArray(it.headers)) {
-                        setBomHeaders(it.headers);
+                        const mappedHeaders = it.headers.map(h => String(h || '').trim().toLowerCase() === 'make' ? 'Make/Model' : h);
+                        setBomHeaders(mappedHeaders);
                         setBomRows(Array.isArray(it.rows) ? it.rows : []);
                     } else if (Array.isArray(it)) {
                         const legacyRows = it.map((item, idx) => [
-                            item.sl_no || String(idx + 1),
-                            item.item_description || '',
-                            item.part_no_spec || '',
+                            item.part_name || item.part_name_part_number || item.item_description || '',
+                            item.specification || item.part_no_spec || '',
+                            item.make_model || item.make || item.make_supplier || '',
                             item.quantity || '',
-                            item.unit || '',
-                            item.make_supplier || '',
-                            item.remarks || ''
+                            item.function_criticality || item.criticality || 'NC'
+                        ]);
+                        setBomHeaders([
+                            "Part name/Part Number",
+                            "Specification",
+                            "Make/Model",
+                            "Quantity",
+                            "Function Criticality"
                         ]);
                         setBomRows(legacyRows);
                     }
 
-                    if (Array.isArray(fd.sections)) {
-                        // Normalize loaded sections to ensure table structure is standard
-                        const normalizedSecs = fd.sections.map(sec => {
-                            if (sec.headers && Array.isArray(sec.headers) && sec.headers.length > 0) {
-                                return {
-                                    ...sec,
-                                    table: {
-                                        headers: sec.headers,
-                                        rows: Array.isArray(sec.rows) ? sec.rows : []
-                                    }
-                                };
-                            }
-                            return sec;
-                        });
-                        setSections(normalizedSecs);
-                    }
                     if (fd.prepared_by) setPreparedBy(fd.prepared_by);
                     if (fd.approved_by) setApprovedBy(fd.approved_by);
                     if (fd.doc_no) setDocNo(fd.doc_no);
@@ -187,18 +171,21 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
     // Dynamic Main BOM Column & Row Handlers
     const handleAddBomColumn = () => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setBomHeaders(prev => [...prev, `Column ${prev.length + 1}`]);
         setBomRows(prev => prev.map(row => [...row, ""]));
     };
 
     const handleRemoveBomColumn = (colIdx) => {
         if (isReadOnly || bomHeaders.length <= 1) return;
+        hasUserEditedRef.current = true;
         setBomHeaders(prev => prev.filter((_, i) => i !== colIdx));
         setBomRows(prev => prev.map(row => row.filter((_, i) => i !== colIdx)));
     };
 
     const handleHeaderChange = (colIdx, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setBomHeaders(prev => {
             const next = [...prev];
             next[colIdx] = val;
@@ -208,17 +195,24 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
 
     const handleAddBomRow = () => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         const newRow = Array(bomHeaders.length).fill("");
+        const critColIdx = bomHeaders.findIndex(h => String(h || '').toLowerCase().includes('critical'));
+        if (critColIdx !== -1) {
+            newRow[critColIdx] = "NC";
+        }
         setBomRows(prev => [...prev, newRow]);
     };
 
     const handleRemoveBomRow = (rowIdx) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setBomRows(prev => prev.filter((_, i) => i !== rowIdx));
     };
 
     const handleCellChange = (rowIdx, colIdx, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setBomRows(prev => prev.map((row, rI) => {
             if (rI !== rowIdx) return row;
             const nextRow = [...row];
@@ -227,195 +221,7 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
         }));
     };
 
-    // Custom Flexible Sections & Tables Management
-    const handleAddSection = () => {
-        if (isReadOnly) return;
-        setSections(prev => [
-            ...prev,
-            {
-                title: `Section ${prev.length + 1}: Notes & Remarks`,
-                content: "",
-                table: null
-            }
-        ]);
-    };
-
-    const handleAddCustomTable = () => {
-        if (isReadOnly) return;
-        setSections(prev => [
-            ...prev,
-            {
-                title: `Custom Table ${prev.length + 1}`,
-                content: "",
-                table: {
-                    headers: ["Sl. No.", "Description", "Specifications", "Qty", "Remarks"],
-                    rows: [
-                        ["1", "", "", "", ""]
-                    ]
-                }
-            }
-        ]);
-    };
-
-    const handleRemoveSection = (secIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => prev.filter((_, idx) => idx !== secIdx));
-    };
-
-    const handleMoveSection = (secIdx, direction) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const targetIdx = direction === 'up' ? secIdx - 1 : secIdx + 1;
-            if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-            const copy = [...prev];
-            const [moved] = copy.splice(secIdx, 1);
-            copy.splice(targetIdx, 0, moved);
-            return copy;
-        });
-    };
-
-    const handleSectionChange = (secIdx, field, value) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            next[secIdx] = { ...next[secIdx], [field]: value };
-            return next;
-        });
-    };
-
-    const handleAddTableToSection = (secIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            next[secIdx] = {
-                ...next[secIdx],
-                table: {
-                    headers: ["Sl. No.", "Item Description", "Specification / Make", "Qty", "Remarks"],
-                    rows: [
-                        ["1", "", "", "", ""]
-                    ]
-                }
-            };
-            return next;
-        });
-    };
-
-    const handleRemoveTableFromSection = (secIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            next[secIdx] = { ...next[secIdx], table: null };
-            return next;
-        });
-    };
-
-    const handleAddColumnToTable = (secIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            const tbl = next[secIdx].table;
-            if (!tbl) return prev;
-            const newHeaders = [...tbl.headers, `Column ${tbl.headers.length + 1}`];
-            const newRows = tbl.rows.map(r => [...r, ""]);
-            next[secIdx] = {
-                ...next[secIdx],
-                table: { headers: newHeaders, rows: newRows }
-            };
-            return next;
-        });
-    };
-
-    const handleRemoveColumnFromTable = (secIdx, colIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            const tbl = next[secIdx].table;
-            if (!tbl || tbl.headers.length <= 1) return prev;
-            const newHeaders = tbl.headers.filter((_, i) => i !== colIdx);
-            const newRows = tbl.rows.map(r => r.filter((_, i) => i !== colIdx));
-            next[secIdx] = {
-                ...next[secIdx],
-                table: { headers: newHeaders, rows: newRows }
-            };
-            return next;
-        });
-    };
-
-    const handleHeaderCellChange = (secIdx, colIdx, val) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            const tbl = next[secIdx].table;
-            if (!tbl) return prev;
-            const newHeaders = [...tbl.headers];
-            newHeaders[colIdx] = val;
-            next[secIdx] = {
-                ...next[secIdx],
-                table: { ...tbl, headers: newHeaders }
-            };
-            return next;
-        });
-    };
-
-    const handleAddRowToTable = (secIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            const tbl = next[secIdx].table;
-            if (!tbl) return prev;
-            const newRow = Array(tbl.headers.length).fill("");
-            newRow[0] = String(tbl.rows.length + 1);
-            next[secIdx] = {
-                ...next[secIdx],
-                table: { ...tbl, rows: [...tbl.rows, newRow] }
-            };
-            return next;
-        });
-    };
-
-    const handleRemoveRowFromTable = (secIdx, rowIdx) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            const tbl = next[secIdx].table;
-            if (!tbl) return prev;
-            const newRows = tbl.rows.filter((_, i) => i !== rowIdx);
-            next[secIdx] = {
-                ...next[secIdx],
-                table: { ...tbl, rows: newRows }
-            };
-            return next;
-        });
-    };
-
-    const handleTableCellChange = (secIdx, rowIdx, colIdx, val) => {
-        if (isReadOnly) return;
-        setSections(prev => {
-            const next = [...prev];
-            const tbl = next[secIdx].table;
-            if (!tbl) return prev;
-            const newRows = tbl.rows.map((row, rI) => {
-                if (rI !== rowIdx) return row;
-                const nextRow = [...row];
-                nextRow[colIdx] = val;
-                return nextRow;
-            });
-            next[secIdx] = {
-                ...next[secIdx],
-                table: { ...tbl, rows: newRows }
-            };
-            return next;
-        });
-    };
-
     const buildPayload = () => {
-        const mappedSections = sections.map(sec => ({
-            title: sec.title || '',
-            content: sec.content || '',
-            headers: sec.table ? sec.table.headers : (sec.headers || []),
-            rows: sec.table ? sec.table.rows : (sec.rows || [])
-        }));
-
         return {
             project_title: projectTitle,
             project_no: projectNo,
@@ -424,7 +230,6 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                 headers: bomHeaders,
                 rows: bomRows
             },
-            sections: mappedSections,
             prepared_by: preparedBy,
             approved_by: approvedBy,
             group_name: getLoggedUserGroup() || 'SMPM',
@@ -462,9 +267,11 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
     };
 
     // Auto-Save Draft to Database
+    const performAutoSaveRef = useRef(null);
+
     const performAutoSave = useCallback(async () => {
         if (isReadOnly) return;
-        if (!isHydratedRef.current) return;
+        if (!isHydratedRef.current || !hasUserEditedRef.current) return;
         if (isSavingRef.current) return;
 
         isSavingRef.current = true;
@@ -505,26 +312,22 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
         } finally {
             isSavingRef.current = false;
         }
-    }, [isReadOnly, projectTitle, projectNo, customerName, bomHeaders, bomRows, sections, preparedBy, approvedBy, docNo, docDate, selectedProposalId]);
+    }, [isReadOnly, projectTitle, projectNo, customerName, bomHeaders, bomRows, preparedBy, approvedBy, docNo, docCode, docDate, selectedProposalId]);
+
+    useEffect(() => {
+        performAutoSaveRef.current = performAutoSave;
+    }, [performAutoSave]);
 
     // Debounced Auto-Save
     useEffect(() => {
-        if (!isHydratedRef.current || isReadOnly) return;
-        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        if (!isHydratedRef.current || !hasUserEditedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => {
+            if (performAutoSaveRef.current) {
+                performAutoSaveRef.current();
+            }
+        }, 1000);
         return () => clearTimeout(timer);
-    }, [projectTitle, projectNo, customerName, bomHeaders, bomRows, sections, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
-
-    // Flush on page unload / refresh
-    useEffect(() => {
-        const handleBeforeUnload = () => {
-            if (isHydratedRef.current && !isReadOnly) performAutoSave();
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => {
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-            if (isHydratedRef.current && !isReadOnly) performAutoSave();
-        };
-    }, [performAutoSave, isReadOnly]);
+    }, [projectTitle, projectNo, customerName, bomHeaders, bomRows, preparedBy, approvedBy, docNo, docCode, docDate, selectedProposalId, isReadOnly]);
 
     const handleSaveOrSubmit = async (targetStatus = 'DRAFT') => {
         setSubmitting(true);
@@ -703,7 +506,10 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                             <input
                                 type="text"
                                 value={projectTitle}
-                                onChange={(e) => setProjectTitle(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setProjectTitle(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Project Title"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
@@ -715,7 +521,10 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                             <input
                                 type="text"
                                 value={projectNo}
-                                onChange={(e) => setProjectNo(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setProjectNo(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="e.g. GST2502201"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-800"
@@ -727,7 +536,10 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                             <input
                                 type="text"
                                 value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setCustomerName(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Customer Name"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
@@ -799,17 +611,39 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                                 ) : (
                                     bomRows.map((row, rowIdx) => (
                                         <tr key={rowIdx} className="border-b border-slate-200 hover:bg-slate-50">
-                                            {row.map((cellVal, colIdx) => (
-                                                <td key={colIdx} className="p-1 border-r border-slate-200">
-                                                    <input
-                                                        type="text"
-                                                        value={cellVal || ''}
-                                                        onChange={(e) => handleCellChange(rowIdx, colIdx, e.target.value)}
-                                                        disabled={isReadOnly}
-                                                        className="w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-indigo-500 rounded p-1"
-                                                    />
-                                                </td>
-                                            ))}
+                                            {row.map((cellVal, colIdx) => {
+                                                const headerName = String(bomHeaders[colIdx] || '').toLowerCase();
+                                                const isCriticalityCol = headerName.includes('critical');
+
+                                                return (
+                                                    <td key={colIdx} className="p-1 border-r border-slate-200">
+                                                        {isCriticalityCol ? (
+                                                            <select
+                                                                value={cellVal || 'NC'}
+                                                                onChange={(e) => handleCellChange(rowIdx, colIdx, e.target.value)}
+                                                                disabled={isReadOnly}
+                                                                className={`w-full text-xs font-semibold rounded p-1 outline-none border transition cursor-pointer disabled:cursor-default ${
+                                                                    (cellVal === 'SC') ? 'bg-rose-50 text-rose-700 border-rose-300 font-bold' :
+                                                                    (cellVal === 'FC') ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold' :
+                                                                    'bg-white text-slate-700 border-slate-200'
+                                                                }`}
+                                                            >
+                                                                <option value="SC">SC- Safety Critical</option>
+                                                                <option value="FC">FC- Function Critical</option>
+                                                                <option value="NC">NC- Not Critical</option>
+                                                            </select>
+                                                        ) : (
+                                                            <input
+                                                                type="text"
+                                                                value={cellVal || ''}
+                                                                onChange={(e) => handleCellChange(rowIdx, colIdx, e.target.value)}
+                                                                disabled={isReadOnly}
+                                                                className="w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-indigo-500 rounded p-1"
+                                                            />
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
                                             {!isReadOnly && (
                                                 <td className="p-1 text-center">
                                                     <button
@@ -828,208 +662,6 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                     </div>
                 </div>
 
-                {/* Additional Dynamic Tables & Custom Sections */}
-                <div className="space-y-4 pt-4 border-t border-slate-200">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                <TableOutlined className="text-emerald-600" /> Additional Custom Tables & Sections
-                            </h3>
-                            <p className="text-xs text-slate-500">Add sub-assembly tables, electrical BOM, purchased items, or technical notes.</p>
-                        </div>
-                        {!isReadOnly && (
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={handleAddCustomTable}
-                                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-sm"
-                                >
-                                    <TableOutlined /> + Add Custom Table
-                                </button>
-                                <button
-                                    onClick={handleAddSection}
-                                    className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 transition"
-                                >
-                                    <AlignLeftOutlined /> + Add Note / Section
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {sections.length === 0 ? (
-                        <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                            <p className="text-xs text-slate-400">No additional custom tables or notes added.</p>
-                            {!isReadOnly && (
-                                <button
-                                    onClick={handleAddCustomTable}
-                                    className="mt-2 text-xs text-indigo-600 font-semibold hover:underline"
-                                >
-                                    Click here to + Add Custom Table
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        sections.map((sec, secIdx) => (
-                            <div key={secIdx} className="bg-slate-50/70 border border-slate-300 rounded-xl p-5 shadow-sm space-y-4">
-                                <div className="flex justify-between items-center border-b border-slate-200 pb-2 gap-2">
-                                    <input
-                                        type="text"
-                                        value={sec.title || ''}
-                                        onChange={(e) => handleSectionChange(secIdx, 'title', e.target.value)}
-                                        disabled={isReadOnly}
-                                        placeholder="Table / Section Title (e.g. Electrical Components BOM)"
-                                        className="font-bold text-slate-800 text-sm bg-transparent border-b border-slate-300 focus:border-indigo-600 outline-none w-full max-w-md p-1"
-                                    />
-
-                                    {!isReadOnly && (
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                onClick={() => handleMoveSection(secIdx, 'up')}
-                                                disabled={secIdx === 0}
-                                                title="Move Up"
-                                                className="p-1 hover:bg-slate-200 rounded text-slate-600 disabled:opacity-30"
-                                            >
-                                                <UpOutlined />
-                                            </button>
-                                            <button
-                                                onClick={() => handleMoveSection(secIdx, 'down')}
-                                                disabled={secIdx === sections.length - 1}
-                                                title="Move Down"
-                                                className="p-1 hover:bg-slate-200 rounded text-slate-600 disabled:opacity-30"
-                                            >
-                                                <DownOutlined />
-                                            </button>
-
-                                            {!sec.table ? (
-                                                <button
-                                                    onClick={() => handleAddTableToSection(secIdx)}
-                                                    className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded border border-emerald-200 transition"
-                                                >
-                                                    <TableOutlined /> Add Table
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleRemoveTableFromSection(secIdx)}
-                                                    className="text-amber-600 hover:text-amber-800 text-xs font-semibold px-2 py-1"
-                                                >
-                                                    Remove Table
-                                                </button>
-                                            )}
-
-                                            <button
-                                                onClick={() => handleRemoveSection(secIdx)}
-                                                className="text-rose-500 hover:text-rose-700 p-1"
-                                                title="Delete Section"
-                                            >
-                                                <DeleteOutlined />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Section Paragraph / Description (Optional) */}
-                                <div>
-                                    <textarea
-                                        rows={2}
-                                        value={sec.content || ''}
-                                        onChange={(e) => handleSectionChange(secIdx, 'content', e.target.value)}
-                                        disabled={isReadOnly}
-                                        placeholder="Enter optional description or notes for this table..."
-                                        className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-white outline-none leading-relaxed"
-                                    />
-                                </div>
-
-                                {/* Attached Custom Table Editor */}
-                                {sec.table && (
-                                    <div className="border border-slate-300 rounded-lg overflow-hidden bg-white p-3 space-y-3">
-                                        <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                                            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                                                <TableOutlined className="text-emerald-600" /> Custom Table Columns & Data
-                                            </span>
-
-                                            {!isReadOnly && (
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => handleAddColumnToTable(secIdx)}
-                                                        className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-300"
-                                                    >
-                                                        + Add Column
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleAddRowToTable(secIdx)}
-                                                        className="text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded font-semibold border border-indigo-200"
-                                                    >
-                                                        + Add Row
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Editable Custom Table */}
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-xs border-collapse border border-slate-300">
-                                                <thead>
-                                                    <tr className="bg-slate-100 text-slate-700">
-                                                        {sec.table.headers.map((hText, colIdx) => (
-                                                            <th key={colIdx} className="border border-slate-300 p-1.5 text-center bg-slate-200/70 font-bold min-w-[120px]">
-                                                                <div className="flex items-center justify-between gap-1">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={hText}
-                                                                        onChange={(e) => handleHeaderCellChange(secIdx, colIdx, e.target.value)}
-                                                                        disabled={isReadOnly}
-                                                                        className="w-full text-xs font-bold bg-transparent border-none text-center outline-none"
-                                                                    />
-                                                                    {!isReadOnly && sec.table.headers.length > 1 && (
-                                                                        <button
-                                                                            onClick={() => handleRemoveColumnFromTable(secIdx, colIdx)}
-                                                                            className="text-rose-500 hover:text-rose-700 p-0.5 text-[10px]"
-                                                                            title="Remove Column"
-                                                                        >
-                                                                            ×
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </th>
-                                                        ))}
-                                                        {!isReadOnly && <th className="border border-slate-300 p-1 w-10 text-center">Delete</th>}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {sec.table.rows.map((row, rowIdx) => (
-                                                        <tr key={rowIdx} className="hover:bg-slate-50">
-                                                            {row.map((cellVal, colIdx) => (
-                                                                <td key={colIdx} className="border border-slate-300 p-1">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={cellVal || ''}
-                                                                        onChange={(e) => handleTableCellChange(secIdx, rowIdx, colIdx, e.target.value)}
-                                                                        disabled={isReadOnly}
-                                                                        className="w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-indigo-500 rounded p-1"
-                                                                    />
-                                                                </td>
-                                                            ))}
-                                                            {!isReadOnly && (
-                                                                <td className="border border-slate-300 p-1 text-center">
-                                                                    <button
-                                                                        onClick={() => handleRemoveRowFromTable(secIdx, rowIdx)}
-                                                                        className="text-rose-500 hover:text-rose-700 p-1 text-xs"
-                                                                    >
-                                                                        <DeleteOutlined />
-                                                                    </button>
-                                                                </td>
-                                                            )}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))
-                    )}
-                </div>
-
                 {/* Signatories Footer Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200 bg-slate-50/50 p-4 rounded-xl">
                     <div>
@@ -1037,7 +669,10 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                         <input
                             type="text"
                             value={preparedBy}
-                            onChange={(e) => setPreparedBy(e.target.value)}
+                            onChange={(e) => {
+                                hasUserEditedRef.current = true;
+                                setPreparedBy(e.target.value);
+                            }}
                             disabled={isReadOnly}
                             placeholder="Prepared By Name"
                             className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"
@@ -1048,7 +683,10 @@ export default function Bom({ proposalId: propProposalId, submissionId: propSubm
                         <input
                             type="text"
                             value={approvedBy}
-                            onChange={(e) => setApprovedBy(e.target.value)}
+                            onChange={(e) => {
+                                hasUserEditedRef.current = true;
+                                setApprovedBy(e.target.value);
+                            }}
                             disabled={isReadOnly}
                             placeholder="Approved By Name"
                             className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white"

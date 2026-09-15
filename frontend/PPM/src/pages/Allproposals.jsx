@@ -720,7 +720,7 @@ export default function Allproposals() {
         const phones = Array.isArray(customer.phone) ? customer.phone : []
         const addresses = Array.isArray(customer.address) ? customer.address : []
         const alternate_contacts = Array.isArray(customer.alternate_contact_details) ? customer.alternate_contact_details : []
-        
+
         return {
           id: customer.id,
           name: customer.name,
@@ -2761,10 +2761,9 @@ export default function Allproposals() {
                             className={`
                               relative cursor-pointer text-white p-5 select-none overflow-hidden ${card.bgClass}
                               transform box-border
-                              ${
-                                isSelected
-                                  ? '-translate-y-2 opacity-100 z-10'
-                                  : isAnySelected
+                              ${isSelected
+                                ? '-translate-y-2 opacity-100 z-10'
+                                : isAnySelected
                                   ? 'opacity-70 hover:opacity-100 hover:-translate-y-1 shadow-md'
                                   : 'opacity-100 hover:-translate-y-1 shadow-md hover:shadow-lg'
                               }
@@ -3863,7 +3862,7 @@ export default function Allproposals() {
               <div>
                 <h4 className="font-bold text-amber-900 text-sm">Draft Proposal Mode</h4>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  Enter only the <strong>Quote Description</strong> to save a draft proposal. The system will auto-assign a Proposal ID and mark <code>draft = true</code>.
+                  Enter only the <strong>Quote Description</strong> to save a draft proposal. The system will auto-assign a Proposal ID and mark <code>and Propsals will not sent to the PPM </code>.
                 </p>
               </div>
             </div>
@@ -3917,11 +3916,16 @@ export default function Allproposals() {
             <ProjectProposal
               proposalId={convertingDraftRecord ? convertingDraftRecord.id : null}
               existingRecord={convertingDraftRecord}
+              stageConfig={stageConfig}
               onBack={() => {
                 fetchProposals()
                 closeCoordinatorModal()
               }}
               onSuccess={() => {
+                fetchProposals()
+                closeCoordinatorModal()
+              }}
+              onAddToProposals={() => {
                 fetchProposals()
                 closeCoordinatorModal()
               }}
@@ -4213,11 +4217,11 @@ export default function Allproposals() {
                           isOptional
                             ? []
                             : [
-                                {
-                                  required: true,
-                                  message: `Please enter ${field.label}`,
-                                },
-                              ]
+                              {
+                                required: true,
+                                message: `Please enter ${field.label}`,
+                              },
+                            ]
                         }
                       >
                         {isDate ? (

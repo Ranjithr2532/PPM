@@ -1,5 +1,6 @@
 import os
 import io
+import re
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status, File, UploadFile, Form
@@ -39,6 +40,141 @@ def list_iso_submissions(
         query = query.filter(ISOSubmission.proposal_id == proposal_id)
 
     return query.order_by(ISOSubmission.updated_at.desc()).all()
+
+
+@router.get("/proposal/{proposal_id}/download-all-zip")
+@router.get("/project/{proposal_id}/download-all-zip")
+def download_all_iso_submissions_zip(proposal_id: int, db: Session = Depends(get_db)):
+    import zipfile
+    import requests
+    from models.model import Proposal
+
+    # Fetch Proposal Details
+    proposal = db.query(Proposal).filter(Proposal.id == proposal_id).first()
+    proj_name = None
+    if proposal:
+        proj_name = proposal.quote_description or proposal.project_number or proposal.party_name or f"Project_{proposal_id}"
+    if not proj_name:
+        proj_name = f"Project_{proposal_id}"
+
+    # Sanitized folder & zip name matching user specification:
+    # "create folder name project name-iso docuemtn in that all the docuemnts"
+    clean_proj_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', proj_name).strip('_')
+    clean_proj_name = re.sub(r'_{2,}', '_', clean_proj_name)
+    if not clean_proj_name:
+        clean_proj_name = f"Project_{proposal_id}"
+
+    folder_name = f"{clean_proj_name}-iso_documents"
+    zip_filename = f"{clean_proj_name}-iso_documents.zip"
+
+    # Fetch all submissions for this proposal in logical order
+    submissions = (
+        db.query(ISOSubmission)
+        .filter(ISOSubmission.proposal_id == proposal_id)
+        .order_by(ISOSubmission.id.asc())
+        .all()
+    )
+
+    if not submissions:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No ISO documents found for this project ({proj_name}). Please create or upload documents first."
+        )
+
+    zip_buffer = io.BytesIO()
+    used_filenames = set()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for sub in submissions:
+            f_data = sub.form_data or {}
+            is_up = bool(f_data.get("is_uploaded"))
+            file_path = f_data.get("file_path")
+            doc_type = (sub.doc_type or "ISO_DOC").upper()
+            doc_no = (sub.document_no or "").strip()
+
+            file_bytes = None
+            filename = None
+
+            # 1. Handle Uploaded File
+            if is_up and file_path:
+                orig_filename = f_data.get("uploaded_filename")
+                if not orig_filename:
+                    ext = file_path.split(".")[-1].lower() if "." in file_path else "docx"
+                    orig_filename = f"ISO_{doc_no or doc_type}_{sub.id}.{ext}"
+
+                # Strategy A: Try MinIO client directly with object_name
+                obj_name = f_data.get("object_name")
+                if obj_name:
+                    try:
+                        from services.minio_client import _get_client, MINIO_BUCKET
+                        client = _get_client()
+                        resp = client.get_object(MINIO_BUCKET, obj_name)
+                        file_bytes = resp.read()
+                        resp.close()
+                        resp.release_conn()
+                    except Exception as e:
+                        print(f"MinIO read error for {obj_name}: {e}")
+
+                # Strategy B: Try HTTP fetch if public URL
+                if not file_bytes and file_path.startswith("http"):
+                    try:
+                        r = requests.get(file_path, timeout=15)
+                        if r.status_code == 200:
+                            file_bytes = r.content
+                    except Exception as e:
+                        print(f"HTTP fetch error for {file_path}: {e}")
+
+                # Strategy C: Try Local file path
+                if not file_bytes and not file_path.startswith("http"):
+                    rel_p = file_path.lstrip("/").replace("/", os.sep)
+                    abs_p = os.path.join(os.getcwd(), rel_p)
+                    if os.path.exists(abs_p):
+                        try:
+                            with open(abs_p, "rb") as f:
+                                file_bytes = f.read()
+                        except Exception as e:
+                            print(f"Local file read error for {abs_p}: {e}")
+
+                filename = orig_filename
+
+            # 2. Handle Digital Form (Generate Word .docx Document)
+            if not file_bytes:
+                try:
+                    doc_obj, gen_filename = build_iso_docx_object(sub, db)
+                    if doc_obj:
+                        doc_stream = io.BytesIO()
+                        doc_obj.save(doc_stream)
+                        file_bytes = doc_stream.getvalue()
+                        filename = gen_filename or f"ISO_{doc_type}_{doc_no or sub.id}.docx"
+                except Exception as e:
+                    print(f"Error generating docx for submission #{sub.id} ({doc_type}): {e}")
+
+            # 3. Add to ZIP inside folder
+            if file_bytes and filename:
+                # Sanitize filename
+                safe_name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', filename)
+                base, ext = os.path.splitext(safe_name)
+                counter = 1
+                unique_filename = safe_name
+                while unique_filename.lower() in used_filenames:
+                    unique_filename = f"{base}_{counter}{ext}"
+                    counter += 1
+                used_filenames.add(unique_filename.lower())
+
+                zip_path = f"{folder_name}/{unique_filename}"
+                zip_file.writestr(zip_path, file_bytes)
+
+    zip_buffer.seek(0)
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
+
 
 
 @router.get("/{sub_id}", response_model=ISOSubmissionResponse)
@@ -142,27 +278,44 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
         filename = f"ISO_ContractReview_{doc_no.replace('/', '_')}.docx"
 
     elif doc_type == "PROJECT_TEAM":
-        from iso.projectteam import create_project_team_document, TeamMember
+        from iso.projectteam import create_project_team_document, TeamMemberRequest, _autofill_member_from_db
         raw_members = f_data.get("team_members", [])
         members_objs = []
         if isinstance(raw_members, list):
             for m in raw_members:
                 if isinstance(m, dict):
-                    members_objs.append(
-                        TeamMember(
-                            sl_no=m.get("sl_no", 1),
-                            name=m.get("name", ""),
-                            role=m.get("role", ""),
-                            responsibilities=m.get("responsibilities", "")
-                        )
+                    m_obj = TeamMemberRequest(
+                        sl_no=m.get("sl_no", 1),
+                        name=m.get("name", ""),
+                        designation=m.get("designation", ""),
+                        member_type=m.get("member_type") or m.get("type", ""),
+                        roles=m.get("roles") or m.get("role", ""),
+                        signature=m.get("signature", "")
                     )
+                    members_objs.append(_autofill_member_from_db(m_obj, db))
+
+        raw_review_members = f_data.get("review_members", [])
+        review_members_objs = []
+        if isinstance(raw_review_members, list):
+            for rm in raw_review_members:
+                if isinstance(rm, dict):
+                    rm_obj = TeamMemberRequest(
+                        sl_no=rm.get("sl_no", 1),
+                        name=rm.get("name", ""),
+                        designation=rm.get("designation", ""),
+                        member_type=rm.get("member_type") or rm.get("type", ""),
+                        roles=rm.get("roles") or rm.get("role", "Project review"),
+                        signature=rm.get("signature", "")
+                    )
+                    review_members_objs.append(_autofill_member_from_db(rm_obj, db))
 
         doc = create_project_team_document(
-            project_title=f_data.get("project_title", ""),
             project_no=f_data.get("project_no", ""),
-            customer_name=f_data.get("customer_name", ""),
-            project_leader=f_data.get("project_leader", ""),
+            po_reference=f_data.get("po_reference", ""),
+            proposal_ref=f_data.get("proposal_ref", ""),
+            subject=f_data.get("subject", ""),
             team_members=members_objs,
+            review_members=review_members_objs,
             centre_dept=centre_dept,
             group_name=group_name,
             doc_no=doc_no,
@@ -343,13 +496,17 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
 
     elif doc_type in ["INSPECTION_REPORT", "085"]:
         from iso.Inspection_report import create_inspection_report_document
+        drawing_name = f_data.get("drawing_name", "")
+        drawing_no = f_data.get("drawing_no", "")
+        report_no = f_data.get("report_no", "")
+        clean_drawing = re.sub(r'[^a-zA-Z0-9_-]', '_', drawing_name or drawing_no or report_no or '').strip('_')
         doc = create_inspection_report_document(
-            report_no=f_data.get("report_no", ""),
+            report_no=report_no,
             date=f_data.get("date", ""),
             project_no=f_data.get("project_no", ""),
             type=f_data.get("type", ""),
-            drawing_no=f_data.get("drawing_no", ""),
-            drawing_name=f_data.get("drawing_name", ""),
+            drawing_no=drawing_no,
+            drawing_name=drawing_name,
             quantity=f_data.get("quantity", ""),
             rows=f_data.get("rows"),
             prepared_by=prepared_by,
@@ -359,15 +516,19 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
             doc_no=doc_no,
             doc_date=date_str
         )
-        filename = f"ISO_Inspection_Report_{doc_no.replace('/', '_')}.docx"
+        if clean_drawing:
+            filename = f"ISO_Inspection_Report_{clean_drawing}_{doc_no.replace('/', '_')}.docx"
+        else:
+            filename = f"ISO_Inspection_Report_{doc_no.replace('/', '_')}.docx"
 
-    elif doc_type in ["TECHNICAL_SPECIFICATION", "TECHNICAL_SPECIFICATION_FORMAT", "065"]:
+    elif doc_type in ["TECHNICAL_SPECIFICATION", "TECHNICAL_SPECIFICATION_FORMAT", "TECH_SPEC", "065"]:
         from iso.technical_specification import create_technical_specification_document
+        item_desc = f_data.get("item_description", "")
         doc = create_technical_specification_document(
             project_title=f_data.get("project_title", ""),
             project_no=f_data.get("project_no", ""),
             customer_name=f_data.get("customer_name", ""),
-            item_description=f_data.get("item_description", ""),
+            item_description=item_desc,
             specs=f_data.get("specs"),
             scope_of_supply=f_data.get("scope_of_supply"),
             boi_checklist=f_data.get("boi_checklist"),
@@ -379,7 +540,11 @@ def build_iso_docx_object(rec: ISOSubmission, db: Session):
             doc_no=doc_no,
             doc_date=date_str
         )
-        filename = f"ISO_Technical_Specification_{doc_no.replace('/', '_')}.docx"
+        desc_clean = "".join(c for c in item_desc[:30] if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
+        if desc_clean:
+            filename = f"ISO_Technical_Specification_{desc_clean}_{doc_no.replace('/', '_')}.docx"
+        else:
+            filename = f"ISO_Technical_Specification_{doc_no.replace('/', '_')}.docx"
 
     elif doc_type in ["MASTER_DRAWING_INDEX", "DRAWING_INDEX", "MASTER_DRAWING", "066"]:
         from iso.master_drawing_index import create_master_drawing_index_document
@@ -608,21 +773,35 @@ def save_generated_iso_file(rec: ISOSubmission, db: Session):
         # Save to main documents table if proposal_id exists
         if rec.proposal_id:
             from models.model import Document as MainDocument
+            is_proposal_doc = (rec.doc_type or "").upper() in ["PROJECT_PROPOSAL", "PROJECT_PROPSAL", "009"]
+            doc_name = "Proposal" if is_proposal_doc else f"{rec.doc_type}_{rec.document_no}"
+
+            creator_name = prepared_by
+            if not creator_name and rec.created_by:
+                creator = db.query(User).filter(User.id == rec.created_by).first()
+                if creator:
+                    creator_name = creator.full_name or creator.username or str(rec.created_by)
+            if not creator_name:
+                creator_name = str(rec.created_by) if rec.created_by else "System"
+
             main_doc = db.query(MainDocument).filter(
                 MainDocument.project_id == rec.proposal_id,
-                MainDocument.name == f"{rec.doc_type}_{rec.document_no}"
+                MainDocument.name.in_([doc_name, f"{rec.doc_type}_{rec.document_no}", "Proposal", "PROJECT_PROPOSAL_009"])
             ).first()
             if not main_doc:
                 main_doc = MainDocument(
-                    name=f"{rec.doc_type}_{rec.document_no}",
-                    description=f"ISO Document #{rec.document_no} ({rec.doc_type})",
+                    name=doc_name,
+                    description=f"Official Proposal Document" if is_proposal_doc else f"ISO Document #{rec.document_no} ({rec.doc_type})",
                     project_id=rec.proposal_id,
-                    uploaded_by=str(rec.created_by) if rec.created_by else "System",
+                    uploaded_by=creator_name,
                     url=minio_url
                 )
                 db.add(main_doc)
             else:
+                main_doc.name = doc_name
                 main_doc.url = minio_url
+                if creator_name and (not main_doc.uploaded_by or main_doc.uploaded_by.isdigit()):
+                    main_doc.uploaded_by = creator_name
 
         db.commit()
         db.refresh(rec)
@@ -742,7 +921,13 @@ async def upload_iso_document_file(
     # Upload file directly to MinIO (same as routes/documents.py)
     object_name, minio_url = await upload_file_to_minio(file)
 
-    is_multi_doc = doc_type.upper() in ["MOM", "MINUTES_OF_MEETING", "037", "ENGINEERING_CHANGE_NOTE", "ECN", "068"]
+    MULTI_DOC_TYPES = [
+        "MOM", "MINUTES_OF_MEETING", "037",
+        "ENGINEERING_CHANGE_NOTE", "ECN", "CHANGE_NOTE", "068",
+        "TECHNICAL_SPECIFICATION", "TECHNICAL_SPECIFICATION_FORMAT", "TECH_SPEC", "065",
+        "INSPECTION_REPORT", "INSPECTION", "IR", "085"
+    ]
+    is_multi_doc = doc_type.upper() in MULTI_DOC_TYPES
 
     rec = None
     if not is_multi_doc:
@@ -751,13 +936,24 @@ async def upload_iso_document_file(
             query = query.filter(ISOSubmission.proposal_id == proposal_id)
         rec = query.first()
 
+    dt_upper = doc_type.upper()
     form_payload = {
         "file_path": minio_url,
         "uploaded_filename": file.filename,
         "object_name": object_name,
-        "is_uploaded": True,
-        "agenda": f"Uploaded MOM: {file.filename}" if is_multi_doc else None
+        "is_uploaded": True
     }
+    if dt_upper in ["MOM", "MINUTES_OF_MEETING", "037"]:
+        form_payload["agenda"] = f"Uploaded MOM: {file.filename}"
+    elif dt_upper in ["TECHNICAL_SPECIFICATION", "TECHNICAL_SPECIFICATION_FORMAT", "TECH_SPEC", "065"]:
+        form_payload["item_description"] = f"Uploaded Spec: {file.filename}"
+        form_payload["project_title"] = f"Uploaded Spec: {file.filename}"
+    elif dt_upper in ["ENGINEERING_CHANGE_NOTE", "ECN", "CHANGE_NOTE", "068"]:
+        form_payload["change_description"] = f"Uploaded ECN: {file.filename}"
+        form_payload["item_description"] = f"Uploaded ECN: {file.filename}"
+    elif dt_upper in ["INSPECTION_REPORT", "INSPECTION", "IR", "085"]:
+        form_payload["drawing_name"] = f"Uploaded IR: {file.filename}"
+        form_payload["drawing_no"] = f"Uploaded IR: {file.filename}"
 
     if rec:
         rec.form_data = {**(rec.form_data or {}), **form_payload}
@@ -796,14 +992,15 @@ async def upload_iso_document_file(
     # Save to main documents table if proposal_id exists
     if proposal_id:
         from models.model import Document as MainDocument
+        main_doc_name = f"{doc_type}_{document_no}_{rec.id}" if is_multi_doc else f"{doc_type}_{document_no}"
         main_doc = db.query(MainDocument).filter(
             MainDocument.project_id == proposal_id,
-            MainDocument.name == f"{doc_type}_{document_no}"
+            MainDocument.name == main_doc_name
         ).first()
         if not main_doc:
             main_doc = MainDocument(
-                name=f"{doc_type}_{document_no}",
-                description=f"ISO Document #{document_no} ({doc_type})",
+                name=main_doc_name,
+                description=f"ISO Document #{document_no} ({doc_type}) - {file.filename}" if is_multi_doc else f"ISO Document #{document_no} ({doc_type})",
                 project_id=proposal_id,
                 uploaded_by=str(created_by) if created_by else "System",
                 url=minio_url

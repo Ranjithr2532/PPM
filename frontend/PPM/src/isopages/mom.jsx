@@ -84,7 +84,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
     const [prevMomNoDate, setPrevMomNoDate] = useState('-');
     const [prevActionPoints, setPrevActionPoints] = useState('-');
     const [prevStatus, setPrevStatus] = useState('-');
-    const [agenda, setAgenda] = useState('Project kick off meeting');
+    const [agenda, setAgenda] = useState('');
     const [summaryPoints, setSummaryPoints] = useState(() => [
         { sl_no: 1, points_discussed: '', responsibility: getLoggedUserName() }
     ]);
@@ -104,7 +104,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
                 }
                 const res = await axios.get(`${API_BASE_URL}/iso-document-list/`);
                 if (Array.isArray(res.data)) {
-                    const matched = res.data.find(d => 
+                    const matched = res.data.find(d =>
                         (d.document_no && (d.document_no.trim() === '037' || d.document_no.trim() === '37')) ||
                         (d.name && (d.name.toLowerCase().includes('minutes') || d.name.toLowerCase().includes('mom')))
                     );
@@ -716,7 +716,7 @@ export default function Mom({ proposalId: propProposalId, submissionId: propSubm
                         <tr>
                             <td className="border border-slate-800 p-3 text-center">
                                 {isReadOnly ? (
-                                    <span className="font-semibold text-slate-900">{agenda || 'Project kick off meeting'}</span>
+                                    <span className="font-semibold text-slate-900">{agenda || ''}</span>
                                 ) : (
                                     <input
                                         type="text"

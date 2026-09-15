@@ -62,18 +62,40 @@ async def create_document(
             _, att_url = await upload_file_to_minio(att)
             attachment_urls.append(att_url)
 
-    # Save document in DB
-    document = Document(
-        name=name,
-        description=description,
-        project_id=project_id,
-        stage_id=stage_id,
-        uploaded_by=uploaded_by,
-        url=url,
-        attachment=attachment_urls if attachment_urls else None, 
-        version=version,
-    )
-    db.add(document)
+    # Check if a proposal document already exists for this project to avoid duplicate entries
+    existing_doc = None
+    if project_id and name.strip().lower() in ["proposal", "project_proposal_009"]:
+        existing_doc = db.query(Document).filter(
+            Document.project_id == project_id,
+            Document.name.in_(["Proposal", "proposal", "PROJECT_PROPOSAL_009", "project_proposal_009"])
+        ).first()
+
+    if existing_doc:
+        existing_doc.name = name
+        if description:
+            existing_doc.description = description
+        if stage_id is not None:
+            existing_doc.stage_id = stage_id
+        if uploaded_by:
+            existing_doc.uploaded_by = uploaded_by
+        existing_doc.url = url
+        if attachment_urls:
+            existing_doc.attachment = attachment_urls
+        if version:
+            existing_doc.version = version
+        document = existing_doc
+    else:
+        document = Document(
+            name=name,
+            description=description,
+            project_id=project_id,
+            stage_id=stage_id,
+            uploaded_by=uploaded_by,
+            url=url,
+            attachment=attachment_urls if attachment_urls else None, 
+            version=version,
+        )
+        db.add(document)
     db.commit()
     db.refresh(document)
 

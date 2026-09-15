@@ -159,92 +159,73 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
         loadAllUsers();
     }, []);
 
-    // Fetch staff list specifically for the current user's centre (or proposal's centre)
+    // Helper to find a person from all loaded database records
+    const lookupPersonDetails = useCallback((rawName) => {
+        if (!rawName) return { type: '', designation: '', role: '' };
+        const clean = rawName.replace(/\s+/g, ' ').trim().toLowerCase();
+        
+        // Exact or case-insensitive match
+        let found = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean)
+            || usersList.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+
+        // Fallback: match without title prefixes like Dr., Mr., Mrs., Prof.
+        if (!found) {
+            const strippedClean = clean.replace(/^(dr\.|mr\.|mrs\.|ms\.|prof\.|er\.)\s+/i, '').trim();
+            found = staffList.find(s => {
+                const sClean = (s.name || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^(dr\.|mr\.|mrs\.|ms\.|prof\.|er\.)\s+/i, '').trim();
+                return sClean === strippedClean;
+            }) || usersList.find(u => {
+                const uClean = (u.name || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^(dr\.|mr\.|mrs\.|ms\.|prof\.|er\.)\s+/i, '').trim();
+                return uClean === strippedClean;
+            });
+        }
+
+        return {
+            type: found?.type || found?.member_type || '',
+            designation: found?.designation || '',
+            role: found?.role || ''
+        };
+    }, [staffList, usersList]);
+
+    // Fetch all users list specifically for Review Team dropdown
     useEffect(() => {
-        async function loadCentreStaff() {
+        async function loadAllUsers() {
+            try {
+                const token = localStorage.getItem('token');
+                const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders });
+                if (res.data && Array.isArray(res.data)) {
+                    setUsersList(res.data);
+                }
+            } catch (err) {
+                console.error('Failed to load users list from /users/:', err);
+            }
+        }
+        loadAllUsers();
+    }, []);
+
+    // Fetch all staff and users from database for complete auto-fill lookup
+    useEffect(() => {
+        async function loadAllStaffAndUsers() {
             try {
                 const token = localStorage.getItem('token');
                 const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
-                // 1. Fetch centres list to resolve numeric centre_id
-                const centresRes = await axios.get(`${API_BASE_URL}/centres/`, { headers: authHeaders }).catch(() => ({ data: [] }));
-                const centresList = Array.isArray(centresRes.data) ? centresRes.data : [];
+                // Fetch all staff and all users from DB in parallel
+                const [allStaffRes, usersRes] = await Promise.all([
+                    axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders }).catch(() => ({ data: [] })),
+                    axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] }))
+                ]);
 
-                // 2. Identify centre name / id from logged-in user or selected proposal
-                let targetCentreName = '';
-                let targetCentreId = null;
+                const fetchedStaff = Array.isArray(allStaffRes.data) ? allStaffRes.data : [];
+                const fetchedUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
 
-                const rawUser = window.localStorage.getItem('ppm_user');
-                if (rawUser) {
-                    try {
-                        const parsedUser = JSON.parse(rawUser);
-                        targetCentreName = (parsedUser.center || parsedUser.centre || '').trim();
-                        if (parsedUser.center_id) targetCentreId = parsedUser.center_id;
-                    } catch (e) {
-                        console.error('Failed to parse ppm_user', e);
-                    }
-                }
-
-                // If proposal is selected and has center info, fallback if user center is not set
-                if (!targetCentreName && !targetCentreId && selectedProposalId) {
-                    const currentProp = proposals.find(p => String(p.id) === String(selectedProposalId));
-                    if (currentProp) {
-                        targetCentreName = (currentProp.center || currentProp.centre || currentProp.centre_name || '').trim();
-                        if (currentProp.centre_id) targetCentreId = currentProp.centre_id;
-                    }
-                }
-
-                // 3. Match centre from centres list
-                let matchedCentre = null;
-                if (targetCentreId) {
-                    matchedCentre = centresList.find(c => c.id === targetCentreId);
-                }
-                if (!matchedCentre && targetCentreName) {
-                    const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
-                    matchedCentre = centresList.find(c => {
-                        const cName = (c.name || '').toLowerCase().replace(/^c-/, '').trim();
-                        const cCode = (c.code || '').toLowerCase().replace(/^c-/, '').trim();
-                        return cName === cleanTarget || cCode === cleanTarget;
-                    });
-                }
-
-                const finalCentreId = matchedCentre ? matchedCentre.id : targetCentreId;
-
-                // 4. Fetch staff specifically for this centre (or all staff as fallback)
-                let fetchedStaff = [];
-                if (finalCentreId) {
-                    const res = await axios.get(`${API_BASE_URL}/staff/center/${finalCentreId}`, { headers: authHeaders }).catch(() => ({ data: [] }));
-                    if (res.data && Array.isArray(res.data)) {
-                        fetchedStaff = res.data;
-                    }
-                }
-                if (fetchedStaff.length === 0) {
-                    const allStaffRes = await axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders }).catch(() => ({ data: [] }));
-                    if (allStaffRes.data && Array.isArray(allStaffRes.data)) {
-                        if (matchedCentre) {
-                            fetchedStaff = allStaffRes.data.filter(s => s.centre_id === matchedCentre.id);
-                        } else if (targetCentreName) {
-                            const cleanTarget = targetCentreName.toLowerCase().replace(/^c-/, '').trim();
-                            fetchedStaff = allStaffRes.data.filter(s => (s.centre_name || '').toLowerCase().includes(cleanTarget));
-                        } else {
-                            fetchedStaff = allStaffRes.data;
-                        }
-                    }
-                }
-
-                // 5. Fetch registered users to combine with staff (fetch all users)
-                let fetchedUsers = [];
-                const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] }));
-                if (usersRes.data && Array.isArray(usersRes.data)) {
-                    fetchedUsers = usersRes.data;
-                }
-
-                // Merge staff and users into a unified list uniquely by name
+                // Merge staff and users into a unified map uniquely by normalized name
                 const combinedMap = new Map();
 
                 fetchedStaff.forEach(s => {
                     if (s.name && s.name.trim()) {
-                        const key = s.name.trim().toLowerCase();
+                        const key = s.name.replace(/\s+/g, ' ').trim().toLowerCase();
                         combinedMap.set(key, {
                             name: s.name.trim(),
                             designation: s.designation || '',
@@ -256,7 +237,7 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
 
                 fetchedUsers.forEach(u => {
                     if (u.name && u.name.trim()) {
-                        const key = u.name.trim().toLowerCase();
+                        const key = u.name.replace(/\s+/g, ' ').trim().toLowerCase();
                         if (combinedMap.has(key)) {
                             const existing = combinedMap.get(key);
                             combinedMap.set(key, {
@@ -279,11 +260,58 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                 const mergedList = Array.from(combinedMap.values()).sort((a, b) => a.name.localeCompare(b.name));
                 setStaffList(mergedList);
             } catch (err) {
-                console.error('Failed to load centre staff list for auto-fill:', err);
+                console.error('Failed to load database staff and users list for auto-fill:', err);
             }
         }
-        loadCentreStaff();
-    }, [selectedProposalId, proposals]);
+        loadAllStaffAndUsers();
+    }, []);
+
+    // Database Auto-Fill Effect: As soon as staffList or usersList is ready, auto-fill missing type & designation in existing rows
+    useEffect(() => {
+        if (staffList.length === 0 && usersList.length === 0) return;
+
+        setTeamMembers(prev => {
+            let changed = false;
+            const updated = prev.map(m => {
+                if (m.name && (!m.member_type || !m.designation)) {
+                    const info = lookupPersonDetails(m.name);
+                    const newType = m.member_type || info.type || '';
+                    const newDesig = m.designation || info.designation || '';
+                    if (newType !== m.member_type || newDesig !== m.designation) {
+                        changed = true;
+                        return {
+                            ...m,
+                            member_type: newType,
+                            designation: newDesig
+                        };
+                    }
+                }
+                return m;
+            });
+            return changed ? updated : prev;
+        });
+
+        setReviewMembers(prev => {
+            let changed = false;
+            const updated = prev.map(m => {
+                if (m.name && (!m.member_type || !m.designation)) {
+                    const info = lookupPersonDetails(m.name);
+                    const newType = m.member_type || info.type || '';
+                    const newDesig = m.designation || info.designation || '';
+                    if (newType !== m.member_type || newDesig !== m.designation) {
+                        changed = true;
+                        return {
+                            ...m,
+                            member_type: newType,
+                            designation: newDesig
+                        };
+                    }
+                }
+                return m;
+            });
+            return changed ? updated : prev;
+        });
+    }, [staffList, usersList, lookupPersonDetails]);
 
     // Check props or URL parameters to load existing submission
     useEffect(() => {
@@ -531,13 +559,29 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                         const token = localStorage.getItem('token');
                         const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
-                        // Fetch all users
-                        const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] }));
-                        const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+                        // Fetch all users and staff in parallel
+                        const [usersRes, staffRes, membersRes] = await Promise.all([
+                            axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] })),
+                            axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders }).catch(() => ({ data: [] })),
+                            axios.get(`${API_BASE_URL}/team-members/proposal/${selectedProposalId}`, { headers: authHeaders }).catch(() => ({ data: [] }))
+                        ]);
 
-                        // Fetch team members of proposal
-                        const membersRes = await axios.get(`${API_BASE_URL}/team-members/proposal/${selectedProposalId}`, { headers: authHeaders }).catch(() => ({ data: [] }));
+                        const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+                        const allStaff = Array.isArray(staffRes.data) ? staffRes.data : [];
                         const dbMembers = Array.isArray(membersRes.data) ? membersRes.data : [];
+
+                        const findPerson = (rawName) => {
+                            if (!rawName) return null;
+                            const clean = rawName.replace(/\s+/g, ' ').trim().toLowerCase();
+                            const fromStaffList = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                            if (fromStaffList) return fromStaffList;
+                            const fromAllStaff = allStaff.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                            if (fromAllStaff) return fromAllStaff;
+                            const fromUsersList = usersList.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                            if (fromUsersList) return fromUsersList;
+                            const fromAllUsers = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                            return fromAllUsers || null;
+                        };
 
                         const initialTeam = [];
                         let slNo = 1;
@@ -545,15 +589,13 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                         // 1. Coordinator
                         const coordName = prop.project_co_ordinator;
                         if (coordName) {
-                            const coordClean = coordName.replace(/\s+/g, ' ').trim().toLowerCase();
-                            const coordStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
-                            const coordUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
+                            const coordPerson = findPerson(coordName);
                             initialTeam.push({
                                 sl_no: slNo++,
                                 name: coordName,
-                                designation: coordStaff?.designation || coordUser?.designation || '',
-                                member_type: coordStaff?.type || '',
-                                roles: coordStaff?.role || 'Project Co-ordinator',
+                                designation: coordPerson?.designation || '',
+                                member_type: coordPerson?.type || coordPerson?.member_type || '',
+                                roles: coordPerson?.role || 'Project Co-ordinator',
                                 signature: ''
                             });
                         }
@@ -564,15 +606,13 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                             if (coordName && mName.replace(/\s+/g, ' ').trim().toLowerCase() === coordName.replace(/\s+/g, ' ').trim().toLowerCase()) {
                                 return;
                             }
-                            const mClean = mName.replace(/\s+/g, ' ').trim().toLowerCase();
-                            const mStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
-                            const mUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
+                            const mPerson = findPerson(mName);
                             initialTeam.push({
                                 sl_no: slNo++,
                                 name: mName,
-                                designation: mStaff?.designation || mUser?.designation || '',
-                                member_type: mStaff?.type || mUser?.type || '',
-                                roles: m.roles || '',
+                                designation: mPerson?.designation || '',
+                                member_type: mPerson?.type || mPerson?.member_type || '',
+                                roles: m.roles || mPerson?.role || '',
                                 signature: ''
                             });
                         });
@@ -585,7 +625,7 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                 fetchInitialTeam();
             }
         }
-    }, [selectedProposalId, proposals, teamMembers.length]);
+    }, [selectedProposalId, proposals, teamMembers.length, staffList, usersList]);
 
     // Handle proposal selection
     const handleProposalChange = async (e) => {
@@ -624,13 +664,29 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                 const token = localStorage.getItem('token');
                 const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
-                // Fetch all users
-                const usersRes = await axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders });
-                const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+                // Fetch all users and staff in parallel
+                const [usersRes, staffRes, membersRes] = await Promise.all([
+                    axios.get(`${API_BASE_URL}/users/`, { headers: authHeaders }).catch(() => ({ data: [] })),
+                    axios.get(`${API_BASE_URL}/staff/`, { headers: authHeaders }).catch(() => ({ data: [] })),
+                    axios.get(`${API_BASE_URL}/team-members/proposal/${value}`, { headers: authHeaders }).catch(() => ({ data: [] }))
+                ]);
 
-                // Fetch team members of proposal
-                const membersRes = await axios.get(`${API_BASE_URL}/team-members/proposal/${value}`, { headers: authHeaders });
+                const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+                const allStaff = Array.isArray(staffRes.data) ? staffRes.data : [];
                 const dbMembers = Array.isArray(membersRes.data) ? membersRes.data : [];
+
+                const findPerson = (rawName) => {
+                    if (!rawName) return null;
+                    const clean = rawName.replace(/\s+/g, ' ').trim().toLowerCase();
+                    const fromStaffList = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                    if (fromStaffList) return fromStaffList;
+                    const fromAllStaff = allStaff.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                    if (fromAllStaff) return fromAllStaff;
+                    const fromUsersList = usersList.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                    if (fromUsersList) return fromUsersList;
+                    const fromAllUsers = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === clean);
+                    return fromAllUsers || null;
+                };
 
                 const initialTeam = [];
                 let slNo = 1;
@@ -638,15 +694,13 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                 // 1. Coordinator
                 const coordName = prop.project_co_ordinator;
                 if (coordName) {
-                    const coordClean = coordName.replace(/\s+/g, ' ').trim().toLowerCase();
-                    const coordStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
-                    const coordUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === coordClean);
+                    const coordPerson = findPerson(coordName);
                     initialTeam.push({
                         sl_no: slNo++,
                         name: coordName,
-                        designation: coordStaff?.designation || coordUser?.designation || '',
-                        member_type: coordStaff?.type || '',
-                        roles: coordStaff?.role || 'Project Co-ordinator',
+                        designation: coordPerson?.designation || '',
+                        member_type: coordPerson?.type || coordPerson?.member_type || '',
+                        roles: coordPerson?.role || 'Project Co-ordinator',
                         signature: ''
                     });
                 }
@@ -657,15 +711,13 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                     if (coordName && mName.replace(/\s+/g, ' ').trim().toLowerCase() === coordName.replace(/\s+/g, ' ').trim().toLowerCase()) {
                         return;
                     }
-                    const mClean = mName.replace(/\s+/g, ' ').trim().toLowerCase();
-                    const mStaff = staffList.find(s => s.name && s.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
-                    const mUser = allUsers.find(u => u.name && u.name.replace(/\s+/g, ' ').trim().toLowerCase() === mClean);
+                    const mPerson = findPerson(mName);
                     initialTeam.push({
                         sl_no: slNo++,
                         name: mName,
-                        designation: mStaff?.designation || mUser?.designation || '',
-                        member_type: mStaff?.type || mUser?.type || '',
-                        roles: m.roles || '',
+                        designation: mPerson?.designation || '',
+                        member_type: mPerson?.type || mPerson?.member_type || '',
+                        roles: m.roles || mPerson?.role || '',
                         signature: ''
                     });
                 });
@@ -711,66 +763,31 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
 
     // Auto-fill designation, type, and roles when selecting/typing staff name
     const handleStaffNameChange = (index, value) => {
-        const cleanVal = (value || '').trim().toLowerCase();
-        const matched = staffList.find(
-            s => s.name && s.name.trim().toLowerCase() === cleanVal
-        );
-
+        const info = lookupPersonDetails(value);
         setTeamMembers(prev => {
             const updated = [...prev];
-            if (matched) {
-                updated[index] = {
-                    ...updated[index],
-                    name: matched.name,
-                    designation: matched.designation || updated[index]?.designation || '',
-                    member_type: matched.type || updated[index]?.member_type || ''
-                    // Roles left untouched so user can type manually
-                };
-            } else {
-                updated[index] = {
-                    ...updated[index],
-                    name: value
-                };
-            }
+            updated[index] = {
+                ...updated[index],
+                name: value,
+                designation: info.designation || updated[index]?.designation || '',
+                member_type: info.type || updated[index]?.member_type || ''
+            };
             return updated;
         });
     };
 
     // Auto-fill designation, type, and roles (defaulting to 'Project review') when selecting/typing review member from all users
     const handleReviewStaffNameChange = (index, value) => {
-        const cleanVal = (value || '').trim().toLowerCase();
-        const matchedUser = usersList.find(
-            u => u.name && u.name.trim().toLowerCase() === cleanVal
-        );
-        const matchedStaff = staffList.find(
-            s => s.name && s.name.trim().toLowerCase() === cleanVal
-        );
-
+        const info = lookupPersonDetails(value);
         setReviewMembers(prev => {
             const updated = [...prev];
-            if (matchedUser) {
-                updated[index] = {
-                    ...updated[index],
-                    name: matchedUser.name,
-                    designation: matchedUser.designation || matchedStaff?.designation || updated[index]?.designation || '',
-                    member_type: matchedStaff?.type || updated[index]?.member_type || '',
-                    roles: updated[index]?.roles || 'Project review'
-                };
-            } else if (matchedStaff) {
-                updated[index] = {
-                    ...updated[index],
-                    name: matchedStaff.name,
-                    designation: matchedStaff.designation || updated[index]?.designation || '',
-                    member_type: matchedStaff.type || updated[index]?.member_type || '',
-                    roles: updated[index]?.roles || 'Project review'
-                };
-            } else {
-                updated[index] = {
-                    ...updated[index],
-                    name: value,
-                    roles: updated[index]?.roles || 'Project review'
-                };
-            }
+            updated[index] = {
+                ...updated[index],
+                name: value,
+                designation: info.designation || updated[index]?.designation || '',
+                member_type: info.type || updated[index]?.member_type || '',
+                roles: updated[index]?.roles || 'Project review'
+            };
             return updated;
         });
     };
@@ -1240,11 +1257,11 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                         <thead>
                             <tr className="bg-slate-900 text-white font-bold text-center">
                                 <th className="border border-slate-800 p-2.5 w-[7%]">Sl No</th>
-                                <th className="border border-slate-800 p-2.5 w-[28%]">Name</th>
+                                <th className="border border-slate-800 p-2.5 w-[26%]">Name</th>
                                 <th className="border border-slate-800 p-2.5 w-[20%]">Designation</th>
-                                <th className="border border-slate-800 p-2.5 w-[20%]">Type</th>
-                                <th className="border border-slate-800 p-2.5 w-[25%]">Roles</th>
-                                {!isReadOnly && <th className="border border-slate-800 p-2.5 w-[10%]">Actions</th>}
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Type (Mech/Elect/Software)</th>
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Roles</th>
+                                {!isReadOnly && <th className="border border-slate-800 p-2.5 w-[7%]">Actions</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -1256,18 +1273,25 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                                     <td className="border border-slate-800 p-2 font-semibold text-slate-900">
                                         {isReadOnly ? (member.name || '--') : (
                                             <AutoComplete
-                                                options={staffList.map((s, sIdx) => ({
-                                                    value: s.name,
-                                                    label: `${s.name} ${s.designation ? `— ${s.designation}` : ''} ${s.type ? `(${s.type})` : ''} ${s.role ? `[${s.role}]` : ''}`
-                                                }))}
+                                                options={staffList.map((s) => {
+                                                    const desig = s.designation ? ` — ${s.designation}` : '';
+                                                    const typeStr = s.type ? ` [Type: ${s.type}]` : '';
+                                                    const roleStr = s.role ? ` (${s.role})` : '';
+                                                    return {
+                                                        value: s.name,
+                                                        label: `${s.name}${desig}${typeStr}${roleStr}`
+                                                    };
+                                                })}
                                                 value={member.name}
                                                 onChange={(val) => handleStaffNameChange(index, val)}
+                                                onSelect={(val) => handleStaffNameChange(index, val)}
                                                 popupClassName="bg-white"
                                                 popupMatchSelectWidth={false}
                                                 dropdownMatchSelectWidth={false}
                                                 style={{ width: '100%' }}
                                                 filterOption={(inputValue, option) =>
-                                                    option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                                    option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1 ||
+                                                    (option.label && option.label.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1)
                                                 }
                                             >
                                                 <input
@@ -1295,8 +1319,8 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                                                 type="text"
                                                 value={member.member_type}
                                                 onChange={(e) => handleTeamMemberChange(index, 'member_type', e.target.value)}
-                                                placeholder="Type..."
-                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                                placeholder="Type (e.g. Mech/Elect/Software)..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700 font-medium"
                                             />
                                         )}
                                     </td>
@@ -1346,11 +1370,11 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                         <thead>
                             <tr className="bg-slate-900 text-white font-bold text-center">
                                 <th className="border border-slate-800 p-2.5 w-[7%]">Sl No</th>
-                                <th className="border border-slate-800 p-2.5 w-[24%]">Name</th>
-                                <th className="border border-slate-800 p-2.5 w-[18%]">Designation</th>
-                                <th className="border border-slate-800 p-2.5 w-[19%]">Type (Mech/Elect/software)</th>
-                                <th className="border border-slate-800 p-2.5 w-[19%]">Roles</th>
-                                <th className="border border-slate-800 p-2.5 w-[13%]">Actions</th>
+                                <th className="border border-slate-800 p-2.5 w-[26%]">Name</th>
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Designation</th>
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Type (Mech/Elect/Software)</th>
+                                <th className="border border-slate-800 p-2.5 w-[20%]">Roles</th>
+                                <th className="border border-slate-800 p-2.5 w-[7%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1364,14 +1388,16 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                                             <AutoComplete
                                                 options={usersList.map((u) => {
                                                     const desig = u.designation ? ` — ${u.designation}` : '';
+                                                    const typeStr = u.type ? ` [Type: ${u.type}]` : '';
                                                     const groupInfo = u.group || u.center ? ` (${[u.center, u.group].filter(Boolean).join('/')})` : '';
                                                     return {
                                                         value: u.name,
-                                                        label: `${u.name}${desig}${groupInfo}`
+                                                        label: `${u.name}${desig}${typeStr}${groupInfo}`
                                                     };
                                                 })}
                                                 value={member.name}
                                                 onChange={(val) => handleReviewStaffNameChange(index, val)}
+                                                onSelect={(val) => handleReviewStaffNameChange(index, val)}
                                                 popupClassName="bg-white"
                                                 popupMatchSelectWidth={false}
                                                 dropdownMatchSelectWidth={false}
@@ -1406,8 +1432,8 @@ export default function ProjectTeam({ submissionId: propSubmissionId, proposalId
                                                 type="text"
                                                 value={member.member_type}
                                                 onChange={(e) => handleReviewMemberChange(index, 'member_type', e.target.value)}
-                                                placeholder="Type..."
-                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700"
+                                                placeholder="Type (e.g. Mech/Elect/Software)..."
+                                                className="w-full bg-transparent outline-none focus:bg-slate-50 p-1 rounded border-0 text-slate-700 font-medium"
                                             />
                                         )}
                                     </td>

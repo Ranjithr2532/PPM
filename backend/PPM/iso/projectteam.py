@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from db import get_db
-from models.model import Proposal, TeamMember
+from models.model import Proposal, TeamMember, Staff
 from models.user_model import User
 from iso.header import add_header_table, normalize_centre_dept
 from iso.finalfooter import add_footer_table
@@ -317,15 +317,33 @@ def create_project_team_document(
     for idx, h_text in enumerate(headers):
         add_text(team_table.cell(0, idx), h_text, font_size=9, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
+    def _get_val(obj, key, fallback=""):
+        if isinstance(obj, dict):
+            v = obj.get(key)
+            if v is None and key == "member_type":
+                v = obj.get("type")
+            return str(v) if v is not None else fallback
+        v = getattr(obj, key, None)
+        if v is None and key == "member_type":
+            v = getattr(obj, "type", None)
+        return str(v) if v is not None else fallback
+
     # Populate Rows
     for idx, member in enumerate(team_members):
         row_idx = idx + 1
-        add_text(team_table.cell(row_idx, 0), f"{member.sl_no}.", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-        add_text(team_table.cell(row_idx, 1), member.name, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(team_table.cell(row_idx, 2), member.designation, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(team_table.cell(row_idx, 3), member.member_type, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(team_table.cell(row_idx, 4), member.roles, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(team_table.cell(row_idx, 5), member.signature, font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        sl = _get_val(member, "sl_no", str(idx + 1))
+        m_name = _get_val(member, "name")
+        m_desig = _get_val(member, "designation")
+        m_type = _get_val(member, "member_type")
+        m_roles = _get_val(member, "roles")
+        m_sig = _get_val(member, "signature")
+
+        add_text(team_table.cell(row_idx, 0), f"{sl}.", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        add_text(team_table.cell(row_idx, 1), m_name, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(team_table.cell(row_idx, 2), m_desig, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(team_table.cell(row_idx, 3), m_type, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(team_table.cell(row_idx, 4), m_roles, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(team_table.cell(row_idx, 5), m_sig, font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Spacing between tables
     p_space = doc.add_paragraph()
@@ -366,13 +384,20 @@ def create_project_team_document(
 
     for idx, member in enumerate(review_members):
         row_idx = idx + 1
-        role_val = member.roles if (member.roles and str(member.roles).strip()) else "Project review"
-        add_text(rev_table.cell(row_idx, 0), f"{member.sl_no}.", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-        add_text(rev_table.cell(row_idx, 1), member.name, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(rev_table.cell(row_idx, 2), member.designation, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(rev_table.cell(row_idx, 3), member.member_type, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        sl = _get_val(member, "sl_no", str(idx + 1))
+        m_name = _get_val(member, "name")
+        m_desig = _get_val(member, "designation")
+        m_type = _get_val(member, "member_type")
+        raw_roles = _get_val(member, "roles")
+        role_val = raw_roles if raw_roles.strip() else "Project review"
+        m_sig = _get_val(member, "signature")
+
+        add_text(rev_table.cell(row_idx, 0), f"{sl}.", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        add_text(rev_table.cell(row_idx, 1), m_name, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(rev_table.cell(row_idx, 2), m_desig, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+        add_text(rev_table.cell(row_idx, 3), m_type, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
         add_text(rev_table.cell(row_idx, 4), role_val, font_size=9, alignment=WD_ALIGN_PARAGRAPH.LEFT)
-        add_text(rev_table.cell(row_idx, 5), member.signature, font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        add_text(rev_table.cell(row_idx, 5), m_sig, font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     return doc
 
@@ -414,6 +439,35 @@ def generate_project_team_bytes(
 # ============================================================
 # ENDPOINTS
 # ============================================================
+
+def _autofill_member_from_db(member, db: Session):
+    if not member:
+        return member
+    name = getattr(member, "name", "") or (member.get("name") if isinstance(member, dict) else "")
+    if not name:
+        return member
+    curr_type = getattr(member, "member_type", "") or (member.get("member_type") if isinstance(member, dict) else "")
+    curr_desig = getattr(member, "designation", "") or (member.get("designation") if isinstance(member, dict) else "")
+    
+    if not curr_type or not curr_desig:
+        name_clean = " ".join(name.split()).lower()
+        staff_match = db.query(Staff).filter(func.lower(Staff.name) == name_clean).first()
+        user_match = db.query(User).filter(func.lower(User.name) == name_clean).first()
+        resolved_type = (staff_match.type if staff_match and staff_match.type else "") or (user_match.type if user_match and user_match.type else "")
+        resolved_desig = (user_match.designation if user_match and user_match.designation else "") or (staff_match.designation if staff_match and staff_match.designation else "")
+
+        if isinstance(member, dict):
+            if not curr_type and resolved_type:
+                member["member_type"] = resolved_type
+            if not curr_desig and resolved_desig:
+                member["designation"] = resolved_desig
+        else:
+            if not curr_type and resolved_type:
+                member.member_type = resolved_type
+            if not curr_desig and resolved_desig:
+                member.designation = resolved_desig
+    return member
+
 
 @router.get(
     "/project-team/generate",
@@ -483,23 +537,26 @@ async def generate_project_team_doc_get(
         # Autofill project coordinator and team members from database
         coordinator_name = proposal.project_co_ordinator
         coordinator_user = None
+        coordinator_staff = None
         if coordinator_name:
             coordinator_clean = " ".join(coordinator_name.split()).lower()
             coordinator_user = db.query(User).filter(func.lower(User.name) == coordinator_clean).first()
+            coordinator_staff = db.query(Staff).filter(func.lower(Staff.name) == coordinator_clean).first()
 
         db_members = db.query(TeamMember).filter(TeamMember.proposal_id == proposal.id).all()
         team_members_list = []
         sl_no = 1
 
         if coordinator_name:
-            coord_desig = coordinator_user.designation if coordinator_user else ""
+            coord_desig = (coordinator_user.designation if coordinator_user and coordinator_user.designation else "") or (coordinator_staff.designation if coordinator_staff and coordinator_staff.designation else "")
+            coord_type = (coordinator_staff.type if coordinator_staff and coordinator_staff.type else "") or (coordinator_user.type if coordinator_user and coordinator_user.type else "")
             team_members_list.append(
                 TeamMemberRequest(
                     sl_no=sl_no,
                     name=coordinator_name,
                     designation=coord_desig or "",
-                    member_type="",
-                    roles="",
+                    member_type=coord_type or "",
+                    roles="Project Co-ordinator",
                     signature=""
                 )
             )
@@ -511,13 +568,15 @@ async def generate_project_team_doc_get(
                 continue
             m_clean = " ".join(m_name.split()).lower()
             m_user = db.query(User).filter(func.lower(User.name) == m_clean).first()
-            m_desig = m_user.designation if m_user else ""
+            m_staff = db.query(Staff).filter(func.lower(Staff.name) == m_clean).first()
+            m_desig = (m_user.designation if m_user and m_user.designation else "") or (m_staff.designation if m_staff and m_staff.designation else "")
+            m_type = (m_staff.type if m_staff and m_staff.type else "") or (m_user.type if m_user and m_user.type else "")
             team_members_list.append(
                 TeamMemberRequest(
                     sl_no=sl_no,
                     name=m_name,
                     designation=m_desig or "",
-                    member_type="",
+                    member_type=m_type or "",
                     roles="",
                     signature=""
                 )
@@ -623,23 +682,26 @@ async def generate_project_team_doc_post(
         if not team_members:
             coordinator_name = proposal.project_co_ordinator
             coordinator_user = None
+            coordinator_staff = None
             if coordinator_name:
                 coordinator_clean = " ".join(coordinator_name.split()).lower()
                 coordinator_user = db.query(User).filter(func.lower(User.name) == coordinator_clean).first()
+                coordinator_staff = db.query(Staff).filter(func.lower(Staff.name) == coordinator_clean).first()
 
             db_members = db.query(TeamMember).filter(TeamMember.proposal_id == proposal.id).all()
             team_members_list = []
             sl_no = 1
 
             if coordinator_name:
-                coord_desig = coordinator_user.designation if coordinator_user else ""
+                coord_desig = (coordinator_user.designation if coordinator_user and coordinator_user.designation else "") or (coordinator_staff.designation if coordinator_staff and coordinator_staff.designation else "")
+                coord_type = (coordinator_staff.type if coordinator_staff and coordinator_staff.type else "") or (coordinator_user.type if coordinator_user and coordinator_user.type else "")
                 team_members_list.append(
                     TeamMemberRequest(
                         sl_no=sl_no,
                         name=coordinator_name,
                         designation=coord_desig or "",
-                        member_type="",
-                        roles="",
+                        member_type=coord_type or "",
+                        roles="Project Co-ordinator",
                         signature=""
                     )
                 )
@@ -651,13 +713,15 @@ async def generate_project_team_doc_post(
                     continue
                 m_clean = " ".join(m_name.split()).lower()
                 m_user = db.query(User).filter(func.lower(User.name) == m_clean).first()
-                m_desig = m_user.designation if m_user else ""
+                m_staff = db.query(Staff).filter(func.lower(Staff.name) == m_clean).first()
+                m_desig = (m_user.designation if m_user and m_user.designation else "") or (m_staff.designation if m_staff and m_staff.designation else "")
+                m_type = (m_staff.type if m_staff and m_staff.type else "") or (m_user.type if m_user and m_user.type else "")
                 team_members_list.append(
                     TeamMemberRequest(
                         sl_no=sl_no,
                         name=m_name,
                         designation=m_desig or "",
-                        member_type="",
+                        member_type=m_type or "",
                         roles="",
                         signature=""
                     )
@@ -665,6 +729,14 @@ async def generate_project_team_doc_post(
                 sl_no += 1
 
             team_members = team_members_list
+
+    # Ensure all team members and review members have type and designation autofilled from DB
+    if team_members:
+        team_members = [_autofill_member_from_db(m, db) for m in team_members]
+
+    review_members = payload.review_members
+    if review_members:
+        review_members = [_autofill_member_from_db(m, db) for m in review_members]
 
     buffer = generate_project_team_bytes(
         project_no=project_no,
@@ -678,7 +750,7 @@ async def generate_project_team_doc_post(
         doc_no=doc_no,
         doc_date=doc_date,
         team_members=team_members,
-        review_members=payload.review_members
+        review_members=review_members
     )
 
     headers = {

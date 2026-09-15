@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     DownloadOutlined,
     FileWordOutlined,
@@ -9,14 +9,44 @@ import {
     CloseOutlined,
     BoldOutlined,
     CheckCircleOutlined,
-    LoadingOutlined
+    LoadingOutlined,
+    InboxOutlined,
+    PaperClipOutlined,
+    UserOutlined,
+    MailOutlined,
+    PhoneOutlined,
+    BankOutlined,
+    ApartmentOutlined,
 } from '@ant-design/icons';
-import { DatePicker, message } from 'antd';
+import { DatePicker, message, Form, Input, Select, Upload, Tag, Row, Col, Button, Tooltip, AutoComplete } from 'antd';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName } from '../services/isoSubmissionService';
 import cmtiLogo from '../assets/waitro-member-cmti.png';
+
+const { Dragger } = Upload;
+const { TextArea } = Input;
+
+const CUSTOMER_TYPE_OPTIONS = [
+    'Govt',
+    'Private',
+    'MHI',
+    'MSME',
+    'Research Institute',
+    'Educational institute',
+];
+
+const REQUEST_TYPE_OPTIONS = [
+    'Call for Proposal',
+    'Mail',
+    'Discussion',
+    'Initiative',
+    'Tender',
+    'Direct Enquiry',
+    'Budgetry offer',
+    'EOI',
+];
 
 const normalizeCentreDept = (centre) => {
     if (!centre) return '';
@@ -84,9 +114,10 @@ const getCurrentUserRole = () => {
     }
 };
 
-export default function ProjectProposal({ submissionId: propSubmissionId, proposalId: propProposalId, existingRecord, onBack, onSuccess, docInfo }) {
+export default function ProjectProposal({ submissionId: propSubmissionId, proposalId: propProposalId, existingRecord, onBack, onSuccess, onAddToProposals, docInfo, stageConfig }) {
     const [generating, setGenerating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [submitProposalLoading, setSubmitProposalLoading] = useState(false);
     const [submissionId, setSubmissionId] = useState(propSubmissionId || null);
     const [proposalId, setProposalId] = useState(propProposalId || existingRecord?.id || null);
     const [status, setStatus] = useState('DRAFT');
@@ -121,18 +152,135 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     const [coLeaders, setCoLeaders] = useState('');
     const [coreStMembers, setCoreStMembers] = useState([]);
 
+    // Submission & Manual Entry Details State
+    const [customerType, setCustomerType] = useState(existingRecord?.customer_type || 'Govt');
+    const [requestType, setRequestType] = useState(existingRecord?.request_type || 'Direct Enquiry');
+    const [quoteAmount, setQuoteAmount] = useState(existingRecord?.quote_amount || '');
+    const [proposalStatus, setProposalStatus] = useState(() => {
+        if (existingRecord?.proposal_status) {
+            return Array.isArray(existingRecord.proposal_status)
+                ? existingRecord.proposal_status
+                : [existingRecord.proposal_status];
+        }
+        return ['Submitted'];
+    });
+    const [customerName, setCustomerName] = useState(existingRecord?.customer_name || existingRecord?.customer_raw || '');
+    const [customerAddress, setCustomerAddress] = useState(existingRecord?.address || '');
+    const [alternateContact, setAlternateContact] = useState(existingRecord?.alternate_contact_details || '');
+    const [customerEmail, setCustomerEmail] = useState(existingRecord?.email || '');
+    const [customerPhone, setCustomerPhone] = useState(existingRecord?.phone_no || '');
+    const [quoteReference, setQuoteReference] = useState(existingRecord?.quote_reference || existingRecord?.project_number || existingRecord?.order_number || '');
+    const [quoteDescription, setQuoteDescription] = useState(existingRecord?.quote_description || existingRecord?.activity || '');
+    const [quotationGivenBy, setQuotationGivenBy] = useState(existingRecord?.quotation_given_by_name || getLoggedUserName() || '');
+    const [centerDept, setCenterDept] = useState(existingRecord?.center || loggedCentreDept || '');
+    const [groupName, setGroupName] = useState(existingRecord?.group || getLoggedUserGroup() || '');
+    const [makeInIndia, setMakeInIndia] = useState(existingRecord?.make_in_india || '');
+    const [tenderFileList, setTenderFileList] = useState([]);
+    const [additionalAttachments, setAdditionalAttachments] = useState([]);
+
+    // Customer Suggestions & AutoComplete
+    const [customerSuggestions, setCustomerSuggestions] = useState([]);
+    const [customerOptions, setCustomerOptions] = useState([]);
+    const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [addressOptions, setAddressOptions] = useState([]);
+
+    // Helper to auto-fill customer details from customer database
+    const syncCustomerData = useCallback((name) => {
+        if (!name || !customerSuggestions || customerSuggestions.length === 0) return;
+        const query = name.trim().toLowerCase();
+        const match = customerSuggestions.find(c => (c.name || '').trim().toLowerCase() === query);
+        if (match) {
+            if (match.customer_type) setCustomerType(match.customer_type);
+            if (match.email) setCustomerEmail(match.email);
+            if (match.phone_no || match.phone) setCustomerPhone(match.phone_no || match.phone);
+            if (match.address) setCustomerAddress(match.address);
+            if (match.alternate_contact_details) setAlternateContact(match.alternate_contact_details);
+        }
+    }, [customerSuggestions]);
+
+    // Fetch customer database for autocomplete
+    useEffect(() => {
+        const fetchCustomers = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const headers = {
+                    accept: 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                };
+                const res = await axios.get(`${API_BASE_URL}/customer1/`, { headers });
+                if (res.data && Array.isArray(res.data)) {
+                    const normalized = res.data.map(customer => {
+                        const emails = Array.isArray(customer.email) ? customer.email : [];
+                        const phones = Array.isArray(customer.phone) ? customer.phone : [];
+                        const addresses = Array.isArray(customer.address) ? customer.address : [];
+                        const alternate_contacts = Array.isArray(customer.alternate_contact_details) ? customer.alternate_contact_details : [];
+
+                        return {
+                            ...customer,
+                            name: customer.name,
+                            customer_type: customer.customer_type,
+                            email: emails.join(', '),
+                            phone_no: phones.join(', '),
+                            alternate_contact_details: alternate_contacts.join(', '),
+                            addresses: addresses,
+                            address: addresses.join('\n'),
+                        };
+                    });
+                    setCustomerSuggestions(normalized);
+                }
+            } catch (err) {
+                console.error('Error loading customer suggestions:', err);
+            }
+        };
+        fetchCustomers();
+    }, []);
+
+    // Sync customer info once customerSuggestions load if customer name already exists
+    useEffect(() => {
+        if (customerSuggestions.length > 0 && (customerName || sponsoringAgency)) {
+            syncCustomerData(customerName || sponsoringAgency);
+        }
+    }, [customerSuggestions, customerName, sponsoringAgency, syncCustomerData]);
+
     useEffect(() => {
         if (existingRecord) {
             const title = existingRecord.quote_reference || existingRecord.activity || existingRecord.quote_description || '';
-            if (title) setTitleOfProject(title);
+            if (title) {
+                setTitleOfProject(title);
+                setQuoteDescription(title);
+            }
 
             const leader = existingRecord.project_co_ordinator || existingRecord.project_coordinator || existingRecord.quotation_given_by_name || getLoggedUserName() || '';
-            if (leader) setProjectLeader(leader);
+            if (leader) {
+                setProjectLeader(leader);
+                setQuotationGivenBy(leader);
+            }
 
-            if (existingRecord.customer_name) setSponsoringAgency(existingRecord.customer_name);
-            if (existingRecord.quote_amount) setTotalCost(existingRecord.quote_amount);
-            if (existingRecord.project_number) setProjectNo(existingRecord.project_number);
-            if (existingRecord.order_number) setSanctionOrder(existingRecord.order_number);
+            if (existingRecord.customer_name) {
+                setSponsoringAgency(existingRecord.customer_name);
+                setCustomerName(existingRecord.customer_name);
+            }
+            if (existingRecord.quote_amount) {
+                setTotalCost(existingRecord.quote_amount);
+                setQuoteAmount(existingRecord.quote_amount);
+            }
+            if (existingRecord.customer_type) setCustomerType(existingRecord.customer_type);
+            if (existingRecord.request_type) setRequestType(existingRecord.request_type);
+            if (existingRecord.email) setCustomerEmail(existingRecord.email);
+            if (existingRecord.phone_no) setCustomerPhone(existingRecord.phone_no);
+            if (existingRecord.address) setCustomerAddress(existingRecord.address);
+            if (existingRecord.alternate_contact_details) setAlternateContact(existingRecord.alternate_contact_details);
+            if (existingRecord.center) setCenterDept(existingRecord.center);
+            if (existingRecord.group) setGroupName(existingRecord.group);
+            if (existingRecord.make_in_india) setMakeInIndia(existingRecord.make_in_india);
+            if (existingRecord.project_number) {
+                setProjectNo(existingRecord.project_number);
+                setQuoteReference(existingRecord.project_number);
+            }
+            if (existingRecord.order_number) {
+                setSanctionOrder(existingRecord.order_number);
+                if (!existingRecord.project_number) setQuoteReference(existingRecord.order_number);
+            }
             if (existingRecord.date_of_actual_commencement) setCommencementDate(existingRecord.date_of_actual_commencement);
             if (existingRecord.delivery_date || existingRecord.extended_delivery_date) {
                 setCompletionDate(existingRecord.delivery_date || existingRecord.extended_delivery_date);
@@ -151,15 +299,42 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                     if (res.data) {
                         const p = res.data;
                         const title = p.quote_reference || p.activity || p.quote_description || '';
-                        if (title) setTitleOfProject(title);
+                        if (title) {
+                            setTitleOfProject(title);
+                            setQuoteDescription(title);
+                        }
 
                         const leader = p.project_co_ordinator || p.project_coordinator || p.quotation_given_by_name || getLoggedUserName() || '';
-                        if (leader) setProjectLeader(leader);
+                        if (leader) {
+                            setProjectLeader(leader);
+                            setQuotationGivenBy(leader);
+                        }
 
-                        if (p.customer_name) setSponsoringAgency(p.customer_name);
-                        if (p.quote_amount) setTotalCost(p.quote_amount);
-                        if (p.project_number) setProjectNo(p.project_number);
-                        if (p.order_number) setSanctionOrder(p.order_number);
+                        if (p.customer_name) {
+                            setSponsoringAgency(p.customer_name);
+                            setCustomerName(p.customer_name);
+                        }
+                        if (p.quote_amount) {
+                            setTotalCost(p.quote_amount);
+                            setQuoteAmount(p.quote_amount);
+                        }
+                        if (p.customer_type) setCustomerType(p.customer_type);
+                        if (p.request_type) setRequestType(p.request_type);
+                        if (p.email) setCustomerEmail(p.email);
+                        if (p.phone_no) setCustomerPhone(p.phone_no);
+                        if (p.address) setCustomerAddress(p.address);
+                        if (p.alternate_contact_details) setAlternateContact(p.alternate_contact_details);
+                        if (p.center) setCenterDept(p.center);
+                        if (p.group) setGroupName(p.group);
+                        if (p.make_in_india) setMakeInIndia(p.make_in_india);
+                        if (p.project_number) {
+                            setProjectNo(p.project_number);
+                            setQuoteReference(p.project_number);
+                        }
+                        if (p.order_number) {
+                            setSanctionOrder(p.order_number);
+                            if (!p.project_number) setQuoteReference(p.order_number);
+                        }
                         if (p.date_of_actual_commencement) setCommencementDate(p.date_of_actual_commencement);
                         if (p.delivery_date || p.extended_delivery_date) {
                             setCompletionDate(p.delivery_date || p.extended_delivery_date);
@@ -213,12 +388,17 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
 
     // Helper to wrap current text in bold formatting (**bold text**)
     const wrapBoldText = (val, setter) => {
+        let nextVal;
         if (!val) {
-            setter('**bold text**');
+            nextVal = '**bold text**';
         } else if (val.startsWith('**') && val.endsWith('**')) {
-            setter(val.slice(2, -2));
+            nextVal = val.slice(2, -2);
         } else {
-            setter(`**${val}**`);
+            nextVal = `**${val}**`;
+        }
+        setter(nextVal);
+        if (setter === setTitleOfProject) {
+            setQuoteDescription(nextVal);
         }
     };
 
@@ -280,6 +460,25 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
     const totalB = calcSubtotal(nonRecurringBudget);
     const grandTotal = totalA + totalB;
 
+    // Automatically synchronize Quote Amount & Total Cost with live budget grandTotal
+    useEffect(() => {
+        if (grandTotal > 0) {
+            if (!quoteAmount || quoteAmount === '' || quoteAmount === '0') {
+                setQuoteAmount(String(grandTotal));
+            }
+            if (!totalCost || totalCost === '' || totalCost === '0') {
+                const inLakhs = (grandTotal / 100000).toFixed(2);
+                setTotalCost(`${inLakhs} Lakh`);
+            }
+        }
+    }, [grandTotal, quoteAmount, totalCost]);
+
+    useEffect(() => {
+        if (totalCost && (!quoteAmount || quoteAmount === '' || quoteAmount === '0')) {
+            setQuoteAmount(totalCost);
+        }
+    }, [totalCost, quoteAmount]);
+
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
     const submissionIdRef = useRef(submissionId);
@@ -323,17 +522,39 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                     const h = sub.header_data || {};
                     if (h.document_no) setDocNo(h.document_no);
                     if (h.date) setDocDate(h.date);
-                    if (h.prepared_by) setPreparedBy(h.prepared_by);
+                    if (h.prepared_by) {
+                        setPreparedBy(h.prepared_by);
+                        setQuotationGivenBy(h.prepared_by);
+                    }
                     if (h.approved_by) setApprovedBy(h.approved_by);
 
                     const f = sub.form_data || {};
-                    if (f.title_of_project) setTitleOfProject(f.title_of_project);
-                    if (f.project_no) setProjectNo(f.project_no);
+                    if (f.title_of_project) {
+                        setTitleOfProject(f.title_of_project);
+                        setQuoteDescription(f.title_of_project);
+                    }
+                    if (f.project_no) {
+                        setProjectNo(f.project_no);
+                        setQuoteReference(f.project_no);
+                    }
                     if (f.project_category) setProjectCategory(f.project_category);
-                    if (f.sponsoring_agency) setSponsoringAgency(f.sponsoring_agency);
-                    if (f.sanction_order) setSanctionOrder(f.sanction_order);
-                    if (f.total_cost) setTotalCost(f.total_cost);
-                    if (f.project_leader) setProjectLeader(f.project_leader);
+                    if (f.sponsoring_agency) {
+                        setSponsoringAgency(f.sponsoring_agency);
+                        setCustomerName(f.sponsoring_agency);
+                        syncCustomerData(f.sponsoring_agency);
+                    }
+                    if (f.sanction_order) {
+                        setSanctionOrder(f.sanction_order);
+                        if (!f.project_no) setQuoteReference(f.sanction_order);
+                    }
+                    if (f.total_cost) {
+                        setTotalCost(f.total_cost);
+                        setQuoteAmount(f.total_cost);
+                    }
+                    if (f.project_leader) {
+                        setProjectLeader(f.project_leader);
+                        setQuotationGivenBy(f.project_leader);
+                    }
                     if (f.co_leaders) setCoLeaders(f.co_leaders);
                     if (Array.isArray(f.core_st_members)) setCoreStMembers(f.core_st_members);
                     if (f.dev_partners_name) setDevPartnersName(f.dev_partners_name);
@@ -484,6 +705,92 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
         };
     }, [performAutoSave, isReadOnly]);
 
+    // Handle searching customers by name, address, email or phone
+    const handleCustomerSearch = (searchText) => {
+        setCustomerName(searchText);
+        setSponsoringAgency(searchText);
+        syncCustomerData(searchText);
+        if (!searchText || searchText.trim().length < 1) {
+            setCustomerOptions([]);
+            return;
+        }
+        const query = searchText.trim().toLowerCase();
+        const matches = (customerSuggestions || [])
+            .filter((c) => {
+                const name = (c.name || '').toLowerCase();
+                const addr = Array.isArray(c.addresses)
+                    ? c.addresses.join(' ').toLowerCase()
+                    : (c.address || '').toLowerCase();
+                const email = (c.email || '').toLowerCase();
+                const phone = (c.phone_no || '').toLowerCase();
+                return (
+                    name.includes(query) ||
+                    addr.includes(query) ||
+                    email.includes(query) ||
+                    phone.includes(query)
+                );
+            })
+            .slice(0, 15)
+            .map((c) => {
+                const firstAddr =
+                    Array.isArray(c.addresses) && c.addresses.length > 0
+                        ? c.addresses[0]
+                        : c.address || '';
+                return {
+                    value: c.name,
+                    label: (
+                        <div className="py-1">
+                            <div className="font-bold text-slate-800 text-xs">{c.name}</div>
+                            {firstAddr && (
+                                <div className="text-[11px] text-slate-500 truncate max-w-md">
+                                    {firstAddr}
+                                </div>
+                            )}
+                        </div>
+                    ),
+                    customer: c,
+                };
+            });
+        setCustomerOptions(matches);
+    };
+
+    // Handle selecting customer option
+    const handleCustomerSelect = (value, option) => {
+        if (option && option.customer) {
+            const c = option.customer;
+            setSelectedCustomer(c);
+            setCustomerName(c.name || value);
+            setSponsoringAgency(c.name || value);
+
+            const addrs = Array.isArray(c.addresses)
+                ? c.addresses
+                : c.address
+                    ? [c.address]
+                    : [];
+            setAddressOptions(addrs.map((a) => ({ value: a, label: a })));
+
+            const firstAddr = addrs[0] || '';
+            setCustomerAddress(firstAddr);
+
+            if (c.customer_type) setCustomerType(c.customer_type);
+            if (c.email) setCustomerEmail(c.email);
+            if (c.phone_no || c.phone) setCustomerPhone(c.phone_no || c.phone);
+            if (c.alternate_contact_details) setAlternateContact(c.alternate_contact_details);
+
+            const safeCustName = (c.name || 'Proposal')
+                .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
+            setFilename(`CMTI_Project_Proposal_${safeCustName || 'Proposal'}.docx`);
+
+            message.info(`Selected "${c.name}" — Customer Details Populated!`);
+        } else {
+            setCustomerName(value);
+            setSponsoringAgency(value);
+            syncCustomerData(value);
+        }
+    };
+
     // Generate Word Document (.docx)
     const handleGenerateDoc = async () => {
         setGenerating(true);
@@ -515,8 +822,251 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
         }
     };
 
+    // Submit Proposal + Generate Document + Upload directly (matching Document Studio workflow)
+    const handleSubmitProposal = async () => {
+        const finalCustName = (customerName || sponsoringAgency || '').trim();
+        const finalQuoteDesc = (quoteDescription || titleOfProject || '').trim();
+        const finalCoord = (quotationGivenBy || projectLeader || preparedBy || getLoggedUserName() || '').trim();
+
+        if (!finalCustName) {
+            message.error('Please enter Customer Name / Sponsoring Agency.');
+            return;
+        }
+        if (!finalQuoteDesc) {
+            message.error('Please enter Quote Description / Project Title.');
+            return;
+        }
+        if (!finalCoord) {
+            message.error('Please enter Quotation Given By / Coordinator.');
+            return;
+        }
+        if (!customerType) {
+            message.error('Please select Customer Type.');
+            return;
+        }
+        if (!requestType) {
+            message.error('Please select Request Type.');
+            return;
+        }
+
+        setSubmitProposalLoading(true);
+        try {
+            // 1. Generate DOCX file
+            const payload = buildPayload();
+            const res = await axios.post(`${API_BASE_URL}/iso/project-proposal/generate`, payload, {
+                responseType: 'blob'
+            });
+
+            const disposition = res.headers['content-disposition'];
+            let generatedFilename = filename || 'CMTI_Project_Proposal.docx';
+            if (disposition && disposition.includes('filename=')) {
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                if (match && match[1]) {
+                    generatedFilename = match[1];
+                }
+            }
+            if (!generatedFilename.toLowerCase().endsWith('.docx')) {
+                generatedFilename += '.docx';
+            }
+
+            const docBlob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            });
+            const docFile = new File([docBlob], generatedFilename, {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            });
+
+            // 2. Build proposal payload
+            const rawUser = window.localStorage.getItem('ppm_user');
+            let parsedUser = {};
+            try {
+                parsedUser = rawUser ? JSON.parse(rawUser) : {};
+            } catch { }
+
+            const uName = finalCoord || parsedUser.name || getLoggedUserName();
+            const uCenter = centerDept || loggedCentreDept || parsedUser.center || '';
+            const uGroup = groupName || getLoggedUserGroup() || parsedUser.group || '';
+
+            const computedAmount = quoteAmount ? String(quoteAmount) : (totalCost ? String(totalCost) : (grandTotal > 0 ? String(grandTotal) : ''));
+
+            let activePropId = proposalId || propProposalId || (existingRecord ? existingRecord.id : null);
+
+            const proposalPayload = {
+                enquiry_date: docDate || getTodayDateString(),
+                customer_type: customerType || 'Govt',
+                customer_name: finalCustName,
+                address: customerAddress || '',
+                email: customerEmail || '',
+                phone_no: customerPhone || '',
+                alternate_contact_details: alternateContact || '',
+                request_type: requestType || 'Direct Enquiry',
+                make_in_india: makeInIndia || '',
+                email_reference: customerEmail || '',
+                quote_reference: quoteReference || projectNo || sanctionOrder || docNo || '',
+                quote_description: finalQuoteDesc,
+                quote_amount: computedAmount,
+                quotation_given_by_name: uName,
+                quotation_given_by_department: uCenter,
+                center: uCenter,
+                group: uGroup,
+                proposal_status: Array.isArray(proposalStatus) ? proposalStatus.join(', ') : (proposalStatus || 'Submitted'),
+                project_coordinator: uName,
+                user_id: parsedUser.id || parsedUser.user_id || 0,
+                user_name: parsedUser.name || uName,
+                user_email: parsedUser.email || '',
+                user_role: parsedUser.role || 'scientist',
+                user_center: uCenter,
+                user_group: uGroup,
+                draft: false,
+            };
+
+            if (activePropId) {
+                proposalPayload.id = activePropId;
+            }
+
+            // 3. Post proposal to backend
+            const propResponse = await fetch(`${API_BASE_URL}/proposals/add-proposal-coordinator`, {
+                method: 'POST',
+                headers: {
+                    accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(proposalPayload),
+            });
+
+            if (!propResponse.ok) {
+                const errorBody = await propResponse.json().catch(() => ({}));
+                throw new Error(errorBody.detail || 'Failed to create proposal');
+            }
+
+            const result = await propResponse.json();
+            const newProjectId = result?.proposal_id || activePropId;
+            if (newProjectId) {
+                setProposalId(newProjectId);
+                activePropId = newProjectId;
+            }
+
+            // 4. Save/update ISO submission record linked to proposal_id
+            try {
+                const isoPayload = {
+                    doc_type: 'PROJECT_PROPOSAL',
+                    document_no: docNo || '009',
+                    proposal_id: newProjectId || null,
+                    header_data: {
+                        document_no: docNo,
+                        date: docDate,
+                        prepared_by: preparedBy || uName,
+                        approved_by: approvedBy,
+                        centre_dept: loggedCentreDept
+                    },
+                    form_data: payload,
+                    status: 'SUBMITTED'
+                };
+
+                if (submissionIdRef.current || submissionId) {
+                    await isoSubmissionService.updateSubmission(submissionIdRef.current || submissionId, isoPayload);
+                } else {
+                    const isoRes = await isoSubmissionService.createSubmission(isoPayload);
+                    if (isoRes && isoRes.id) {
+                        setSubmissionId(isoRes.id);
+                        submissionIdRef.current = isoRes.id;
+                    }
+                }
+                setStatus('SUBMITTED');
+            } catch (isoErr) {
+                console.error('Error saving ISO submission record:', isoErr);
+            }
+
+            // 5. Upload generated docx + all attachments to /documents/
+            if (newProjectId) {
+                try {
+                    let proposalStageId = 2;
+                    if (stageConfig && stageConfig.length > 0) {
+                        const proposalStage = stageConfig.find(
+                            (s) => (s.name || '').toString().trim().toLowerCase() === 'proposal'
+                        );
+                        if (proposalStage) proposalStageId = proposalStage.id;
+                    }
+
+                    const formData = new FormData();
+                    formData.append('project_id', newProjectId);
+                    formData.append('stage_id', proposalStageId);
+                    formData.append('uploaded_by', uName);
+                    formData.append('name', 'Proposal');
+                    formData.append('version', 'v1');
+                    formData.append('description', 'Official ISO Project Proposal Document Generated via ISO Studio');
+                    formData.append('file', docFile);
+
+                    (additionalAttachments || []).forEach((att) => {
+                        formData.append('attachment', att);
+                    });
+
+                    await fetch(`${API_BASE_URL}/documents/`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    // 6. Upload tender images if any
+                    if (tenderFileList && tenderFileList.length > 0) {
+                        const finalImageUrls = [];
+                        for (const item of tenderFileList) {
+                            if (item.url && !item.originFileObj) {
+                                finalImageUrls.push(item.url);
+                            } else if (item.originFileObj || item instanceof File) {
+                                const fileToUpload = item.originFileObj || item;
+                                const imgFormData = new FormData();
+                                imgFormData.append('project_id', newProjectId);
+                                imgFormData.append('uploaded_by', uName);
+                                imgFormData.append('name', `Tender Image: ${fileToUpload.name}`);
+                                imgFormData.append('description', 'Tender Image');
+                                imgFormData.append('file', fileToUpload);
+
+                                const docUploadRes = await fetch(`${API_BASE_URL}/documents/`, {
+                                    method: 'POST',
+                                    body: imgFormData,
+                                });
+                                if (docUploadRes.ok) {
+                                    const docResData = await docUploadRes.json();
+                                    if (docResData?.url) {
+                                        finalImageUrls.push(docResData.url);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (finalImageUrls.length > 0) {
+                            await fetch(`${API_BASE_URL}/proposals/${newProjectId}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tender_images: JSON.stringify(finalImageUrls) }),
+                            });
+                        }
+                    }
+                } catch (docErr) {
+                    console.error('Error uploading proposal documents:', docErr);
+                }
+            }
+
+            message.success('Proposal submitted and ISO document generated successfully!');
+
+            if (onSuccess) {
+                onSuccess(newProjectId);
+            } else if (onAddToProposals) {
+                onAddToProposals(docFile, proposalPayload, additionalAttachments);
+            }
+        } catch (err) {
+            console.error('Failed to submit proposal:', err);
+            message.error(err.message || 'Failed to submit proposal');
+        } finally {
+            setSubmitProposalLoading(false);
+        }
+    };
+
     // Save as Draft or Submit
     const handleSaveSubmission = async (targetStatus = 'DRAFT') => {
+        if (targetStatus === 'SUBMITTED') {
+            return handleSubmitProposal();
+        }
         setSubmitting(true);
         try {
             // 1. Create or update record in main proposals database table
@@ -524,15 +1074,15 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
 
             const proposalPayload = {
                 id: activePropId || undefined,
-                quote_description: titleOfProject || existingRecord?.quote_description || 'ISO Project Proposal',
-                activity: titleOfProject || existingRecord?.activity || 'ISO Project Proposal',
-                customer_name: sponsoringAgency || existingRecord?.customer_name || 'N/A',
-                quotation_given_by_name: preparedBy || getLoggedUserName() || '',
-                project_coordinator: projectLeader || preparedBy || getLoggedUserName() || '',
-                quote_amount: totalCost || existingRecord?.quote_amount || '0',
-                center: loggedCentreDept || existingRecord?.center || '',
-                group: existingRecord?.group || loggedCentreDept || '',
-                proposal_status: 'Submitted',
+                quote_description: quoteDescription || titleOfProject || existingRecord?.quote_description || 'ISO Project Proposal',
+                activity: quoteDescription || titleOfProject || existingRecord?.activity || 'ISO Project Proposal',
+                customer_name: customerName || sponsoringAgency || existingRecord?.customer_name || 'N/A',
+                quotation_given_by_name: quotationGivenBy || projectLeader || preparedBy || getLoggedUserName() || '',
+                project_coordinator: quotationGivenBy || projectLeader || preparedBy || getLoggedUserName() || '',
+                quote_amount: quoteAmount || totalCost || existingRecord?.quote_amount || '0',
+                center: centerDept || loggedCentreDept || existingRecord?.center || '',
+                group: groupName || existingRecord?.group || loggedCentreDept || '',
+                proposal_status: Array.isArray(proposalStatus) ? proposalStatus.join(', ') : (proposalStatus || 'Submitted'),
                 draft: true,
             };
 
@@ -641,6 +1191,7 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
             if (data.grand_total !== undefined) {
                 const inLakhs = (data.grand_total / 100000).toFixed(2);
                 setTotalCost(`${inLakhs} Lakh`);
+                setQuoteAmount(String(data.grand_total));
             }
 
             message.success("Successfully loaded cost estimation data!");
@@ -871,7 +1422,11 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                             <input
                                 type="text"
                                 value={titleOfProject}
-                                onChange={(e) => setTitleOfProject(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setTitleOfProject(val);
+                                    setQuoteDescription(val);
+                                }}
                                 placeholder="Enter Project Title (use **bold** for bold terms)..."
                                 className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-1.5 text-xs outline-none focus:bg-white font-semibold text-indigo-950"
                             />
@@ -894,7 +1449,13 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                                 <input
                                     type="text"
                                     value={projectNo}
-                                    onChange={(e) => setProjectNo(e.target.value)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setProjectNo(val);
+                                        if (!quoteReference || quoteReference === projectNo || quoteReference === sanctionOrder) {
+                                            setQuoteReference(val);
+                                        }
+                                    }}
                                     placeholder="e.g. GST2502201"
                                     className="flex-1 bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-xs outline-none"
                                 />
@@ -922,12 +1483,18 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                                 {isReadOnly ? (
                                     <span className="font-medium text-slate-900">{sponsoringAgency || '--'}</span>
                                 ) : (
-                                    <input
-                                        type="text"
+                                    <AutoComplete
                                         value={sponsoringAgency}
-                                        onChange={(e) => setSponsoringAgency(e.target.value)}
-                                        placeholder="Agency name"
-                                        className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs outline-none"
+                                        options={customerOptions}
+                                        onSearch={handleCustomerSearch}
+                                        onSelect={handleCustomerSelect}
+                                        onChange={(val) => {
+                                            setSponsoringAgency(val);
+                                            setCustomerName(val);
+                                            syncCustomerData(val);
+                                        }}
+                                        placeholder="Agency name / Customer"
+                                        className="flex-1 text-xs font-semibold"
                                     />
                                 )}
                             </div>
@@ -939,7 +1506,13 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                                     <input
                                         type="text"
                                         value={sanctionOrder}
-                                        onChange={(e) => setSanctionOrder(e.target.value)}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setSanctionOrder(val);
+                                            if (!quoteReference || quoteReference === projectNo || quoteReference === sanctionOrder) {
+                                                setQuoteReference(val);
+                                            }
+                                        }}
                                         placeholder="Sanction ref"
                                         className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs outline-none"
                                     />
@@ -962,7 +1535,11 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                             <input
                                 type="text"
                                 value={totalCost}
-                                onChange={(e) => setTotalCost(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setTotalCost(val);
+                                    setQuoteAmount(val);
+                                }}
                                 placeholder="e.g. 40.38 Lakh"
                                 className="flex-1 bg-slate-50 border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-900 outline-none"
                             />
@@ -1172,7 +1749,7 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                 {/* POINT 5: PROJECT LEADER AND CO-LEADERS */}
                 <div className="space-y-3 mb-6">
                     <div className="font-bold text-xs uppercase tracking-wide border-b border-slate-800 pb-1 text-slate-900">
-                        5. Project Leader and Co-leaders (if any
+                        5. Project Leader and Co-leaders (if any)
                     </div>
                     <div className="border border-slate-800 p-3 rounded space-y-2">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -1183,7 +1760,12 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                                 <input
                                     type="text"
                                     value={projectLeader}
-                                    onChange={(e) => setProjectLeader(e.target.value)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setProjectLeader(val);
+                                        setQuotationGivenBy(val);
+                                        setPreparedBy(val);
+                                    }}
                                     placeholder="Leader Name & Designation"
                                     className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs outline-none"
                                 />
@@ -1711,6 +2293,344 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                     <div>{revisionCode}</div>
                 </div>
 
+            </div>
+
+            {/* PROPOSAL SUBMISSION & MANUAL ENTRY DETAILS */}
+            <div className="w-full max-w-[21cm] border-2 border-blue-600 bg-white mt-8 mb-8 shadow-[4px_4px_0px_0px_rgba(37,99,235,1)]">
+                <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-blue-900 text-white p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <CheckCircleOutlined className="text-lg text-emerald-400" />
+                        <div>
+                            <span className="font-extrabold text-sm uppercase tracking-wider block">
+                                Proposal Submission & Manual Entry Details
+                            </span>
+                            <span className="text-[11px] text-blue-200 font-normal">
+                                These fields are automatically synchronized with ISO Project Proposal. Complete and verify below before final submission.
+                            </span>
+                        </div>
+                    </div>
+                    <Tag color="green" className="font-bold border-none px-3 py-1 text-xs">
+                        Auto-Synced
+                    </Tag>
+                </div>
+
+                <div className="p-4 sm:p-5 space-y-4">
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12} md={6}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Customer Type <span className="text-red-500">*</span>
+                                </label>
+                                <Select
+                                    placeholder="Customer Type"
+                                    className="w-full"
+                                    value={customerType || 'Govt'}
+                                    onChange={(val) => setCustomerType(val)}
+                                >
+                                    {CUSTOMER_TYPE_OPTIONS.map((opt) => (
+                                        <Select.Option key={opt} value={opt}>{opt}</Select.Option>
+                                    ))}
+                                </Select>
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12} md={6}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Request Type <span className="text-red-500">*</span>
+                                </label>
+                                <Select
+                                    placeholder="Request Type"
+                                    className="w-full"
+                                    value={requestType || 'Direct Enquiry'}
+                                    onChange={(val) => setRequestType(val)}
+                                >
+                                    {REQUEST_TYPE_OPTIONS.map((opt) => (
+                                        <Select.Option key={opt} value={opt}>{opt}</Select.Option>
+                                    ))}
+                                </Select>
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12} md={6}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Quote Amount (₹)
+                                </label>
+                                <Input
+                                    value={quoteAmount !== '' ? quoteAmount : (totalCost || (grandTotal > 0 ? String(grandTotal) : ''))}
+                                    onChange={(e) => {
+                                        setQuoteAmount(e.target.value);
+                                        setTotalCost(e.target.value);
+                                    }}
+                                    placeholder={totalCost ? String(totalCost) : (grandTotal > 0 ? String(grandTotal) : '0')}
+                                    prefix={<span className="text-slate-400 font-bold">₹</span>}
+                                    className="font-mono font-semibold"
+                                />
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12} md={6}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Proposal Status
+                                </label>
+                                <Select
+                                    mode="tags"
+                                    placeholder="Proposal Status"
+                                    className="w-full"
+                                    value={Array.isArray(proposalStatus) ? proposalStatus : [proposalStatus].filter(Boolean)}
+                                    onChange={(val) => setProposalStatus(val)}
+                                >
+                                    <Select.Option value="Submitted">Submitted</Select.Option>
+                                    <Select.Option value="Accepted">Accepted</Select.Option>
+                                    <Select.Option value="Rejected">Rejected</Select.Option>
+                                    <Select.Option value="Awaiting">Awaiting</Select.Option>
+                                </Select>
+                            </div>
+                        </Col>
+                    </Row>
+
+                    {/* Tender specifics if selected */}
+                    {requestType === 'Tender' && (
+                        <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-lg space-y-3">
+                            <div className="font-bold text-blue-900 text-xs flex items-center gap-2">
+                                <Tag color="blue">Tender Details</Tag>
+                                <span>Make In India & Tender Image Uploads</span>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                    Make In India Details
+                                </label>
+                                <TextArea
+                                    rows={2}
+                                    value={makeInIndia}
+                                    onChange={(e) => setMakeInIndia(e.target.value)}
+                                    placeholder="Enter Make In India percentage/details..."
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                    Tender Images (Multiple)
+                                </label>
+                                <Upload
+                                    listType="picture-card"
+                                    multiple
+                                    accept="image/*"
+                                    fileList={tenderFileList}
+                                    beforeUpload={() => false}
+                                    onChange={({ fileList }) => setTenderFileList(fileList)}
+                                >
+                                    <div>
+                                        <PlusOutlined />
+                                        <div className="text-xs mt-1">Upload</div>
+                                    </div>
+                                </Upload>
+                            </div>
+                        </div>
+                    )}
+
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Customer Name <span className="text-red-500">*</span>
+                                </label>
+                                <AutoComplete
+                                    value={customerName || sponsoringAgency}
+                                    options={customerOptions}
+                                    onSearch={handleCustomerSearch}
+                                    onSelect={handleCustomerSelect}
+                                    onChange={(val) => {
+                                        setCustomerName(val);
+                                        setSponsoringAgency(val);
+                                        syncCustomerData(val);
+                                    }}
+                                    placeholder="Customer or Company Name"
+                                    className="w-full font-semibold"
+                                />
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Alternate Contact / Kind Attention
+                                </label>
+                                <Input
+                                    value={alternateContact}
+                                    onChange={(e) => setAlternateContact(e.target.value)}
+                                    placeholder="Contact Person / Alternate Details"
+                                />
+                            </div>
+                        </Col>
+                    </Row>
+
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Email Reference / Address
+                                </label>
+                                <Input
+                                    value={customerEmail || customerAddress}
+                                    onChange={(e) => setCustomerEmail(e.target.value)}
+                                    placeholder="customer@domain.com"
+                                />
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Phone Number
+                                </label>
+                                <Input
+                                    value={customerPhone}
+                                    onChange={(e) => setCustomerPhone(e.target.value)}
+                                    placeholder="Phone / Mobile No."
+                                />
+                            </div>
+                        </Col>
+                    </Row>
+
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Quote / Enquiry Reference
+                                </label>
+                                <Input
+                                    value={quoteReference || projectNo || sanctionOrder || docNo}
+                                    onChange={(e) => setQuoteReference(e.target.value)}
+                                    placeholder="Ref Number / Inquiry ID"
+                                />
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Quote Description / Project Title <span className="text-red-500">*</span>
+                                </label>
+                                <Input
+                                    value={quoteDescription || titleOfProject}
+                                    onChange={(e) => {
+                                        setQuoteDescription(e.target.value);
+                                        setTitleOfProject(e.target.value);
+                                    }}
+                                    placeholder="Project Activity or Description"
+                                    className="font-semibold"
+                                />
+                            </div>
+                        </Col>
+                    </Row>
+
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12} md={8}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Quotation Given By / Coordinator <span className="text-red-500">*</span>
+                                </label>
+                                <Input
+                                    value={quotationGivenBy || projectLeader || preparedBy || getLoggedUserName()}
+                                    onChange={(e) => {
+                                        setQuotationGivenBy(e.target.value);
+                                        setProjectLeader(e.target.value);
+                                        setPreparedBy(e.target.value);
+                                    }}
+                                    placeholder="Scientist Name"
+                                />
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12} md={8}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Centre / Department
+                                </label>
+                                <Input
+                                    value={centerDept || loggedCentreDept}
+                                    onChange={(e) => setCenterDept(e.target.value)}
+                                    placeholder="Centre / Dept"
+                                />
+                            </div>
+                        </Col>
+
+                        <Col xs={24} sm={12} md={8}>
+                            <div>
+                                <label className="font-bold text-xs text-slate-800 block mb-1">
+                                    Group
+                                </label>
+                                <Input
+                                    value={groupName || getLoggedUserGroup()}
+                                    onChange={(e) => setGroupName(e.target.value)}
+                                    placeholder="Group Name"
+                                />
+                            </div>
+                        </Col>
+                    </Row>
+
+                    {/* Additional Supporting File Attachments */}
+                    <div className="pt-2 border-t border-slate-200">
+                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                            Attach Additional Supporting Documents (PDFs, Drawings, Excel, Specs):
+                        </label>
+                        <Dragger
+                            multiple
+                            fileList={additionalAttachments.map((f, i) => ({ uid: `${i}`, name: f.name, status: 'done' }))}
+                            beforeUpload={(file) => {
+                                setAdditionalAttachments((prev) => [...prev, file]);
+                                message.success(`Attached ${file.name}`);
+                                return false;
+                            }}
+                            onRemove={(file) => {
+                                setAdditionalAttachments((prev) => prev.filter((f) => f.name !== file.name));
+                            }}
+                            className="p-3 bg-slate-50 border-slate-300"
+                        >
+                            <p className="ant-upload-drag-icon text-slate-400 mb-1">
+                                <InboxOutlined className="text-2xl text-blue-500" />
+                            </p>
+                            <p className="ant-upload-text text-xs font-semibold text-slate-700">
+                                Click or drag supporting documents to attach to this proposal
+                            </p>
+                            <p className="ant-upload-hint text-[11px] text-slate-400">
+                                Supports technical drawings, datasheets, PDFs, and spreadsheets.
+                            </p>
+                        </Dragger>
+                    </div>
+
+                    {/* Final Action Submission Bar */}
+                    <div className="pt-4 border-t border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl">
+                        <div className="text-xs text-slate-500">
+                            Clicking <strong>Submit Proposal</strong> will automatically generate the <code>.docx</code> ISO project proposal document, create the proposal record, and upload all files.
+                        </div>
+
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                            <Button
+                                icon={<DownloadOutlined />}
+                                loading={generating}
+                                onClick={handleGenerateDoc}
+                                className="rounded-xl border-slate-400 text-slate-800 font-semibold h-11 px-4"
+                            >
+                                Export DOCX
+                            </Button>
+
+                            <Button
+                                type="primary"
+                                icon={<CheckCircleOutlined />}
+                                loading={submitProposalLoading}
+                                onClick={handleSubmitProposal}
+                                className="rounded-xl bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white font-extrabold text-sm h-11 px-8 shadow-md hover:shadow-lg transition-all border-none"
+                            >
+                                Submit Proposal
+                            </Button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

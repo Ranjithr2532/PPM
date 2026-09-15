@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     FileTextOutlined,
     EditOutlined,
@@ -32,7 +32,6 @@ import InspectionReport from './inspectionreport.jsx';
 import TechnicalSpecification from './technicalspecification.jsx';
 import CustomerComplaintRegister from './customercomplaintregister.jsx';
 import CustomerFeedback from './customerfeedback.jsx';
-import AcceptanceTestReport from './acceptancetestreport.jsx';
 
 const getDocTypeKey = (doc) => {
     const name = (doc.name || '').toUpperCase();
@@ -52,7 +51,8 @@ const getDocTypeKey = (doc) => {
     if (docNo.startsWith('065') || name.includes('TECHNICAL SPECIFICATION') || name.includes('SPECIFICATION FORMAT')) return 'TECHNICAL_SPECIFICATION';
     if (docNo.startsWith('085') || name.includes('INSPECTION') || name.includes('INSPECTION REPORT')) return 'INSPECTION_REPORT';
     if (docNo.startsWith('086') || name.includes('COMPLAINT') || name.includes('CUSTOMER COMPLAINT')) return 'CUSTOMER_COMPLAINT_REGISTER';
-    if (docNo.startsWith('087') || name.includes('ACCEPTANCE') || name.includes('ACCEPTANCE TEST') || name.includes('ATR')) return 'ACCEPTANCE_TEST_REPORT';
+    if (name.includes('ACCEPTANCE TEST PROCEDURE') || name.includes('TEST PROCEDURE') || doc.initial === 'ATP' || docNo.startsWith('084')) return 'ACCEPTANCE_TEST_PROCEDURE';
+    if (docNo.startsWith('087') || name.includes('ACCEPTANCE') || name.includes('ATR')) return 'ACCEPTANCE_TEST_REPORT';
     if (docNo.startsWith('088') || name.includes('FEEDBACK') || name.includes('CUSTOMER FEEDBACK') || name.includes('SATISFACTION')) return 'CUSTOMER_FEEDBACK';
     return name.replace(/\s+/g, '_');
 };
@@ -71,9 +71,7 @@ const hasDedicatedForm = (docTypeKey) => {
         'ENGINEERING_CHANGE_NOTE',
         'TECHNICAL_SPECIFICATION',
         'INSPECTION_REPORT',
-        'CUSTOMER_COMPLAINT_REGISTER',
-        'ACCEPTANCE_TEST_REPORT',
-        'CUSTOMER_FEEDBACK'
+        'CUSTOMER_COMPLAINT_REGISTER'
     ].includes(docTypeKey);
 };
 
@@ -106,6 +104,14 @@ const getStatusBadge = (status) => {
     }
 };
 
+const sortIsoDocs = (docs) => {
+    return [...(docs || [])].sort((a, b) => {
+        const docNoA = (a.document_no || '').trim();
+        const docNoB = (b.document_no || '').trim();
+        return docNoA.localeCompare(docNoB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+};
+
 export default function AllISODocuments({ proposalId, proposalNumber, onClose }) {
     const [docList, setDocList] = useState([]);
     const [submissions, setSubmissions] = useState([]);
@@ -117,6 +123,10 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
     const [selectedDocForUpload, setSelectedDocForUpload] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [fileList, setFileList] = useState([]);
+    const [proposalData, setProposalData] = useState(null);
+    const [downloadingAll, setDownloadingAll] = useState(false);
+
+    const sortedDocList = useMemo(() => sortIsoDocs(docList), [docList]);
 
     const userRole = getUserRole();
     const isAdmin = userRole === 'admin' || userRole === 'director';
@@ -162,11 +172,19 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
         setLoading(true);
         try {
             const docRes = await axios.get(`${API_BASE_URL}/iso-document-list/`);
-            setDocList(Array.isArray(docRes.data) ? docRes.data : []);
+            const rawDocs = Array.isArray(docRes.data) ? docRes.data : [];
+            setDocList(sortIsoDocs(rawDocs));
 
             if (proposalId) {
                 const subData = await isoSubmissionService.getSubmissions({ proposal_id: proposalId });
                 setSubmissions(Array.isArray(subData) ? subData : []);
+
+                try {
+                    const pRes = await axios.get(`${API_BASE_URL}/proposals/${proposalId}`);
+                    if (pRes.data) setProposalData(pRes.data);
+                } catch (pe) {
+                    console.error('Error fetching proposal data:', pe);
+                }
             }
         } catch (err) {
             console.error('Error loading ISO documents & submissions:', err);
@@ -188,6 +206,41 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
         setActiveFormState({ docTypeKey, id: subId, docInfo: doc });
     };
 
+    const handleDownloadAllZip = async () => {
+        if (!proposalId) {
+            message.warning('No project/proposal selected.');
+            return;
+        }
+        if (!submissions || submissions.length === 0) {
+            message.warning('No ISO documents have been created or uploaded yet for this project.');
+            return;
+        }
+
+        setDownloadingAll(true);
+        message.loading({
+            content: 'Packaging all project ISO documents into ZIP archive...',
+            key: 'zipDownload',
+            duration: 0
+        });
+
+        try {
+            const rawName = proposalData?.quote_description || proposalData?.project_number || proposalNumber || `Project_${proposalId}`;
+            const cleanName = rawName.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_+/g, '_');
+            const zipName = `${cleanName}-iso_documents.zip`;
+
+            await isoSubmissionService.downloadProjectAllIsoZip(proposalId, zipName);
+            message.success({
+                content: `Project ISO documents package ("${zipName}") downloaded successfully!`,
+                key: 'zipDownload'
+            });
+        } catch (err) {
+            console.error('Download all ZIP error:', err);
+            const errMsg = err.response?.data?.detail || 'Failed to download ISO documents package';
+            message.error({ content: errMsg, key: 'zipDownload' });
+        } finally {
+            setDownloadingAll(false);
+        }
+    };
 
     const handleDownload = async (sub) => {
         try {
@@ -291,6 +344,56 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
         } catch (err) {
             console.error('SQAP template download error:', err);
             message.error({ content: 'Failed to download SQAP template', key: 'sqapTpl' });
+        }
+    };
+
+    const handleDownloadFeedbackTemplate = async (doc) => {
+        try {
+            message.loading({ content: 'Downloading Customer Feedback template (.docx)...', key: 'feedbackTpl' });
+            let projectTitle = '';
+            let customerName = '';
+            let projectNo = '';
+
+            if (proposalId) {
+                try {
+                    const pRes = await axios.get(`${API_BASE_URL}/proposals/${proposalId}`);
+                    const p = pRes.data;
+                    if (p) {
+                        projectTitle = p.title_of_project || p.quote_description || p.project_name || '';
+                        customerName = p.customer_name || '';
+                        projectNo = p.project_number || p.quote_number || '';
+                    }
+                } catch (e) {
+                    console.error('Error fetching proposal for feedback template:', e);
+                }
+            }
+
+            const res = await axios.post(`${API_BASE_URL}/iso/customer-feedback/generate`, {
+                project_title: projectTitle,
+                customer_name: customerName,
+                company_name_address: customerName,
+                project_no: projectNo,
+                doc_no: '088',
+                doc_code: 'CMTI-SMC-QMS-088/Rev00',
+                filename: `ISO_Customer_Feedback_088_Template${projectNo ? `_${projectNo}` : ''}.docx`
+            }, {
+                responseType: 'blob'
+            });
+
+            const blob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `ISO_Customer_Feedback_088_Template${projectNo ? `_${projectNo}` : ''}.docx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            message.success({ content: 'Customer Feedback template downloaded successfully!', key: 'feedbackTpl' });
+        } catch (err) {
+            console.error('Customer Feedback template download error:', err);
+            message.error({ content: 'Failed to download Customer Feedback template', key: 'feedbackTpl' });
         }
     };
 
@@ -475,16 +578,6 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             fetchData();
                         }}
                     />
-                ) : activeFormState.docTypeKey === 'ACCEPTANCE_TEST_REPORT' ? (
-                    <AcceptanceTestReport
-                        proposalId={proposalId}
-                        submissionId={activeFormState.id}
-                        docInfo={activeFormState.docInfo}
-                        onBack={() => {
-                            setActiveFormState(null);
-                            fetchData();
-                        }}
-                    />
                 ) : (
                     /* Direct Upload Interface for Templates without Dedicated Forms */
                     <div className="max-w-2xl mx-auto py-12 text-center bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-4">
@@ -526,19 +619,51 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
     return (
         <div className="p-4 bg-slate-50 rounded-2xl">
 
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-200">
                 <div>
-                    <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                        <FileWordOutlined className="text-blue-600" />
-                        ISO Documents Directory {proposalNumber ? `(Proposal #${proposalNumber})` : ''}
-                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                            <FileWordOutlined className="text-blue-600" />
+                            ISO Documents Directory
+                        </h3>
+                        {proposalNumber && (
+                            <span className="text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 font-mono">
+                                #{proposalNumber}
+                            </span>
+                        )}
+                        {(proposalData?.quote_description || proposalData?.title_of_project || proposalData?.project_name) && (
+                            <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 truncate max-w-xs md:max-w-md" title={proposalData.quote_description || proposalData.title_of_project || proposalData.project_name}>
+                                {proposalData.quote_description || proposalData.title_of_project || proposalData.project_name}
+                            </span>
+                        )}
+                    </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                        Create, edit, approve, or download official ISO 9001-2015 forms.
+                        Create, edit, approve, or download project ISO 9001-2015 documentation.
                     </p>
                 </div>
-                <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} size="small">
-                    Refresh
-                </Button>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                        type="primary"
+                        icon={<DownloadOutlined />}
+                        onClick={handleDownloadAllZip}
+                        loading={downloadingAll}
+                        disabled={submissions.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm h-8 flex items-center gap-1.5"
+                        title={submissions.length > 0 ? "Download all project ISO documents in a ZIP folder" : "No documents recorded yet"}
+                    >
+                        <span>Download All ISO Documents (.zip)</span>
+                        {submissions.length > 0 && (
+                            <span className="bg-emerald-800/80 text-[10px] px-1.5 py-0.2 rounded-full font-mono text-emerald-100">
+                                {submissions.length}
+                            </span>
+                        )}
+                    </Button>
+
+                    <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} size="small" className="text-xs font-medium h-8">
+                        Refresh
+                    </Button>
+                </div>
             </div>
 
             {loading ? (
@@ -546,21 +671,28 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                     <Spin size="large" />
                     <p className="text-xs text-slate-400 mt-2">Loading ISO documents...</p>
                 </div>
-            ) : docList.length === 0 ? (
+            ) : sortedDocList.length === 0 ? (
                 <Empty description="No ISO document templates found in directory." />
             ) : (
                 <div className="space-y-3.5 max-h-[65vh] overflow-y-auto pr-1">
-                    {docList.map((doc) => {
+                    {sortedDocList.map((doc) => {
                         const docTypeKey = getDocTypeKey(doc);
 
                         // Multi-submission Document: MOM (Minutes of Meeting)
                         if (docTypeKey === 'MOM') {
-                            const momSubs = submissions.filter(
-                                (s) =>
-                                    (s.doc_type || '').toUpperCase() === 'MOM' ||
-                                    (s.document_no || '').trim().startsWith('037') ||
-                                    (s.document_no || '').trim() === (doc.document_no || '').trim()
-                            );
+                            const momSubs = submissions
+                                .filter(
+                                    (s) =>
+                                        (s.doc_type || '').toUpperCase() === 'MOM' ||
+                                        (s.document_no || '').trim().startsWith('037') ||
+                                        (s.document_no || '').trim() === (doc.document_no || '').trim()
+                                )
+                                .sort((a, b) => {
+                                    if (a.id && b.id && a.id !== b.id) return a.id - b.id;
+                                    const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+                                    const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+                                    return timeA - timeB;
+                                });
 
                             return (
                                 <div
@@ -774,13 +906,20 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
 
                         // Multi-submission Document: ENGINEERING_CHANGE_NOTE (Doc 068)
                         if (docTypeKey === 'ENGINEERING_CHANGE_NOTE') {
-                            const ecnSubs = submissions.filter(
-                                (s) =>
-                                    (s.doc_type || '').toUpperCase() === 'ENGINEERING_CHANGE_NOTE' ||
-                                    (s.doc_type || '').toUpperCase() === 'ECN' ||
-                                    (s.document_no || '').trim().startsWith('068') ||
-                                    (s.document_no || '').trim() === (doc.document_no || '').trim()
-                            );
+                            const ecnSubs = submissions
+                                .filter(
+                                    (s) =>
+                                        (s.doc_type || '').toUpperCase() === 'ENGINEERING_CHANGE_NOTE' ||
+                                        (s.doc_type || '').toUpperCase() === 'ECN' ||
+                                        (s.document_no || '').trim().startsWith('068') ||
+                                        (s.document_no || '').trim() === (doc.document_no || '').trim()
+                                )
+                                .sort((a, b) => {
+                                    if (a.id && b.id && a.id !== b.id) return a.id - b.id;
+                                    const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+                                    const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+                                    return timeA - timeB;
+                                });
 
                             return (
                                 <div
@@ -1000,6 +1139,476 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                             );
                         }
 
+                        // Multi-submission Document: TECHNICAL_SPECIFICATION (Doc 065)
+                        if (docTypeKey === 'TECHNICAL_SPECIFICATION') {
+                            const techSpecSubs = submissions
+                                .filter(
+                                    (s) =>
+                                        (s.doc_type || '').toUpperCase() === 'TECHNICAL_SPECIFICATION' ||
+                                        (s.doc_type || '').toUpperCase() === 'TECH_SPEC' ||
+                                        (s.document_no || '').trim().startsWith('065') ||
+                                        (s.document_no || '').trim() === (doc.document_no || '').trim()
+                                )
+                                .sort((a, b) => {
+                                    if (a.id && b.id && a.id !== b.id) return a.id - b.id;
+                                    const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+                                    const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+                                    return timeA - timeB;
+                                });
+
+                            return (
+                                <div
+                                    key={doc.id}
+                                    className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-sm hover:shadow-md transition-all space-y-3"
+                                >
+                                    {/* Main Template Header */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 uppercase font-mono">
+                                                    {doc.initial || 'TECH SPEC'}
+                                                </span>
+                                                <h4 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                                                    {doc.name}
+                                                </h4>
+                                                <span className="text-xs font-medium text-slate-500 font-mono">
+                                                    (Doc #{doc.document_no || '065'})
+                                                </span>
+                                                {techSpecSubs.length > 0 ? (
+                                                    <Tag color="emerald" className="font-bold">
+                                                        {techSpecSubs.length} {techSpecSubs.length === 1 ? 'Specification' : 'Specifications'} Recorded
+                                                    </Tag>
+                                                ) : (
+                                                    <Tag color="default" className="font-medium">NOT CREATED</Tag>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 font-mono">
+                                                <span>Code: {doc.code || 'N/A'}</span>
+                                                <span className="ml-3 text-slate-400">
+                                                    • Multiple Technical Specifications can be created for different bought-out items, equipment, and sub-systems
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 justify-end flex-wrap">
+                                            <Button
+                                                size="small"
+                                                icon={<UploadOutlined />}
+                                                onClick={() => handleOpenUploadModal(doc)}
+                                                className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                            >
+                                                Upload File
+                                            </Button>
+
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => handleCreateForm('TECHNICAL_SPECIFICATION', doc)}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                                            >
+                                                {techSpecSubs.length > 0 ? '+ New Technical Specification' : 'Create First Tech Spec'}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* List of Created / Uploaded Technical Specifications */}
+                                    {techSpecSubs.length > 0 && (
+                                        <div className="space-y-2 pt-1 pl-1 sm:pl-3">
+                                            {techSpecSubs.map((sub, idx) => (
+                                                <div
+                                                    key={sub.id}
+                                                    className="bg-slate-50/70 border border-slate-200/70 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 transition"
+                                                >
+                                                    <div className="space-y-1 flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs font-mono">
+                                                                Spec #{idx + 1}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-800">
+                                                                {sub.form_data?.item_description || sub.form_data?.project_title || 'Technical Specification'}
+                                                            </span>
+                                                            {getStatusBadge(sub.status)}
+                                                            {sub.form_data?.is_uploaded ? (
+                                                                <Tag color="cyan" className="font-semibold text-[10px]">
+                                                                    UPLOADED FILE
+                                                                </Tag>
+                                                            ) : (
+                                                                <Tag color="blue" className="font-semibold text-[10px]">
+                                                                    DIGITAL FORM
+                                                                </Tag>
+                                                            )}
+                                                            {Array.isArray(sub.form_data?.specs) && sub.form_data.specs.length > 0 && (
+                                                                <Tag color="geekblue" className="text-[10px]">
+                                                                    {sub.form_data.specs.length} Specs
+                                                                </Tag>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="text-[11px] text-slate-500 flex items-center gap-4 flex-wrap">
+                                                            {sub.form_data?.doc_date && (
+                                                                <span>📅 {sub.form_data.doc_date}</span>
+                                                            )}
+                                                            {sub.form_data?.prepared_by && (
+                                                                <span>👤 Prepared: {sub.form_data.prepared_by}</span>
+                                                            )}
+                                                            <span>
+                                                                Updated: {new Date(sub.updated_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+
+                                                        {sub?.form_data?.is_uploaded && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownload(sub)}
+                                                                className="text-xs text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 font-medium cursor-pointer transition text-left"
+                                                            >
+                                                                <PaperClipOutlined />
+                                                                <span>Uploaded: <strong>{sub.form_data.uploaded_filename || 'TechSpec_Document.docx'}</strong></span>
+                                                            </button>
+                                                        )}
+
+                                                        {sub?.rejection_comment && (
+                                                            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-1.5 mt-1">
+                                                                <strong>Rejection Comment:</strong> {sub.rejection_comment}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 justify-end flex-wrap">
+                                                        <Button
+                                                            size="small"
+                                                            icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
+                                                            onClick={() => handleEditForm('TECHNICAL_SPECIFICATION', sub.id, doc)}
+                                                            className="text-xs font-medium border-slate-300 text-slate-800"
+                                                        >
+                                                            {isAdmin
+                                                                ? 'Edit'
+                                                                : sub.status === 'APPROVED'
+                                                                    ? 'View'
+                                                                    : sub.status === 'SUBMITTED'
+                                                                        ? isApprover ? 'Review' : 'View'
+                                                                        : 'Edit'}
+                                                        </Button>
+
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            icon={<DownloadOutlined />}
+                                                            onClick={() => handleDownload(sub)}
+                                                            className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
+                                                        >
+                                                            {sub?.form_data?.is_uploaded ? 'Download File' : 'Word'}
+                                                        </Button>
+
+                                                        {isApprover && sub.status === 'SUBMITTED' && (
+                                                            <>
+                                                                <Button
+                                                                    size="small"
+                                                                    type="primary"
+                                                                    icon={<CheckCircleOutlined />}
+                                                                    onClick={() => handleApprove(sub.id)}
+                                                                    loading={actionLoading}
+                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold"
+                                                                >
+                                                                    Approve
+                                                                </Button>
+                                                                <Popconfirm
+                                                                    title="Reject Technical Specification"
+                                                                    description={
+                                                                        <div className="space-y-2 py-1">
+                                                                            <p className="text-xs">Provide a reason for rejecting this Technical Specification:</p>
+                                                                            <Input.TextArea
+                                                                                rows={2}
+                                                                                value={rejectComment}
+                                                                                onChange={(e) => setRejectComment(e.target.value)}
+                                                                                placeholder="Reason for rejection..."
+                                                                                className="text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    }
+                                                                    onConfirm={() => handleRejectConfirm(sub.id)}
+                                                                    okText="Reject"
+                                                                    cancelText="Cancel"
+                                                                    okButtonProps={{ danger: true, loading: actionLoading }}
+                                                                >
+                                                                    <Button
+                                                                        size="small"
+                                                                        danger
+                                                                        icon={<CloseCircleOutlined />}
+                                                                        className="text-xs font-semibold"
+                                                                    >
+                                                                        Reject
+                                                                    </Button>
+                                                                </Popconfirm>
+                                                            </>
+                                                        )}
+
+                                                        {(isAdmin || sub.status === 'DRAFT' || sub.status === 'REJECTED') && (
+                                                            <Popconfirm
+                                                                title="Delete Technical Specification?"
+                                                                description="Are you sure you want to delete this Technical Specification?"
+                                                                onConfirm={() => handleDeleteSubmission(sub.id)}
+                                                                okText="Delete"
+                                                                cancelText="Cancel"
+                                                                okButtonProps={{ danger: true }}
+                                                            >
+                                                                <Button
+                                                                    size="small"
+                                                                    type="text"
+                                                                    danger
+                                                                    icon={<DeleteOutlined />}
+                                                                    className="text-xs text-rose-500 hover:text-rose-700"
+                                                                    title="Delete Spec"
+                                                                />
+                                                            </Popconfirm>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+
+                        // Multi-submission Document: INSPECTION_REPORT (Doc 085)
+                        if (docTypeKey === 'INSPECTION_REPORT') {
+                            const irSubs = submissions
+                                .filter(
+                                    (s) =>
+                                        (s.doc_type || '').toUpperCase() === 'INSPECTION_REPORT' ||
+                                        (s.doc_type || '').toUpperCase() === 'IR' ||
+                                        (s.document_no || '').trim().startsWith('085') ||
+                                        (s.document_no || '').trim() === (doc.document_no || '').trim()
+                                )
+                                .sort((a, b) => {
+                                    if (a.id && b.id && a.id !== b.id) return a.id - b.id;
+                                    const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+                                    const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+                                    return timeA - timeB;
+                                });
+
+                            return (
+                                <div
+                                    key={doc.id}
+                                    className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-sm hover:shadow-md transition-all space-y-3"
+                                >
+                                    {/* Main Template Header */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase font-mono">
+                                                    {doc.initial || 'IR'}
+                                                </span>
+                                                <h4 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                                                    {doc.name}
+                                                </h4>
+                                                <span className="text-xs font-medium text-slate-500 font-mono">
+                                                    (Doc #{doc.document_no || '085'})
+                                                </span>
+                                                {irSubs.length > 0 ? (
+                                                    <Tag color="blue" className="font-bold">
+                                                        {irSubs.length} {irSubs.length === 1 ? 'Report' : 'Reports'} Recorded
+                                                    </Tag>
+                                                ) : (
+                                                    <Tag color="default" className="font-medium">NOT CREATED</Tag>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 font-mono">
+                                                <span>Code: {doc.code || 'N/A'}</span>
+                                                <span className="ml-3 text-slate-400">
+                                                    • Multiple Inspection Reports can be created for manufactured components, bought-out items, and dimensional checks
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 justify-end flex-wrap">
+                                            <Button
+                                                size="small"
+                                                icon={<UploadOutlined />}
+                                                onClick={() => handleOpenUploadModal(doc)}
+                                                className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
+                                            >
+                                                Upload File
+                                            </Button>
+
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => handleCreateForm('INSPECTION_REPORT', doc)}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                                            >
+                                                {irSubs.length > 0 ? '+ New Inspection Report' : 'Create First Inspection Report'}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* List of Created / Uploaded Inspection Reports */}
+                                    {irSubs.length > 0 && (
+                                        <div className="space-y-2 pt-1 pl-1 sm:pl-3">
+                                            {irSubs.map((sub, idx) => (
+                                                <div
+                                                    key={sub.id}
+                                                    className="bg-slate-50/70 border border-slate-200/70 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 transition"
+                                                >
+                                                    <div className="space-y-1 flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs font-mono">
+                                                                IR #{idx + 1}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-800">
+                                                                {sub.form_data?.report_no ? `[${sub.form_data.report_no}] ` : ''}
+                                                                {sub.form_data?.drawing_name || sub.form_data?.drawing_no || 'Inspection Report'}
+                                                            </span>
+                                                            {getStatusBadge(sub.status)}
+                                                            {sub.form_data?.is_uploaded ? (
+                                                                <Tag color="cyan" className="font-semibold text-[10px]">
+                                                                    UPLOADED FILE
+                                                                </Tag>
+                                                            ) : (
+                                                                <Tag color="blue" className="font-semibold text-[10px]">
+                                                                    DIGITAL FORM
+                                                                </Tag>
+                                                            )}
+                                                            {Array.isArray(sub.form_data?.rows) && sub.form_data.rows.length > 0 && (
+                                                                <Tag color="geekblue" className="text-[10px]">
+                                                                    {sub.form_data.rows.length} Measurements
+                                                                </Tag>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="text-[11px] text-slate-500 flex items-center gap-4 flex-wrap">
+                                                            {sub.form_data?.drawing_no && (
+                                                                <span>📐 Drawing: {sub.form_data.drawing_no}</span>
+                                                            )}
+                                                            {sub.form_data?.date && (
+                                                                <span>📅 Date: {sub.form_data.date}</span>
+                                                            )}
+                                                            {sub.form_data?.prepared_by && (
+                                                                <span>👤 Inspector: {sub.form_data.prepared_by}</span>
+                                                            )}
+                                                            <span>
+                                                                Updated: {new Date(sub.updated_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+
+                                                        {sub?.form_data?.is_uploaded && (
+                                                           <button
+                                                                type="button"
+                                                                onClick={() => handleDownload(sub)}
+                                                                className="text-xs text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 font-medium cursor-pointer transition text-left"
+                                                            >
+                                                                <PaperClipOutlined />
+                                                                <span>Uploaded: <strong>{sub.form_data.uploaded_filename || 'InspectionReport_Document.docx'}</strong></span>
+                                                            </button>
+                                                        )}
+
+                                                        {sub?.rejection_comment && (
+                                                            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-1.5 mt-1">
+                                                                <strong>Rejection Comment:</strong> {sub.rejection_comment}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 justify-end flex-wrap">
+                                                        <Button
+                                                            size="small"
+                                                            icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
+                                                            onClick={() => handleEditForm('INSPECTION_REPORT', sub.id, doc)}
+                                                            className="text-xs font-medium border-slate-300 text-slate-800"
+                                                        >
+                                                            {isAdmin
+                                                                ? 'Edit'
+                                                                : sub.status === 'APPROVED'
+                                                                    ? 'View'
+                                                                    : sub.status === 'SUBMITTED'
+                                                                        ? isApprover ? 'Review' : 'View'
+                                                                        : 'Edit'}
+                                                        </Button>
+
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            icon={<DownloadOutlined />}
+                                                            onClick={() => handleDownload(sub)}
+                                                            className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold"
+                                                        >
+                                                            {sub?.form_data?.is_uploaded ? 'Download File' : 'Word'}
+                                                        </Button>
+
+                                                        {isApprover && sub.status === 'SUBMITTED' && (
+                                                            <>
+                                                                <Button
+                                                                    size="small"
+                                                                    type="primary"
+                                                                    icon={<CheckCircleOutlined />}
+                                                                    onClick={() => handleApprove(sub.id)}
+                                                                    loading={actionLoading}
+                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold"
+                                                                >
+                                                                    Approve
+                                                                </Button>
+                                                                <Popconfirm
+                                                                    title="Reject Inspection Report"
+                                                                    description={
+                                                                        <div className="space-y-2 py-1">
+                                                                            <p className="text-xs">Provide a reason for rejecting this Inspection Report:</p>
+                                                                            <Input.TextArea
+                                                                                rows={2}
+                                                                                value={rejectComment}
+                                                                                onChange={(e) => setRejectComment(e.target.value)}
+                                                                                placeholder="Reason for rejection..."
+                                                                                className="text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    }
+                                                                    onConfirm={() => handleRejectConfirm(sub.id)}
+                                                                    okText="Reject"
+                                                                    cancelText="Cancel"
+                                                                    okButtonProps={{ danger: true, loading: actionLoading }}
+                                                                >
+                                                                    <Button
+                                                                        size="small"
+                                                                        danger
+                                                                        icon={<CloseCircleOutlined />}
+                                                                        className="text-xs font-semibold"
+                                                                    >
+                                                                        Reject
+                                                                    </Button>
+                                                                </Popconfirm>
+                                                            </>
+                                                        )}
+
+                                                        {(isAdmin || sub.status === 'DRAFT' || sub.status === 'REJECTED') && (
+                                                            <Popconfirm
+                                                                title="Delete Inspection Report?"
+                                                                description="Are you sure you want to delete this Inspection Report?"
+                                                                onConfirm={() => handleDeleteSubmission(sub.id)}
+                                                                okText="Delete"
+                                                                cancelText="Cancel"
+                                                                okButtonProps={{ danger: true }}
+                                                            >
+                                                                <Button
+                                                                    size="small"
+                                                                    type="text"
+                                                                    danger
+                                                                    icon={<DeleteOutlined />}
+                                                                    className="text-xs text-rose-500 hover:text-rose-700"
+                                                                    title="Delete Report"
+                                                                />
+                                                            </Popconfirm>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+
                         const sub = submissions.find(
                             (s) =>
                                 (s.doc_type || '').toUpperCase() === docTypeKey ||
@@ -1081,6 +1690,18 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 </Button>
                                             )}
 
+                                            {/* Template Download for Customer Feedback */}
+                                            {docTypeKey === 'CUSTOMER_FEEDBACK' && (
+                                                <Button
+                                                    size="small"
+                                                    icon={<DownloadOutlined />}
+                                                    onClick={() => handleDownloadFeedbackTemplate(doc)}
+                                                    className="text-xs font-semibold bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                                >
+                                                    Download Template
+                                                </Button>
+                                            )}
+
                                             {/* Upload Document Button */}
                                             <Button
                                                 size="small"
@@ -1088,7 +1709,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                 onClick={() => handleOpenUploadModal(doc)}
                                                 className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
                                             >
-                                                Upload File
+                                                {docTypeKey === 'CUSTOMER_FEEDBACK' ? 'Upload Form' : 'Upload File'}
                                             </Button>
 
                                             {/* Create Form Button ONLY for documents with dedicated form templates */}
@@ -1110,7 +1731,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                     {isFormCreated && (
                                         <>
                                             {/* View / Edit Form (for docs with dedicated forms) */}
-                                            {docTypeKey !== 'SQAP' && hasDedicatedForm(docTypeKey) && (
+                                            {docTypeKey !== 'SQAP' && docTypeKey !== 'CUSTOMER_FEEDBACK' && hasDedicatedForm(docTypeKey) && (
                                                 <Button
                                                     size="small"
                                                     icon={sub.status === 'APPROVED' && !isAdmin ? <FileTextOutlined /> : <EditOutlined />}
@@ -1210,6 +1831,30 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                     {/* CASE 3: File Uploaded -> Show Download File & Re-upload, DO NOT SHOW Create/Edit Form */}
                                     {isUploaded && (
                                         <>
+                                            {/* Download Template for Customer Feedback */}
+                                            {docTypeKey === 'CUSTOMER_FEEDBACK' && (
+                                                <Button
+                                                    size="small"
+                                                    icon={<DownloadOutlined />}
+                                                    onClick={() => handleDownloadFeedbackTemplate(doc)}
+                                                    className="text-xs font-semibold bg-slate-50 border-slate-300 text-slate-700 hover:text-indigo-600"
+                                                >
+                                                    Download Template
+                                                </Button>
+                                            )}
+
+                                            {/* Template Download for SQAP */}
+                                            {docTypeKey === 'SQAP' && (
+                                                <Button
+                                                    size="small"
+                                                    icon={<DownloadOutlined />}
+                                                    onClick={() => handleDownloadSqapTemplate(doc)}
+                                                    className="text-xs font-semibold bg-slate-50 border-slate-300 text-slate-700 hover:text-indigo-600"
+                                                >
+                                                    Download Template
+                                                </Button>
+                                            )}
+
                                             {/* Re-upload / Replace File Option (Draft or Admin) */}
                                             {(isAdmin || sub.status === 'DRAFT' || sub.status === 'REJECTED') && (
                                                 <Button
@@ -1218,7 +1863,7 @@ export default function AllISODocuments({ proposalId, proposalNumber, onClose })
                                                     onClick={() => handleOpenUploadModal(doc)}
                                                     className="text-xs font-semibold border-slate-300 text-slate-700 hover:text-indigo-600"
                                                 >
-                                                    Re-upload File
+                                                    {docTypeKey === 'CUSTOMER_FEEDBACK' ? 'Upload Form' : 'Re-upload File'}
                                                 </Button>
                                             )}
 

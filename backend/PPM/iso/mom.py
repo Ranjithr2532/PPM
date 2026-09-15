@@ -36,7 +36,7 @@ class MomRequest(BaseModel):
     prev_mom_no_date: str = "-"
     prev_action_points: str = "-"
     prev_status: str = "-"
-    agenda: str = "Project kick off meeting"
+    agenda: str = ""
     summary_points: Optional[List[SummaryPointRequest]] = None
     conclusion: str = ""
 
@@ -184,7 +184,7 @@ def create_mom_document(
     prev_mom_no_date: str = "-",
     prev_action_points: str = "-",
     prev_status: str = "-",
-    agenda: str = "Project kick off meeting",
+    agenda: str = "",
     summary_points: Optional[List[SummaryPointRequest]] = None,
     conclusion: str = "Clearance was given for design of fixtures and electrical design.",
     centre_dept: str = "",
@@ -278,7 +278,7 @@ def create_mom_document(
         set_cell_margins(row.cells[0], top=40, bottom=40, start=40, end=40)
 
     add_text(t3.cell(0, 0), "Agenda", font_size=10, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-    add_text(t3.cell(1, 0), agenda or "Project kick off meeting", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+    add_text(t3.cell(1, 0), agenda or "", font_size=9, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
 

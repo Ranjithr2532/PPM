@@ -110,6 +110,25 @@ export const isoSubmissionService = {
     link.remove();
     window.URL.revokeObjectURL(url);
   },
+
+  /**
+   * Download all ISO documents for a project/proposal packaged in a ZIP file
+   */
+  async downloadProjectAllIsoZip(proposalId, zipFilename) {
+    if (!proposalId) return;
+    const response = await axios.get(`${API_BASE_URL}/iso-submissions/proposal/${proposalId}/download-all-zip`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([response.data], { type: 'application/zip' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', zipFilename || `Project_${proposalId}-iso_documents.zip`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 /**
