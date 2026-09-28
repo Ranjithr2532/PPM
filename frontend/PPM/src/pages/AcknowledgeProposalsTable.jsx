@@ -72,6 +72,9 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
 
   const filteredProposals = useMemo(() => {
     return pendingProposals.filter((p) => {
+      if (p.draft === true || String(p.draft).toLowerCase() === 'true' || p.draft === 1) {
+        return false
+      }
       const matchesSearch = searchText
         ? [p.customer_name, p.quote_reference, p.quotation_given_by_name]
           .some(val => (val || '').toString().toLowerCase().includes(searchText.toLowerCase()))
@@ -94,7 +97,9 @@ const AcknowledgeProposalsTable = ({ fetchProposalsTrigger }) => {
       if (!response.ok) throw new Error('Failed to fetch pending proposals')
       const data = await response.json()
       const normalized = Array.isArray(data)
-        ? data.map((item) => ({ ...item, key: item.id }))
+        ? data
+            .filter((item) => !item.draft || item.draft === 'false' || item.draft === 0)
+            .map((item) => ({ ...item, key: item.id }))
         : []
 
       // Fetch all documents to compute per-proposal document counts

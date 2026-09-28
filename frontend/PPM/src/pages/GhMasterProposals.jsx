@@ -41,7 +41,7 @@ const { TextArea } = Input
 const { RangePicker } = DatePicker
 
 const MASTER_FIELDS = [
-   
+
   { name: 'quote_date', label: 'Quote Date' },
   { name: 'customer_name', label: 'Customer Name' },
   { name: 'description', label: 'Description' },
@@ -111,46 +111,46 @@ function GhMasterProposals() {
     setViewingRecord(null)
   }, [])
 
- const fetchProposals = useCallback(async () => {
-  setTableLoading(true)
-  const rawUser = window.localStorage.getItem('ppm_user')
-  const parsedUser = JSON.parse(rawUser)
-  const userName = parsedUser.name.trim().toLowerCase()
-  
-  try {
-    // Fetch all master proposals instead of filtered by indentor
-    const response = await fetch(`${API_BASE_URL}/master_proposals/`, {
-      headers: { accept: 'application/json' },
-    })
-    
-    if (!response.ok) {
-      throw new Error('Unable to fetch proposals')
-    }
-    const payload = await response.json()
-    
-    console.log('🔍 All Master Proposals API Response:', payload)
-    
-    // Filter client-side for the current user's proposals
-    const normalized = Array.isArray(payload)
-      ? payload
+  const fetchProposals = useCallback(async () => {
+    setTableLoading(true)
+    const rawUser = window.localStorage.getItem('ppm_user')
+    const parsedUser = JSON.parse(rawUser)
+    const userName = parsedUser.name.trim().toLowerCase()
+
+    try {
+      // Fetch all master proposals instead of filtered by indentor
+      const response = await fetch(`${API_BASE_URL}/master_proposals/`, {
+        headers: { accept: 'application/json' },
+      })
+
+      if (!response.ok) {
+        throw new Error('Unable to fetch proposals')
+      }
+      const payload = await response.json()
+
+      console.log('🔍 All Master Proposals API Response:', payload)
+
+      // Filter client-side for the current user's proposals
+      const normalized = Array.isArray(payload)
+        ? payload
           .filter((item) => {
             if (item.draft) return false
             const indentorName = (item.indentor || '').trim().toLowerCase()
             return indentorName.includes(userName)
           })
           .map((item) => ({ ...item, key: item.id }))
-      : []
-    
-    console.log('📊 Normalized data for user:', userName, normalized.length, 'items')
-    setTableData(normalized)
-    setFilteredData(normalized)
-  } catch (error) {
-    console.error(error)
-    message.error(error.message || 'Unable to fetch proposals')
-  } finally {
-    setTableLoading(false)
-  }
-}, [])
+        : []
+
+      console.log('📊 Normalized data for user:', userName, normalized.length, 'items')
+      setTableData(normalized)
+      setFilteredData(normalized)
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || 'Unable to fetch proposals')
+    } finally {
+      setTableLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     fetchProposals()
@@ -334,14 +334,14 @@ function GhMasterProposals() {
 
           obj[key] = value
         })
-        
+
         // Ensure all required fields exist with empty string as default
         MASTER_FIELDS.forEach((field) => {
           if (!(field.name in obj)) {
             obj[field.name] = ''
           }
         })
-        
+
         return obj
       })
 
@@ -517,7 +517,7 @@ function GhMasterProposals() {
     <>
       <div className="rounded-3xl bg-white p-4 md:p-6 shadow-sm">
         <Title level={3} className="mb-4">Master Proposals</Title>
-        
+
         {/* Filters - Responsive */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm mb-6">
           <Row gutter={[16, 16]}>
@@ -581,7 +581,7 @@ function GhMasterProposals() {
               style={{ display: 'none' }}
               onChange={handleImportFileChange}
             />
-            
+
             <Button
               danger
               icon={<DownloadOutlined />}
@@ -625,8 +625,8 @@ function GhMasterProposals() {
         {viewingRecord && (
           <div className="grid gap-6">
             {/* Primary Information Section */}
-            <Card 
-              title="Primary Information" 
+            <Card
+              title="Primary Information"
               size="small"
               className="bg-blue-50"
             >
@@ -666,8 +666,8 @@ function GhMasterProposals() {
             </Card>
 
             {/* Additional Details Section */}
-            <Card 
-              title="Additional Details" 
+            <Card
+              title="Additional Details"
               size="small"
               className="bg-gray-50"
             >
@@ -701,8 +701,8 @@ function GhMasterProposals() {
             </Card>
 
             {/* Order Information Section */}
-            <Card 
-              title="Order Information" 
+            <Card
+              title="Order Information"
               size="small"
               className="bg-green-50"
             >
@@ -742,7 +742,7 @@ function GhMasterProposals() {
           form
             .validateFields()
             .then(handleSubmit)
-            .catch(() => {})
+            .catch(() => { })
         }}
         okText={editingRecord ? 'Update' : 'Create'}
         maskClosable={false}

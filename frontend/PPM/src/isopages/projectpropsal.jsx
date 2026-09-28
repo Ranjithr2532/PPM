@@ -918,6 +918,7 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                 user_center: uCenter,
                 user_group: uGroup,
                 draft: false,
+                is_acknowledged: false,
             };
 
             if (activePropId) {
@@ -1084,6 +1085,7 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                 group: groupName || existingRecord?.group || loggedCentreDept || '',
                 proposal_status: Array.isArray(proposalStatus) ? proposalStatus.join(', ') : (proposalStatus || 'Submitted'),
                 draft: true,
+                is_acknowledged: false,
             };
 
             const propRes = await axios.post(`${API_BASE_URL}/proposals/add-proposal-coordinator`, proposalPayload);

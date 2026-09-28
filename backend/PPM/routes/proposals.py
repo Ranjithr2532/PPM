@@ -136,7 +136,17 @@ def create_proposal(payload: ProposalCreate, db: Session = Depends(get_db)) -> P
     except AttributeError:
         data = payload.model_dump(exclude_unset=True, by_alias=False)
 
-    data["is_acknowledged"] = None
+    # Handle is_acknowledged flag
+    if "is_acknowledged" in data and data["is_acknowledged"] is not None:
+        data["is_acknowledged"] = bool(data["is_acknowledged"])
+    elif getattr(payload, "is_acknowledged", None) is not None:
+        data["is_acknowledged"] = bool(payload.is_acknowledged)
+    elif "draft" in data and data["draft"]:
+        data["is_acknowledged"] = False
+    elif getattr(payload, "draft", False):
+        data["is_acknowledged"] = False
+    else:
+        data["is_acknowledged"] = True
 
     # Check if project_number already exists
     if data.get("project_number"):
@@ -234,7 +244,7 @@ def list_proposals(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> List[ProposalResponse]:
-    query = db.query(Proposal).filter(Proposal.is_acknowledged == True).options(joinedload(Proposal.payments))
+    query = db.query(Proposal).filter(or_(Proposal.is_acknowledged == True, Proposal.draft == True)).options(joinedload(Proposal.payments))
     
     # Apply date range filter if provided
     if date_field and start_date and end_date:
@@ -292,7 +302,15 @@ def list_proposals(
 
 @router.get("/false", response_model=List[ProposalResponse])
 def list_proposals(db: Session = Depends(get_db)) -> List[ProposalResponse]:
-    return db.query(Proposal).filter(Proposal.is_acknowledged == None).order_by(desc(Proposal.id)).all()
+    return (
+        db.query(Proposal)
+        .filter(
+            or_(Proposal.is_acknowledged.is_(None), Proposal.is_acknowledged.is_(False)),
+            or_(Proposal.draft.is_(None), Proposal.draft.is_(False)),
+        )
+        .order_by(desc(Proposal.id))
+        .all()
+    )
 
 
 @router.get("/unacknowledged")
@@ -304,7 +322,8 @@ def list_unacknowledged_proposals(
 ) -> List[ProposalResponse]:
 
     query = db.query(Proposal).filter(
-        or_(Proposal.is_acknowledged.is_(None), Proposal.is_acknowledged.is_(False))
+        or_(Proposal.is_acknowledged.is_(None), Proposal.is_acknowledged.is_(False)),
+        or_(Proposal.draft.is_(None), Proposal.draft.is_(False)),
     )
 
     if date_field and start_date and end_date:
@@ -346,7 +365,7 @@ def get_proposals_with_payments(db: Session = Depends(get_db)):
     Returns:
         List of proposals with their payment details
     """
-    proposals = db.query(Proposal).all()
+    proposals = db.query(Proposal).filter(Proposal.is_acknowledged == True).all()
     
     result = []
     for proposal in proposals:
@@ -479,7 +498,6 @@ def get_proposals_by_name(
                 ),
                 or_(
                     Proposal.is_acknowledged == True,
-                    Proposal.is_acknowledged.is_(None),
                     Proposal.draft == True,
                 ),
             )
@@ -548,7 +566,6 @@ def get_proposals_by_name(
                 ),
                 or_(
                     Proposal.is_acknowledged == True,
-                    Proposal.is_acknowledged.is_(None),
                     Proposal.draft == True,
                 ),
             )
@@ -562,9 +579,8 @@ def get_proposals_by_name(
             .filter(
                 or_(
                     Proposal.is_acknowledged == True,
-                    Proposal.is_acknowledged.is_(None),
                     Proposal.draft == True,
-                )
+                ),
             )
             .distinct(Proposal.id)
             .all()
@@ -592,7 +608,6 @@ def get_proposals_by_name(
                 ),
                 or_(
                     Proposal.is_acknowledged == True,
-                    Proposal.is_acknowledged.is_(None),
                     Proposal.draft == True,
                 ),
             )
@@ -693,7 +708,6 @@ def get_proposals_by_group(
             ),
             or_(
                 Proposal.is_acknowledged == True,
-                Proposal.is_acknowledged.is_(None),
                 Proposal.draft == True,
             ),
         )
@@ -1027,22 +1041,26 @@ def proposal_vs_project(db: Session = Depends(get_db)):
     """
     Get count of proposals, pending, converted to projects, ongoing, technically completed, and financially completed.
     """
-    total = db.query(Proposal).count()
+    total = db.query(Proposal).filter(Proposal.is_acknowledged == True).count()
     converted = db.query(Proposal).filter(
+        Proposal.is_acknowledged == True,
         Proposal.project_number.isnot(None),
         Proposal.project_number != ''
     ).count()
     remained = total - converted
 
     tech_completed = db.query(Proposal).filter(
+        Proposal.is_acknowledged == True,
         Proposal.technical_completed_year.isnot(None)
     ).count()
 
     fin_completed = db.query(Proposal).filter(
+        Proposal.is_acknowledged == True,
         Proposal.financial_completed_year.isnot(None)
     ).count()
 
     ongoing_projects = db.query(Proposal).filter(
+        Proposal.is_acknowledged == True,
         Proposal.project_number.isnot(None),
         Proposal.project_number != '',
         Proposal.technical_completed_year.is_(None)
@@ -1459,7 +1477,12 @@ def bulk_create_proposals(
             data["status"] = str(status_value).strip() if status_value else None
             
         # Set acknowledged flag for bulk imports
-        data["is_acknowledged"] = None
+        if "is_acknowledged" in row and row["is_acknowledged"] is not None:
+            data["is_acknowledged"] = bool(row["is_acknowledged"])
+        elif data.get("is_acknowledged") is not None:
+            data["is_acknowledged"] = bool(data["is_acknowledged"])
+        else:
+            data["is_acknowledged"] = True
         
         # Check if project_number already exists
         if data.get("project_number"):
@@ -1520,7 +1543,6 @@ def get_proposals_by_centre(centre: str, db: Session = Depends(get_db)):
             ),
             or_(
                 Proposal.is_acknowledged == True,
-                Proposal.is_acknowledged.is_(None),
                 Proposal.draft == True,
             ),
         )
@@ -1712,14 +1734,18 @@ async def add_proposal_coordinator(
         for k, v in filtered_data.items():
             if k != "id":
                 setattr(proposal, k, v)
-        if "draft" in filtered_data:
-            proposal.draft = filtered_data["draft"]
+        if "is_acknowledged" in filtered_data and filtered_data["is_acknowledged"] is not None:
+            proposal.is_acknowledged = bool(filtered_data["is_acknowledged"])
         else:
-            proposal.draft = False
+            proposal.is_acknowledged = False
         db.commit()
         db.refresh(proposal)
     else:
         # Create new Proposal record in database
+        if "is_acknowledged" not in filtered_data or filtered_data["is_acknowledged"] is None:
+            filtered_data["is_acknowledged"] = False
+        else:
+            filtered_data["is_acknowledged"] = bool(filtered_data["is_acknowledged"])
         proposal = Proposal(**filtered_data)
         db.add(proposal)
         db.commit()
@@ -1814,6 +1840,7 @@ def trigger_delivery_notifications(db: Session = Depends(get_db)):
 
     # Get all incomplete proposals (NULL means incomplete for DATE columns)
     proposals = db.query(Proposal).filter(
+        Proposal.is_acknowledged == True,
         Proposal.technical_completed_year.is_(None),
         Proposal.financial_completed_year.is_(None)
     ).all()
@@ -1956,8 +1983,12 @@ def get_unacknowledged_proposals_count(db: Session = Depends(get_db)) -> Dict[st
     count = db.query(func.count(Proposal.id)).filter(
         or_(
             Proposal.is_acknowledged.is_(None),
-            
-        )
+            Proposal.is_acknowledged.is_(False),
+        ),
+        or_(
+            Proposal.draft.is_(None),
+            Proposal.draft.is_(False),
+        ),
     ).scalar()
     
     return {"unacknowledged_count": count or 0}
@@ -1990,6 +2021,7 @@ def get_not_converted_proposals_for_scientist(name: str, db: Session = Depends(g
     proposals = (
         db.query(Proposal)
         .filter(
+            Proposal.is_acknowledged == True,
             func.lower(Proposal.proposals_converted) == "no",
             or_(                                                     # condition 2
             Proposal.if_not_reason.is_(None),
@@ -2035,7 +2067,8 @@ def get_projects_by_group(group: str, db: Session = Depends(get_db)):
         .filter(
             func.lower(Proposal.group) == group_clean,
             Proposal.project_number.isnot(None),
-            func.trim(Proposal.project_number) != ""
+            func.trim(Proposal.project_number) != "",
+            Proposal.is_acknowledged == True,
         )
         .order_by(desc(Proposal.id))
         .all()

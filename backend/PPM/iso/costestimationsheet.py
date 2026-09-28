@@ -4,6 +4,7 @@ Supports dynamic multi-year Financial Years (FY), formulas, sub-tables, and exac
 """
 
 from typing import List, Dict, Any, Optional
+import os
 import io
 import xlsxwriter
 from fastapi import APIRouter, HTTPException, status, Query
@@ -20,6 +21,22 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 
 router = APIRouter(prefix="/iso", tags=["Project Cost Estimation Sheet"])
+
+
+def get_logo_path() -> Optional[str]:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(os.path.dirname(base_dir), "images", "waitro-member-cmti.png"),
+        os.path.join(os.path.dirname(base_dir), "images", "cmti.png"),
+        os.path.join(os.path.dirname(os.path.dirname(base_dir)), "frontend", "PPM", "src", "assets", "waitro-member-cmti.png"),
+        os.path.join(os.path.dirname(os.path.dirname(base_dir)), "frontend", "PPM", "src", "assets", "cmti.png"),
+        "c:/Users/SMPM2/Downloads/ranjith-newppm/frontend/PPM/src/assets/waitro-member-cmti.png",
+        "c:/Users/SMPM2/Downloads/ranjith-newppm/backend/PPM/images/cmti.png",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
 
 
 def set_cell_shading(cell, color_hex: str = "E6E6E6"):
@@ -301,13 +318,33 @@ def create_cost_estimation_sheet_document(
     t_info = doc.add_table(rows=5, cols=2)
     t_info.alignment = WD_TABLE_ALIGNMENT.LEFT
     t_info.autofit = False
-    set_table_fixed_grid(t_info, [1.05, 3.40])
+    set_table_fixed_grid(t_info, [0.90, 3.55])
 
-    # Row 0: Central Manufacturing Technology Institute (Merged)
-    t_info.rows[0].cells[0].merge(t_info.rows[0].cells[1])
-    set_cell_width(t_info.rows[0].cells[0], 4.45)
-    set_cell_shading(t_info.rows[0].cells[0], grey_shd)
-    add_text(t_info.rows[0].cells[0], "Central Manufacturing Technology Institute\nISO 9001:2015", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+    # Row 0: Logo on left (0.90 in), Central Manufacturing Technology Institute on right (3.55 in)
+    cell_logo = t_info.rows[0].cells[0]
+    cell_title = t_info.rows[0].cells[1]
+    set_cell_width(cell_logo, 0.90)
+    set_cell_width(cell_title, 3.55)
+    set_cell_shading(cell_logo, grey_shd)
+    set_cell_shading(cell_title, grey_shd)
+
+    p_logo = cell_logo.paragraphs[0]
+    p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_logo.paragraph_format.space_before = Pt(0)
+    p_logo.paragraph_format.space_after = Pt(0)
+    p_logo.paragraph_format.line_spacing = 1.0
+
+    logo_file = get_logo_path()
+    if logo_file and os.path.exists(logo_file):
+        run_logo = p_logo.add_run()
+        run_logo.add_picture(logo_file, width=Inches(0.72))
+    else:
+        run_logo = p_logo.add_run("CMTI")
+        run_logo.bold = True
+        run_logo.font.name = "Arial"
+        run_logo.font.size = Pt(8.0)
+
+    add_text(cell_title, "Central Manufacturing Technology Institute\nISO 9001:2015", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Row 1: Prepared on: ______________ (Merged)
     t_info.rows[1].cells[0].merge(t_info.rows[1].cells[1])
@@ -321,14 +358,14 @@ def create_cost_estimation_sheet_document(
     add_text(t_info.rows[2].cells[0], "PROJECT COST ESTIMATION SHEET", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Row 3: Project No.: | [val]
-    set_cell_width(t_info.rows[3].cells[0], 1.05)
-    set_cell_width(t_info.rows[3].cells[1], 3.40)
+    set_cell_width(t_info.rows[3].cells[0], 0.90)
+    set_cell_width(t_info.rows[3].cells[1], 3.55)
     add_text(t_info.rows[3].cells[0], "Project No.:", font_size=7.0, bold=True)
     add_text(t_info.rows[3].cells[1], str(project_no or ""), font_size=7.0)
 
     # Row 4: Project Title: | [val]
-    set_cell_width(t_info.rows[4].cells[0], 1.05)
-    set_cell_width(t_info.rows[4].cells[1], 3.40)
+    set_cell_width(t_info.rows[4].cells[0], 0.90)
+    set_cell_width(t_info.rows[4].cells[1], 3.55)
     add_text(t_info.rows[4].cells[0], "Project Title:", font_size=7.0, bold=True)
     add_text(t_info.rows[4].cells[1], str(project_title or ""), font_size=7.0)
 
@@ -337,7 +374,7 @@ def create_cost_estimation_sheet_document(
         r.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
         for c in r.cells:
             set_cell_border(c, top=border_black, bottom=border_black, left=border_black, right=border_black)
-            set_cell_margins(c, top=6, bottom=6, start=8, end=8)
+            set_cell_margins(c, top=4, bottom=4, start=6, end=6)
             c.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
     # Table 2: Account Heads Table (4.60 in, dynamically scaled for all FY columns)
@@ -1029,7 +1066,17 @@ def create_cost_estimation_sheet_excel(
     # -------------------------------------------------------------
     # Row 0: Central Manufacturing Technology Institute
     ws.merge_range(0, 0, 0, total_col_idx, "Central Manufacturing Technology Institute\nISO 9001:2015", fmt_hdr_title)
-    ws.set_row(0, 32)
+    ws.set_row(0, 36)
+
+    logo_path = get_logo_path()
+    if logo_path and os.path.exists(logo_path):
+        ws.insert_image(0, 0, logo_path, {
+            'x_scale': 0.16,
+            'y_scale': 0.16,
+            'x_offset': 6,
+            'y_offset': 3,
+            'positioning': 1
+        })
 
     # Row 1: Updated on: date
     updated_str = f"Updated on: {prepared_on}" if prepared_on else "Updated on: ______________"

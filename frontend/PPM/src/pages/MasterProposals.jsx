@@ -492,22 +492,9 @@ function MasterProposals() {
         align: 'center',
         render: (_, record) => {
           if (record.is_acknowledged === true || String(record.is_acknowledged).toLowerCase() === 'true') {
-            return <Tag color="green">Accepted</Tag>
+            return <Tag color="green">Acknowledged</Tag>
           }
-          if (record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false') {
-            return <Tag color="red">Rejected</Tag>
-          }
-          return (
-            <Button
-              size="small"
-              type="primary"
-              icon={<CheckOutlined />}
-              onClick={() => handleAcknowledge(record, true)}
-              className="bg-emerald-600 hover:bg-emerald-700 font-semibold border-none text-[11px] px-2"
-            >
-              Accept
-            </Button>
-          )
+          return <Tag color="orange">Not Acknowledged</Tag>
         },
       },
       {

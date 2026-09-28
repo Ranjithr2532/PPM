@@ -225,9 +225,19 @@ const ALL_FIELDS = [
   { name: 'dispatch_date', label: 'Dispatch Date', width: 160 },
   { name: 'ppm_remarks', label: 'PPM Remarks', width: 200, input: 'textarea' },
   { name: 'created_at', label: 'Created At', width: 190, inForm: false },
-  { name: 'updated_at', label: 'Updated At', width: 190, inForm: false },
   { name: 'updated_by', label: 'Updated By', width: 150, required: true },
-  { name: 'is_acknowledged', label: 'Is Acknowledged', width: 150, inForm: false },
+  {
+    name: 'is_acknowledged',
+    label: 'Is Acknowledged',
+    width: 150,
+    inForm: false,
+    render: (value) => {
+      if (value === true || String(value).toLowerCase() === 'true') {
+        return <Tag color="green">Acknowledged</Tag>
+      }
+      return <Tag color="orange">Not Acknowledged</Tag>
+    },
+  },
 ]
 
 const COORDINATOR_ADD_FIELDS = [
@@ -630,7 +640,16 @@ export default function Allproposals() {
       }
 
       const list = await response.json()
-      const normalized = (Array.isArray(list) ? list : []).map(mapApiToUi)
+      const normalized = (Array.isArray(list) ? list : [])
+        .map(mapApiToUi)
+        .filter(
+          (item) =>
+            item.is_acknowledged === true ||
+            String(item.is_acknowledged).toLowerCase() === 'true' ||
+            item.draft === true ||
+            String(item.draft).toLowerCase() === 'true' ||
+            item.draft === 1,
+        )
 
       try {
         const stagesRes = await fetch(`${API_BASE_URL}/stages/`, {
@@ -749,7 +768,7 @@ export default function Allproposals() {
       })
       if (response.ok) {
         const data = await response.json()
-        let filtered = Array.isArray(data) ? data : []
+        let filtered = (Array.isArray(data) ? data : []).filter(item => !item.draft || item.draft === 'false' || item.draft === 0)
 
         if (isGhRole && currentUserGroup) {
           const cleanGroup = currentUserGroup.trim().toLowerCase()
@@ -782,7 +801,9 @@ export default function Allproposals() {
       })
       if (!response.ok) throw new Error('Unable to fetch unacknowledged proposals')
       const list = await response.json()
-      let normalized = (Array.isArray(list) ? list : []).map(mapApiToUi)
+      let normalized = (Array.isArray(list) ? list : [])
+        .filter(item => !item.draft || item.draft === 'false' || item.draft === 0)
+        .map(mapApiToUi)
 
       if (isGhRole && currentUserGroup) {
         const cleanGroup = currentUserGroup.trim().toLowerCase()
@@ -1864,6 +1885,7 @@ export default function Allproposals() {
     payload.project_coordinator = values.quotation_given_by_name || currentUserName || ''
     payload.center = currentUserCenter || ''
     payload.group = currentUserGroup || ''
+    payload.is_acknowledged = false
 
     if (convertingDraftRecord && convertingDraftRecord.id) {
       payload.id = convertingDraftRecord.id
@@ -1990,6 +2012,7 @@ export default function Allproposals() {
 
       closeCoordinatorModal()
       await fetchProposals()
+      await fetchUnacknowledgedCount()
 
       if (newProjectId) {
         openUploadModalForProject(newProjectId)
@@ -2014,6 +2037,7 @@ export default function Allproposals() {
       const payload = {
         quote_description: descToSave.trim(),
         draft: true,
+        is_acknowledged: false,
         quotation_given_by_name: currentUserName || '',
         quotation_given_by_department: currentUserCenter || '',
         group: currentUserGroup || ''
@@ -2035,6 +2059,7 @@ export default function Allproposals() {
       setDraftQuoteDescription('')
       closeCoordinatorModal()
       await fetchProposals()
+      await fetchUnacknowledgedCount()
     } catch (err) {
       console.error('Draft creation error:', err)
       message.error(err.message || 'Failed to save draft proposal')
@@ -2120,15 +2145,17 @@ export default function Allproposals() {
 
   const statistics = useMemo(() => {
     const nonTeamData = tableData.filter((item) => !teamProposalIds.includes(item.id))
-    const totalProposals = nonTeamData.filter((item) => !item.project_number?.trim()).length
-    const totalProjects = nonTeamData.filter((item) => item.project_number?.trim()).length
+    const totalProposals = nonTeamData.filter((item) => (!item.draft || item.draft === 'false' || item.draft === 0) && !item.project_number?.trim()).length
+    const totalProjects = nonTeamData.filter((item) => (!item.draft || item.draft === 'false' || item.draft === 0) && item.project_number?.trim()).length
     const technicallyCompleted = nonTeamData.filter(
       (item) =>
+        (!item.draft || item.draft === 'false' || item.draft === 0) &&
         item.technical_completed_year &&
         item.technical_completed_year.trim() !== '',
     ).length
     const financiallyCompleted = nonTeamData.filter(
       (item) =>
+        (!item.draft || item.draft === 'false' || item.draft === 0) &&
         item.technical_completed_year &&
         item.technical_completed_year.trim() !== '' &&
         item.financial_completed_year &&
@@ -2136,23 +2163,24 @@ export default function Allproposals() {
     ).length
     const financiallyNotCompleted = nonTeamData.filter(
       (item) =>
+        (!item.draft || item.draft === 'false' || item.draft === 0) &&
         item.technical_completed_year &&
         item.technical_completed_year.trim() !== '' &&
         (!item.financial_completed_year || item.financial_completed_year.trim() === ''),
     ).length
     const pendingProjects = nonTeamData.filter(
-      (item) => item.status === 'Ongoing' || item.status === 'On Hold',
+      (item) => (!item.draft || item.draft === 'false' || item.draft === 0) && (item.status === 'Ongoing' || item.status === 'On Hold'),
     ).length
 
     const onHoldProjects = nonTeamData.filter(
-      (item) => item.status === 'On Hold',
+      (item) => (!item.draft || item.draft === 'false' || item.draft === 0) && item.status === 'On Hold',
     ).length
 
     const convertedNo = nonTeamData.filter(
-      (item) => isProposalNotConverted(item.proposals_converted, item.if_not_reason),
+      (item) => (!item.draft || item.draft === 'false' || item.draft === 0) && isProposalNotConverted(item.proposals_converted, item.if_not_reason),
     ).length
 
-    const draftProposalsCount = nonTeamData.filter((item) => item.draft === true).length
+    const draftProposalsCount = nonTeamData.filter((item) => item.draft === true || item.draft === 'true' || item.draft === 1).length
 
     const PROJECT_PREFIXES = ['GSP', 'ISP', 'GAP', 'ILP', 'DPP', 'LSP', 'CLP', 'SVP', 'TOT']
     const projectCodeBreakdown = {}
@@ -2433,10 +2461,10 @@ export default function Allproposals() {
       title: 'Acknowledgement',
       width: 160,
       render: (value) => {
-        if (value === false || String(value).toLowerCase() === 'false') {
-          return <Tag color="red" className="font-bold">Rejected</Tag>
+        if (value === true || String(value).toLowerCase() === 'true') {
+          return <Tag color="green">Acknowledged</Tag>
         }
-        return '-'
+        return <Tag color="orange">Not Acknowledged</Tag>
       },
     }
 
@@ -3038,24 +3066,18 @@ export default function Allproposals() {
                     sticky
                     bordered
                     rowClassName={(record) => {
-                      const isRejected = record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false'
-                      if (isRejected) {
-                        return '!bg-red-100/90 font-semibold'
-                      }
                       if (record.status === 'On Hold') {
                         return '!bg-orange-50'
                       }
                       return ''
                     }}
                     onRow={(record) => {
-                      const isRejected = record.is_acknowledged === false || String(record.is_acknowledged).toLowerCase() === 'false'
                       return {
                         onClick: () => openDetailModal(record),
                         style: {
                           cursor: 'pointer',
-                          backgroundColor: isRejected
-                            ? '#fee2e2'
-                            : record.status === 'On Hold'
+                          backgroundColor:
+                            record.status === 'On Hold'
                               ? '#fff2e8'
                               : 'transparent',
                         },
@@ -3206,15 +3228,13 @@ export default function Allproposals() {
                   </Descriptions>
                 </Card>
 
-                <Card title="Acknowledgement" size="small" className={selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? 'bg-red-50 border-red-200' : 'bg-blue-50'}>
+                <Card title="Acknowledgement" size="small" className="bg-blue-50">
                   <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
                     <Descriptions.Item label="Is Acknowledged">
                       {selectedRecord?.is_acknowledged === true || String(selectedRecord?.is_acknowledged).toLowerCase() === 'true' ? (
                         <Tag color="green">Acknowledged</Tag>
-                      ) : selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? (
-                        <Tag color="red" className="font-bold">Rejected</Tag>
                       ) : (
-                        <Tag color="orange">Pending (Unacknowledged)</Tag>
+                        <Tag color="orange">Not Acknowledged</Tag>
                       )}
                     </Descriptions.Item>
                   </Descriptions>
@@ -3262,15 +3282,13 @@ export default function Allproposals() {
                   </Descriptions>
                 </Card>
 
-                <Card title="Acknowledgement" size="small" className={selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? 'bg-red-50 border-red-200' : 'bg-blue-50'}>
+                <Card title="Acknowledgement" size="small" className="bg-blue-50">
                   <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
                     <Descriptions.Item label="Is Acknowledged">
                       {selectedRecord?.is_acknowledged === true || String(selectedRecord?.is_acknowledged).toLowerCase() === 'true' ? (
                         <Tag color="green">Acknowledged</Tag>
-                      ) : selectedRecord?.is_acknowledged === false || String(selectedRecord?.is_acknowledged).toLowerCase() === 'false' ? (
-                        <Tag color="red" className="font-bold">Rejected</Tag>
                       ) : (
-                        <Tag color="orange">Pending (Unacknowledged)</Tag>
+                        <Tag color="orange">Not Acknowledged</Tag>
                       )}
                     </Descriptions.Item>
                   </Descriptions>
