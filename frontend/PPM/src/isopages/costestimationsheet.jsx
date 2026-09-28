@@ -99,7 +99,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     const [status, setStatus] = useState('DRAFT');
     const [generating, setGenerating] = useState(false);
     const [generatingExcel, setGeneratingExcel] = useState(false);
-    const [pendingGenAction, setPendingGenAction] = useState('doc');
     const [submitting, setSubmitting] = useState(false);
 
     // Setup screen state - opens immediately on load to ask project duration
@@ -156,8 +155,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     const [groupHeadTitle, setGroupHeadTitle] = useState('Group Head');
     const [centreHeadTitle, setCentreHeadTitle] = useState('Centre Head');
     const [caoTitle, setCaoTitle] = useState('Chief Accounts Officer');
-    const [underflowFlags, setUnderflowFlags] = useState({ infra: false, techHr: false, staff: false, equip: false });
-    const showUnderflowWarning = underflowFlags.infra || underflowFlags.techHr || underflowFlags.staff || underflowFlags.equip;
 
     const userRole = getCurrentUserRole();
     const isApprover = userRole === 'ch' || userRole === 'gh' || userRole === 'admin' || userRole === 'director';
@@ -269,7 +266,7 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
         return { matrix, rowTotals };
     }, [fyLabels, fyValues]);
 
-    // Effective Infrastructure Total: Link COD/main table C1 + C2 amount if present, or subtable sum
+    // Effective Sub-Table Totals: Keep allocated amount from main table so total doesn't reduce, fallback to sub-item sum
     const displayInfraTotal = useMemo(() => {
         const mainC1C2 = (computedMatrix.rowTotals['C1'] || 0) + (computedMatrix.rowTotals['C2'] || 0);
         return mainC1C2 > 0 ? mainC1C2 : infraTotal;
@@ -310,27 +307,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     const equipOverflow = useMemo(() => {
         const mainC3C4 = (computedMatrix.rowTotals['C3'] || 0) + (computedMatrix.rowTotals['C4'] || 0);
         return mainC3C4 > 0 && equipTotal > mainC3C4;
-    }, [computedMatrix.rowTotals, equipTotal]);
-
-    // Underflow: sub-table total is LESS than allocated budget in main table
-    const infraUnderflow = useMemo(() => {
-        const mainC1C2 = (computedMatrix.rowTotals['C1'] || 0) + (computedMatrix.rowTotals['C2'] || 0);
-        return mainC1C2 > 0 && infraTotal < mainC1C2;
-    }, [computedMatrix.rowTotals, infraTotal]);
-
-    const techHrUnderflow = useMemo(() => {
-        const mainR6 = computedMatrix.rowTotals['R6'] || 0;
-        return mainR6 > 0 && techHrTotal < mainR6;
-    }, [computedMatrix.rowTotals, techHrTotal]);
-
-    const staffUnderflow = useMemo(() => {
-        const mainE1 = computedMatrix.rowTotals['E1'] || 0;
-        return mainE1 > 0 && staffTotal < mainE1;
-    }, [computedMatrix.rowTotals, staffTotal]);
-
-    const equipUnderflow = useMemo(() => {
-        const mainC3C4 = (computedMatrix.rowTotals['C3'] || 0) + (computedMatrix.rowTotals['C4'] || 0);
-        return mainC3C4 > 0 && equipTotal < mainC3C4;
     }, [computedMatrix.rowTotals, equipTotal]);
 
     // Input Change Handler for Main Grid
@@ -469,9 +445,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
             .catch(err => console.error("Failed to load cost estimation sheet submission", err));
     }, [submissionId, initFyValues]);
 
-    // Reset underflow warning when values change
-    const resetUnderflowWarning = () => setUnderflowFlags({ infra: false, techHr: false, staff: false, equip: false });
-
     // Build Payload for Backend (.docx generation & DB Save)
     const buildPayload = (targetStatus = status) => {
         // Build account heads object
@@ -543,38 +516,7 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     };
 
     // Download Generated Word (.docx)
-    const handleGenerateDoc = async (force = false) => {
-        const sumRow = (cod) => (fyValues[cod] || []).reduce((s, v) => s + num(v), 0);
-
-        const _mainC1C2 = sumRow('C1') + sumRow('C2');
-        const _mainR6 = sumRow('R6');
-        const _mainE1 = sumRow('E1');
-        const _mainC3C4 = sumRow('C3') + sumRow('C4');
-
-        const _infraUnderflow = _mainC1C2 > 0 && infraTotal < _mainC1C2;
-        const _techHrUnderflow = _mainR6 > 0 && techHrTotal < _mainR6;
-        const _staffUnderflow = _mainE1 > 0 && staffTotal < _mainE1;
-        const _equipUnderflow = _mainC3C4 > 0 && equipTotal < _mainC3C4;
-
-        const hasOverflow = infraOverflow || techHrOverflow || staffOverflow || equipOverflow;
-        const hasUnderflow = _infraUnderflow || _techHrUnderflow || _staffUnderflow || _equipUnderflow;
-
-        if (hasOverflow) {
-            const subtableElem = document.getElementById('subtables-section');
-            if (subtableElem) subtableElem.scrollIntoView({ behavior: 'smooth' });
-            return;
-        }
-
-        if (hasUnderflow && !force) {
-            setPendingGenAction('doc');
-            setUnderflowFlags({ infra: _infraUnderflow, techHr: _techHrUnderflow, staff: _staffUnderflow, equip: _equipUnderflow });
-            setTimeout(() => {
-                const subtableElem = document.getElementById('subtables-section');
-                if (subtableElem) subtableElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 50);
-            return;
-        }
-
+    const handleGenerateDoc = async () => {
         setGenerating(true);
         try {
             const payload = buildPayload();
@@ -592,7 +534,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
             document.body.appendChild(link);
             link.click();
             link.remove();
-            setUnderflowFlags({ infra: false, techHr: false, staff: false, equip: false });
         } catch (err) {
             console.error('Word generation error:', err);
             alert('Failed to generate Word document.');
@@ -602,38 +543,7 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
     };
 
     // Download Generated Excel (.xlsx)
-    const handleGenerateExcel = async (force = false) => {
-        const sumRow = (cod) => (fyValues[cod] || []).reduce((s, v) => s + num(v), 0);
-
-        const _mainC1C2 = sumRow('C1') + sumRow('C2');
-        const _mainR6 = sumRow('R6');
-        const _mainE1 = sumRow('E1');
-        const _mainC3C4 = sumRow('C3') + sumRow('C4');
-
-        const _infraUnderflow = _mainC1C2 > 0 && infraTotal < _mainC1C2;
-        const _techHrUnderflow = _mainR6 > 0 && techHrTotal < _mainR6;
-        const _staffUnderflow = _mainE1 > 0 && staffTotal < _mainE1;
-        const _equipUnderflow = _mainC3C4 > 0 && equipTotal < _mainC3C4;
-
-        const hasOverflow = infraOverflow || techHrOverflow || staffOverflow || equipOverflow;
-        const hasUnderflow = _infraUnderflow || _techHrUnderflow || _staffUnderflow || _equipUnderflow;
-
-        if (hasOverflow) {
-            const subtableElem = document.getElementById('subtables-section');
-            if (subtableElem) subtableElem.scrollIntoView({ behavior: 'smooth' });
-            return;
-        }
-
-        if (hasUnderflow && !force) {
-            setPendingGenAction('excel');
-            setUnderflowFlags({ infra: _infraUnderflow, techHr: _techHrUnderflow, staff: _staffUnderflow, equip: _equipUnderflow });
-            setTimeout(() => {
-                const subtableElem = document.getElementById('subtables-section');
-                if (subtableElem) subtableElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 50);
-            return;
-        }
-
+    const handleGenerateExcel = async () => {
         setGeneratingExcel(true);
         try {
             const payload = buildPayload();
@@ -654,7 +564,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
             document.body.appendChild(link);
             link.click();
             link.remove();
-            setUnderflowFlags({ infra: false, techHr: false, staff: false, equip: false });
         } catch (err) {
             console.error('Excel generation error:', err);
             alert('Failed to generate Excel sheet.');
@@ -1089,13 +998,12 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                             </td>
                                         </tr>
                                     ))}
-                                    <tr className={`font-bold border-t border-slate-800 ${infraOverflow ? 'bg-rose-100' : underflowFlags.infra ? 'bg-amber-50' : 'bg-slate-100'}`}>
-                                        <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${infraOverflow ? 'text-rose-700' : underflowFlags.infra ? 'text-amber-800' : 'text-slate-900'}`}>
+                                    <tr className={`font-bold border-t border-slate-800 ${infraOverflow ? 'bg-rose-100' : 'bg-slate-100'}`}>
+                                        <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${infraOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                             Total (C1+C2)
                                             {infraOverflow && <span className="ml-1.5 text-[10px] font-bold text-rose-600 bg-rose-200 px-1.5 py-0.5 rounded-full">⚠ Exceeds Budget</span>}
-                                            {underflowFlags.infra && <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">⚠ Less Than Budget</span>}
                                         </td>
-                                        <td className={`p-1.5 text-right font-mono ${infraOverflow ? 'text-rose-700' : underflowFlags.infra ? 'text-amber-800' : 'text-slate-900'}`}>
+                                        <td className={`p-1.5 text-right font-mono ${infraOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                             ₹{formatIndian(displayInfraTotal)}
                                         </td>
                                     </tr>
@@ -1105,16 +1013,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                                 <div className="flex items-center gap-1.5 text-[11px] text-rose-700 font-semibold">
                                                     <span>⚠</span>
                                                     <span>Sub-items total <strong>₹{formatIndian(infraTotal)}</strong> exceeds allocated budget <strong>₹{formatIndian(displayInfraTotal)}</strong>. Please reduce.</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {underflowFlags.infra && (
-                                        <tr>
-                                            <td colSpan={3} className="px-2 py-1.5 bg-amber-50 border-t border-amber-300">
-                                                <div className="flex items-center justify-between gap-1.5 text-[11px] text-amber-800 font-semibold">
-                                                    <span>⚠ Sub-items total <strong>₹{formatIndian(infraTotal)}</strong> is less than allocated budget <strong>₹{formatIndian(displayInfraTotal)}</strong>.</span>
-                                                    <button onClick={() => pendingGenAction === 'excel' ? handleGenerateExcel(true) : handleGenerateDoc(true)} className="underline text-amber-900 hover:text-indigo-700 text-[10px] font-bold ml-2 whitespace-nowrap cursor-pointer">Generate Anyway →</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1160,13 +1058,12 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                             </td>
                                         </tr>
                                     ))}
-                                    <tr className={`font-bold border-t border-slate-800 ${techHrOverflow ? 'bg-rose-100' : underflowFlags.techHr ? 'bg-amber-50' : 'bg-slate-100'}`}>
-                                        <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${techHrOverflow ? 'text-rose-700' : underflowFlags.techHr ? 'text-amber-800' : 'text-slate-900'}`}>
+                                    <tr className={`font-bold border-t border-slate-800 ${techHrOverflow ? 'bg-rose-100' : 'bg-slate-100'}`}>
+                                        <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${techHrOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                             Total Tech. HR (R6)
                                             {techHrOverflow && <span className="ml-1.5 text-[10px] font-bold text-rose-600 bg-rose-200 px-1.5 py-0.5 rounded-full">⚠ Exceeds Budget</span>}
-                                            {underflowFlags.techHr && <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">⚠ Less Than Budget</span>}
                                         </td>
-                                        <td className={`p-1.5 text-right font-mono ${techHrOverflow ? 'text-rose-700' : underflowFlags.techHr ? 'text-amber-800' : 'text-slate-900'}`}>
+                                        <td className={`p-1.5 text-right font-mono ${techHrOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                             ₹{formatIndian(displayTechHrTotal)}
                                         </td>
                                     </tr>
@@ -1176,16 +1073,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                                 <div className="flex items-center gap-1.5 text-[11px] text-rose-700 font-semibold">
                                                     <span>⚠</span>
                                                     <span>Sub-items total <strong>₹{formatIndian(techHrTotal)}</strong> exceeds allocated budget <strong>₹{formatIndian(displayTechHrTotal)}</strong>. Please reduce.</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {underflowFlags.techHr && (
-                                        <tr>
-                                            <td colSpan={3} className="px-2 py-1.5 bg-amber-50 border-t border-amber-300">
-                                                <div className="flex items-center justify-between gap-1.5 text-[11px] text-amber-800 font-semibold">
-                                                    <span>⚠ Sub-items total <strong>₹{formatIndian(techHrTotal)}</strong> is less than allocated budget <strong>₹{formatIndian(displayTechHrTotal)}</strong>.</span>
-                                                    <button onClick={() => pendingGenAction === 'excel' ? handleGenerateExcel(true) : handleGenerateDoc(true)} className="underline text-amber-900 hover:text-indigo-700 text-[10px] font-bold ml-2 whitespace-nowrap cursor-pointer">Generate Anyway →</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1230,13 +1117,12 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                             </td>
                                         </tr>
                                     ))}
-                                    <tr className={`font-bold border-t border-slate-800 ${staffOverflow ? 'bg-rose-100' : underflowFlags.staff ? 'bg-amber-50' : 'bg-slate-100'}`}>
-                                        <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${staffOverflow ? 'text-rose-700' : underflowFlags.staff ? 'text-amber-800' : 'text-slate-900'}`}>
+                                    <tr className={`font-bold border-t border-slate-800 ${staffOverflow ? 'bg-rose-100' : 'bg-slate-100'}`}>
+                                        <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${staffOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                             Total (E1)
                                             {staffOverflow && <span className="ml-1.5 text-[10px] font-bold text-rose-600 bg-rose-200 px-1.5 py-0.5 rounded-full">⚠ Exceeds Budget</span>}
-                                            {underflowFlags.staff && <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">⚠ Less Than Budget</span>}
                                         </td>
-                                        <td className={`p-1.5 text-right font-mono ${staffOverflow ? 'text-rose-700' : underflowFlags.staff ? 'text-amber-800' : 'text-slate-900'}`}>
+                                        <td className={`p-1.5 text-right font-mono ${staffOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                             ₹{formatIndian(displayStaffTotal)}
                                         </td>
                                     </tr>
@@ -1246,16 +1132,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                                 <div className="flex items-center gap-1.5 text-[11px] text-rose-700 font-semibold">
                                                     <span>⚠</span>
                                                     <span>Sub-items total <strong>₹{formatIndian(staffTotal)}</strong> exceeds allocated budget <strong>₹{formatIndian(displayStaffTotal)}</strong>. Please reduce.</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {underflowFlags.staff && (
-                                        <tr>
-                                            <td colSpan={3} className="px-2 py-1.5 bg-amber-50 border-t border-amber-300">
-                                                <div className="flex items-center justify-between gap-1.5 text-[11px] text-amber-800 font-semibold">
-                                                    <span>⚠ Sub-items total <strong>₹{formatIndian(staffTotal)}</strong> is less than allocated budget <strong>₹{formatIndian(displayStaffTotal)}</strong>.</span>
-                                                    <button onClick={() => pendingGenAction === 'excel' ? handleGenerateExcel(true) : handleGenerateDoc(true)} className="underline text-amber-900 hover:text-indigo-700 text-[10px] font-bold ml-2 whitespace-nowrap cursor-pointer">Generate Anyway →</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1331,13 +1207,12 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                         )}
                                     </tr>
                                 ))}
-                                <tr className={`font-bold border-t border-slate-800 ${equipOverflow ? 'bg-rose-100' : underflowFlags.equip ? 'bg-amber-50' : 'bg-slate-100'}`}>
-                                    <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${equipOverflow ? 'text-rose-700' : underflowFlags.equip ? 'text-amber-800' : 'text-slate-900'}`}>
+                                <tr className={`font-bold border-t border-slate-800 ${equipOverflow ? 'bg-rose-100' : 'bg-slate-100'}`}>
+                                    <td colSpan={2} className={`p-1.5 border-r border-slate-800 ${equipOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                         Total (C3+C4)
                                         {equipOverflow && <span className="ml-1.5 text-[10px] font-bold text-rose-600 bg-rose-200 px-1.5 py-0.5 rounded-full">⚠ Exceeds Budget</span>}
-                                        {underflowFlags.equip && <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">⚠ Less Than Budget</span>}
                                     </td>
-                                    <td className={`p-1.5 text-right font-mono ${equipOverflow ? 'text-rose-700' : underflowFlags.equip ? 'text-amber-800' : 'text-slate-900'}`}>
+                                    <td className={`p-1.5 text-right font-mono ${equipOverflow ? 'text-rose-700' : 'text-slate-900'}`}>
                                         ₹{formatIndian(displayEquipTotal)}
                                     </td>
                                     {!isReadOnly && <td></td>}
@@ -1348,16 +1223,6 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
                                             <div className="flex items-center gap-1.5 text-[11px] text-rose-700 font-semibold">
                                                 <span>⚠</span>
                                                 <span>Equipment total <strong>₹{formatIndian(equipTotal)}</strong> exceeds allocated budget <strong>₹{formatIndian(displayEquipTotal)}</strong>. Please reduce.</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                                {underflowFlags.equip && (
-                                    <tr>
-                                        <td colSpan={!isReadOnly ? 4 : 3} className="px-2 py-1.5 bg-amber-50 border-t border-amber-300">
-                                            <div className="flex items-center justify-between gap-1.5 text-[11px] text-amber-800 font-semibold">
-                                                <span>⚠ Equipment total <strong>₹{formatIndian(equipTotal)}</strong> is less than allocated budget <strong>₹{formatIndian(displayEquipTotal)}</strong>.</span>
-                                                <button onClick={() => pendingGenAction === 'excel' ? handleGenerateExcel(true) : handleGenerateDoc(true)} className="underline text-amber-900 hover:text-indigo-700 text-[10px] font-bold ml-2 whitespace-nowrap cursor-pointer">Generate Anyway →</button>
                                             </div>
                                         </td>
                                     </tr>

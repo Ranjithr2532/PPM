@@ -4,6 +4,7 @@ Supports dynamic multi-year Financial Years (FY), formulas, sub-tables, and exac
 """
 
 from typing import List, Dict, Any, Optional
+import os
 import io
 import xlsxwriter
 from fastapi import APIRouter, HTTPException, status, Query
@@ -792,7 +793,31 @@ def create_cost_estimation_sheet_document(
             final_eq_tot = c34
     add_text(tot_eq_row.cells[2], format_val(final_eq_tot), font_size=6.7, bold=True, alignment=WD_ALIGN_PARAGRAPH.RIGHT)
 
-    clean_container_cell(c_right, [t_eq])
+    # Top of Column 3: CMTI Logo
+    logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images", "CMTI_logo.png")
+    if not os.path.exists(logo_path):
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images", "cmti.png")
+
+    t_logo = None
+    if os.path.exists(logo_path):
+        t_logo = doc.add_table(rows=1, cols=1)
+        t_logo.alignment = WD_TABLE_ALIGNMENT.LEFT
+        t_logo.autofit = False
+        set_table_fixed_grid(t_logo, [3.80])
+        set_cell_width(t_logo.rows[0].cells[0], 3.80)
+        set_cell_border(t_logo.rows[0].cells[0], top=border_none, bottom=border_none, left=border_none, right=border_none)
+        set_cell_margins(t_logo.rows[0].cells[0], top=0, bottom=4, start=0, end=0)
+        p_logo = t_logo.rows[0].cells[0].paragraphs[0]
+        p_logo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p_logo.paragraph_format.space_before = Pt(0)
+        p_logo.paragraph_format.space_after = Pt(0)
+        run_logo = p_logo.add_run()
+        run_logo.add_picture(logo_path, width=Inches(2.60))
+
+    if t_logo:
+        clean_container_cell(c_right, [t_logo, t_eq], gap_pt=2)
+    else:
+        clean_container_cell(c_right, [t_eq])
 
     # =========================================================================
     # COMMENTS / NOTES & 6 SIGNATURES (Properly aligned below master table)
@@ -1302,8 +1327,20 @@ def create_cost_estimation_sheet_excel(
     ws.set_row(r_cur, 20)
 
     # -------------------------------------------------------------
-    # 3. RIGHT BLOCK (EQUIPMENTS)
+    # 3. RIGHT BLOCK (EQUIPMENTS & LOGO AT TOP)
     # -------------------------------------------------------------
+    logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images", "CMTI_logo.png")
+    if not os.path.exists(logo_path):
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images", "cmti.png")
+
+    if os.path.exists(logo_path):
+        ws.insert_image(0, right_start + 1, logo_path, {
+            'x_scale': 0.70,
+            'y_scale': 0.70,
+            'x_offset': 10,
+            'y_offset': 4
+        })
+
     eq_list = equipment_details or []
     if not eq_list:
         eq_list = [{"equipment": "", "cost": ""}]

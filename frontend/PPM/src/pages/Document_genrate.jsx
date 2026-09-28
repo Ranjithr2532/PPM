@@ -1396,7 +1396,7 @@ export default function DocumentGenerate({
                                                 rows={6}
                                                 value={aiEmailText}
                                                 onChange={(e) => setAiEmailText(e.target.value)}
-                                                placeholder="Paste complete raw customer email here (including headers, forwarded body, technical requirements, signature)..."
+                                                placeholder="Paste customer email text here..."
                                                 className="text-xs font-mono rounded-none border border-slate-900 focus:border-indigo-600 bg-white"
                                             />
                                         </div>
@@ -1445,7 +1445,7 @@ export default function DocumentGenerate({
                                     <span className="text-[10px] text-slate-400 font-normal">DOCX Structure</span>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Specify document header attributes including issue date, department code, target export filename, and SAC code.
+                                    Set the document date, department, output file name, and SAC code.
                                 </div>
                                 <table className="w-full border-collapse text-xs">
                                     <thead>
@@ -1494,7 +1494,7 @@ export default function DocumentGenerate({
                                             </td>
                                             <td className="p-1">
                                                 <Form.Item name="sac_code" noStyle>
-                                                    <Input prefix={<SafetyCertificateOutlined className="text-slate-400 mr-1" />} placeholder="998333" variant="borderless" className="p-1 text-xs" />
+                                                    <Input prefix={<SafetyCertificateOutlined className="text-slate-400 mr-1" />} placeholder="e.g. 998333 (Optional)" variant="borderless" className="p-1 text-xs" />
                                                 </Form.Item>
                                             </td>
                                         </tr>
@@ -1509,7 +1509,7 @@ export default function DocumentGenerate({
                                     <span className="text-[10px] text-slate-400 font-normal">Contact & Reference</span>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Select from saved database or enter custom recipient details. First line is Customer Name; subsequent lines form the Address.
+                                    Select from saved database or enter recipient details. First line is Customer Name; next lines are Address.
                                 </div>
 
                                 <div className="p-3 space-y-4">
@@ -1524,7 +1524,7 @@ export default function DocumentGenerate({
                                             options={customerOptions}
                                             onSearch={handleCustomerSearch}
                                             onSelect={handleCustomerSelect}
-                                            placeholder="Type customer name, email, or address to auto-complete..."
+                                            placeholder="Search customer by name, email, or phone..."
                                             className="w-full text-xs"
                                         />
                                     </div>
@@ -1538,7 +1538,7 @@ export default function DocumentGenerate({
                                                 <Form.Item name="customer_raw" noStyle rules={[{ required: true, message: 'Customer address is required' }]}>
                                                     <TextArea
                                                         rows={4}
-                                                        placeholder="M/s Bharat Electronics Ltd&#10;Jalahalli Post, Bangalore - 560013"
+                                                        placeholder="Line 1: Customer / Company Name&#10;Line 2+: Full Address, City, Pincode"
                                                         className="text-xs rounded-none border border-slate-900 focus:border-blue-600"
                                                         onChange={(e) => {
                                                             const lines = (e.target.value || '').split('\n').map(s => s.trim()).filter(Boolean);
@@ -1576,7 +1576,7 @@ export default function DocumentGenerate({
                                                     <Form.Item name="kind_attention" noStyle>
                                                         <Input
                                                             prefix={<UserOutlined className="text-slate-400 mr-1" />}
-                                                            placeholder="Mr. Rajesh Sharma, General Manager"
+                                                            placeholder="Contact Person Name & Designation (optional)"
                                                             className="text-xs rounded-none border border-slate-900"
                                                             onChange={(e) => form.setFieldsValue({ alternate_contact_details: e.target.value })}
                                                         />
@@ -1591,7 +1591,7 @@ export default function DocumentGenerate({
                                                         <Form.Item name="email_to" noStyle>
                                                             <Input
                                                                 prefix={<MailOutlined className="text-slate-400 mr-1" />}
-                                                                placeholder="rajesh@bel.co.in"
+                                                                placeholder="e.g. client@email.com"
                                                                 className="text-xs rounded-none border border-slate-900"
                                                                 onChange={(e) => form.setFieldsValue({ email: e.target.value })}
                                                             />
@@ -1604,7 +1604,7 @@ export default function DocumentGenerate({
                                                         <Form.Item name="phone" noStyle>
                                                             <Input
                                                                 prefix={<PhoneOutlined className="text-slate-400 mr-1" />}
-                                                                placeholder="9845012345"
+                                                                placeholder="e.g. 9876543210"
                                                                 className="text-xs rounded-none border border-slate-900"
                                                                 onChange={(e) => form.setFieldsValue({ phone_no: e.target.value })}
                                                             />
@@ -1623,7 +1623,7 @@ export default function DocumentGenerate({
                                             <Form.Item name="subject" noStyle rules={[{ required: true, message: 'Subject is required' }]}>
                                                 <Input
                                                     prefix={<FileTextOutlined className="text-slate-400 mr-1" />}
-                                                    placeholder="Proposal for Precision Machining and Testing of Titanium Components"
+                                                    placeholder="Enter Proposal Title / Subject"
                                                     className="text-xs rounded-none border border-slate-900 font-semibold"
                                                     onChange={(e) => form.setFieldsValue({ quote_description: e.target.value })}
                                                 />
@@ -1637,7 +1637,7 @@ export default function DocumentGenerate({
                                             <Form.Item name="reference" noStyle>
                                                 <Input
                                                     prefix={<InfoCircleOutlined className="text-slate-400 mr-1" />}
-                                                    placeholder="BEL/PUR/2026/048 dated 15-08-2026"
+                                                    placeholder="e.g. Enquiry Ref No. / Email Date"
                                                     className="text-xs rounded-none border border-slate-900"
                                                     onChange={(e) => form.setFieldsValue({ quote_reference: e.target.value, email_reference: e.target.value })}
                                                 />
@@ -1661,7 +1661,7 @@ export default function DocumentGenerate({
                                     </div>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Outline the technical scope of work, activities, milestones, and attach relevant technical drawings, specifications, or deliverables.
+                                    Define the project tasks, scope bullet points, and attach relevant project documents or drawings.
                                 </div>
 
                                 <div className="p-3 space-y-4">
@@ -1672,7 +1672,7 @@ export default function DocumentGenerate({
                                         <Form.Item name="scope_intro" noStyle>
                                             <TextArea
                                                 rows={2}
-                                                placeholder="With reference to your enquiry, CMTI proposes to undertake the following technical scope of work..."
+                                                placeholder="Brief introduction (e.g. With reference to your enquiry, we propose the following scope of work:)"
                                                 className="text-xs rounded-none border border-slate-900"
                                             />
                                         </Form.Item>
@@ -1702,7 +1702,7 @@ export default function DocumentGenerate({
                                                 value={newScopeInput}
                                                 onChange={(e) => setNewScopeInput(e.target.value)}
                                                 onPressEnter={handleAddScopeItem}
-                                                placeholder="Add new scope deliverable bullet point..."
+                                                placeholder="Enter scope of work item / task..."
                                                 className="text-xs rounded-none border border-slate-900"
                                             />
                                             <Button
@@ -1755,7 +1755,7 @@ export default function DocumentGenerate({
                                                         Click or drag files here to attach to Scope of Work & Deliverables
                                                     </p>
                                                     <p className="text-[11px] text-slate-500 mb-0">
-                                                        Attach technical drawings, specs, BOMs, datasheets, PDFs, Word, Excel, or CAD images
+                                                        Attach PDF, Word, Excel, Images, or Technical Drawings
                                                     </p>
                                                 </div>
                                             </div>
@@ -1848,13 +1848,13 @@ export default function DocumentGenerate({
                                     </div>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Configure itemized deliverables, quantities, rates, and amounts.
+                                    Add customized table.
                                 </div>
 
                                 <div className="p-3 space-y-4">
                                     {tables.length === 0 ? (
                                         <div className="text-center py-4 text-xs text-slate-400 border border-dashed border-slate-300">
-                                            No pricing tables added yet. Click <strong>Add Pricing Table</strong> above to add cost itemization.
+                                            No tables added yet. Click <strong>Add Table</strong> above to create a table.
                                         </div>
                                     ) : (
                                         tables.map((t, tIndex) => (
@@ -1863,7 +1863,7 @@ export default function DocumentGenerate({
                                                     <Input
                                                         value={t.title}
                                                         onChange={(e) => handleTableTitleChange(tIndex, e.target.value)}
-                                                        placeholder="Table Title (e.g. Schedule of Deliverables & Commercial Terms)"
+                                                        placeholder="Table Name (e.g. Pricing Details / Deliverables / Milestones)"
                                                         className="text-xs font-bold rounded-none border border-slate-900 w-2/3"
                                                     />
                                                     <div className="flex items-center gap-1.5">
@@ -1963,7 +1963,7 @@ export default function DocumentGenerate({
                                     </Button>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Configure internal costing sheet, manpower, and expenses (currently not saved to database).
+                                    Configure internal costing sheet, manpower, and expenses (optional).
                                 </div>
                                 <div className="p-3">
                                     {internalCostTables.length === 0 ? (
@@ -2014,20 +2014,20 @@ export default function DocumentGenerate({
                                     <span className="text-[10px] text-slate-400 font-normal">Terms & Logistics</span>
                                 </div>
                                 <div className="p-3 text-slate-500 text-xs border-b border-slate-900 leading-normal bg-slate-50/50">
-                                    Define project-specific technical constraints, delivery terms, and legal/billing requirements.
+                                    Specify delivery conditions, addresses, and optional commercial or legal terms.
                                 </div>
                                 <div className="p-3">
                                     <Row gutter={[16, 16]}>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="technical_requirements" label={<span className="font-bold text-xs text-slate-800">Any Technical Requirements</span>}>
-                                                <TextArea rows={2} placeholder="e.g. Specific tolerance, material grade..." />
+                                                <TextArea rows={2} placeholder="Enter any technical requirements or leave blank..." />
                                             </Form.Item>
                                         </Col>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="billing_address" label={<span className="font-bold text-xs text-slate-800">Billing Address</span>}>
                                                 <TextArea
                                                     rows={2}
-                                                    placeholder="Billing Address..."
+                                                    placeholder="Enter Billing Address..."
                                                     onChange={(e) => {
                                                         if (shippingSameAsBilling) {
                                                             form.setFieldsValue({ shipping_address: e.target.value });
@@ -2058,7 +2058,7 @@ export default function DocumentGenerate({
                                             <Form.Item name="shipping_address" noStyle>
                                                 <TextArea
                                                     rows={2}
-                                                    placeholder="Shipping Address..."
+                                                    placeholder="Enter Shipping Address..."
                                                     disabled={shippingSameAsBilling}
                                                 />
                                             </Form.Item>
@@ -2068,17 +2068,17 @@ export default function DocumentGenerate({
                                     <Row gutter={[16, 16]} className="mt-2">
                                         <Col xs={24} md={8}>
                                             <Form.Item name="delivery_time_date" label={<span className="font-bold text-xs text-slate-800">Delivery Time/Date</span>}>
-                                                <Input placeholder="e.g. 4 Weeks from PO" />
+                                                <Input placeholder="e.g. 4 Weeks from PO date" />
                                             </Form.Item>
                                         </Col>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="mode_of_delivery" label={<span className="font-bold text-xs text-slate-800">Mode of Delivery</span>}>
-                                                <Input placeholder="e.g. Hand Delivery, Speed Post" />
+                                                <Input placeholder="e.g. By Hand / Courier / Email" />
                                             </Form.Item>
                                         </Col>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="supporting_documentation" label={<span className="font-bold text-xs text-slate-800">Supporting Documentation</span>}>
-                                                <Input placeholder="e.g. Calibration certificates, test reports" />
+                                                <Input placeholder="e.g. Test Reports / Certificates / User Manual" />
                                             </Form.Item>
                                         </Col>
                                     </Row>
@@ -2086,17 +2086,17 @@ export default function DocumentGenerate({
                                     <Row gutter={[16, 16]} className="mt-2">
                                         <Col xs={24} md={8}>
                                             <Form.Item name="standards" label={<span className="font-bold text-xs text-slate-800">National & International Standards</span>}>
-                                                <Input placeholder="e.g. ISO 9001, AS9100" />
+                                                <Input placeholder="e.g. ISO 9001 or applicable standards (optional)" />
                                             </Form.Item>
                                         </Col>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="penalty_clause" label={<span className="font-bold text-xs text-slate-800">Any Penalty Clause</span>}>
-                                                <Input placeholder="e.g. LD clause 0.5% per week" />
+                                                <Input placeholder="e.g. Penalty terms if any (or NIL)" />
                                             </Form.Item>
                                         </Col>
                                         <Col xs={24} md={8}>
                                             <Form.Item name="claims" label={<span className="font-bold text-xs text-slate-800">Any Claims</span>}>
-                                                <Input placeholder="e.g. Warranty support, replacement claims" />
+                                                <Input placeholder="e.g. Warranty / Support terms (or NIL)" />
                                             </Form.Item>
                                         </Col>
                                     </Row>
@@ -2104,12 +2104,12 @@ export default function DocumentGenerate({
                                     <Row gutter={[16, 16]} className="mt-2">
                                         <Col xs={24} md={12}>
                                             <Form.Item name="legal_requirements" label={<span className="font-bold text-xs text-slate-800">Any Specific Legal Requirements</span>}>
-                                                <Input placeholder="e.g. NDA, Intellectual Property rights" />
+                                                <Input placeholder="e.g. NDA / Agreement terms if any" />
                                             </Form.Item>
                                         </Col>
                                         <Col xs={24} md={12}>
                                             <Form.Item name="other_requirements" label={<span className="font-bold text-xs text-slate-800">Any Other Requirements (Specify)</span>}>
-                                                <Input placeholder="Any other requirements..." />
+                                                <Input placeholder="Any other notes or conditions..." />
                                             </Form.Item>
                                         </Col>
                                     </Row>
@@ -2154,7 +2154,7 @@ export default function DocumentGenerate({
                                                 value={newTermInput}
                                                 onChange={(e) => setNewTermInput(e.target.value)}
                                                 onPressEnter={handleAddTermItem}
-                                                placeholder="Add payment / delivery term point..."
+                                                placeholder="Enter payment or delivery condition (e.g. 100% advance / 30 days after delivery)..."
                                                 className="text-xs rounded-none border border-slate-900"
                                             />
                                             <Button
@@ -2196,7 +2196,7 @@ export default function DocumentGenerate({
                                                             <Select
                                                                 showSearch
                                                                 allowClear
-                                                                placeholder="Choose Scientist to auto-fill..."
+                                                                placeholder="Select Scientist..."
                                                                 className="w-full text-xs"
                                                                 optionFilterProp="children"
                                                                 filterOption={(input, option) =>
@@ -2214,7 +2214,7 @@ export default function DocumentGenerate({
                                                             <Input
                                                                 value={sig.name}
                                                                 onChange={(e) => handleSignatoryChange(idx, 'name', e.target.value)}
-                                                                placeholder="Signatory Full Name"
+                                                                placeholder="Enter Full Name"
                                                                 className="text-xs rounded-none border border-slate-400 font-semibold"
                                                             />
                                                         </div>
@@ -2226,7 +2226,7 @@ export default function DocumentGenerate({
                                                                 rows={3}
                                                                 value={sig.lines_raw}
                                                                 onChange={(e) => handleSignatoryChange(idx, 'lines_raw', e.target.value)}
-                                                                placeholder="Scientist-E&#10;C-SMPM&#10;CMTI, Bengaluru"
+                                                                placeholder="Designation&#10;Department / Centre&#10;CMTI, Bengaluru"
                                                                 className="text-[11px] rounded-none border border-slate-400"
                                                             />
                                                         </div>
@@ -2265,7 +2265,7 @@ export default function DocumentGenerate({
                                                 label={<span className="font-bold text-xs text-slate-800">Customer Type</span>}
                                                 rules={[{ required: true, message: 'Please select customer type' }]}
                                             >
-                                                <Select placeholder="Customer Type" className="w-full">
+                                                <Select placeholder="Select Customer Type" className="w-full">
                                                     {CUSTOMER_TYPE_OPTIONS.map((opt) => (
                                                         <Select.Option key={opt} value={opt}>{opt}</Select.Option>
                                                     ))}
@@ -2279,7 +2279,7 @@ export default function DocumentGenerate({
                                                 label={<span className="font-bold text-xs text-slate-800">Request Type</span>}
                                                 rules={[{ required: true, message: 'Please select request type' }]}
                                             >
-                                                <Select placeholder="Request Type" className="w-full">
+                                                <Select placeholder="Select Request Type" className="w-full">
                                                     {REQUEST_TYPE_OPTIONS.map((opt) => (
                                                         <Select.Option key={opt} value={opt}>{opt}</Select.Option>
                                                     ))}
@@ -2293,7 +2293,7 @@ export default function DocumentGenerate({
                                                 label={<span className="font-bold text-xs text-slate-800">Quote Amount (₹)</span>}
                                             >
                                                 <Input
-                                                    placeholder={grandPricingTotal > 0 ? String(grandPricingTotal) : (grandInternalTotal > 0 ? String(grandInternalTotal) : '0')}
+                                                    placeholder={grandPricingTotal > 0 ? String(grandPricingTotal) : (grandInternalTotal > 0 ? String(grandInternalTotal) : 'Enter Quote Amount')}
                                                     prefix={<span className="text-slate-400 font-bold">₹</span>}
                                                     className="font-mono font-semibold"
                                                 />
@@ -2305,7 +2305,7 @@ export default function DocumentGenerate({
                                                 name="proposal_status"
                                                 label={<span className="font-bold text-xs text-slate-800">Proposal Status</span>}
                                             >
-                                                <Select mode="tags" placeholder="Proposal Status" className="w-full">
+                                                <Select mode="tags" placeholder="Select Proposal Status" className="w-full">
                                                     <Select.Option value="Submitted">Submitted</Select.Option>
                                                     <Select.Option value="Accepted">Accepted</Select.Option>
                                                     <Select.Option value="Rejected">Rejected</Select.Option>
@@ -2324,7 +2324,7 @@ export default function DocumentGenerate({
                                             </div>
 
                                             <Form.Item name="make_in_india" label={<span className="text-xs font-semibold text-slate-700">Make In India Details</span>}>
-                                                <TextArea rows={2} placeholder="Enter Make In India percentage/details..." />
+                                                <TextArea rows={2} placeholder="e.g. 50% Local Content / Class-I Supplier..." />
                                             </Form.Item>
 
                                             <Form.Item label={<span className="text-xs font-semibold text-slate-700">Tender Images (Multiple)</span>}>
@@ -2352,7 +2352,7 @@ export default function DocumentGenerate({
                                                 label={<span className="font-bold text-xs text-slate-800">Customer Name</span>}
                                                 rules={[{ required: true, message: 'Customer Name is required' }]}
                                             >
-                                                <Input placeholder="Customer or Company Name" className="font-semibold" />
+                                                <Input placeholder="Enter Customer / Company Name" className="font-semibold" />
                                             </Form.Item>
                                         </Col>
 
@@ -2361,7 +2361,7 @@ export default function DocumentGenerate({
                                                 name="alternate_contact_details"
                                                 label={<span className="font-bold text-xs text-slate-800">Alternate Contact / Kind Attention</span>}
                                             >
-                                                <Input placeholder="Contact Person / Alternate Details" />
+                                                <Input placeholder="Contact Person Name & Designation" />
                                             </Form.Item>
                                         </Col>
                                     </Row>
@@ -2372,7 +2372,7 @@ export default function DocumentGenerate({
                                                 name="email"
                                                 label={<span className="font-bold text-xs text-slate-800">Email Reference / Address</span>}
                                             >
-                                                <Input placeholder="customer@domain.com" />
+                                                <Input placeholder="e.g. client@email.com" />
                                             </Form.Item>
                                         </Col>
 
@@ -2381,7 +2381,7 @@ export default function DocumentGenerate({
                                                 name="phone_no"
                                                 label={<span className="font-bold text-xs text-slate-800">Phone Number</span>}
                                             >
-                                                <Input placeholder="Phone / Mobile No." />
+                                                <Input placeholder="e.g. 9876543210" />
                                             </Form.Item>
                                         </Col>
                                     </Row>
@@ -2392,7 +2392,7 @@ export default function DocumentGenerate({
                                                 name="quote_reference"
                                                 label={<span className="font-bold text-xs text-slate-800">Quote / Enquiry Reference</span>}
                                             >
-                                                <Input placeholder="Ref Number / Inquiry ID" />
+                                                <Input placeholder="e.g. Enquiry Ref No. / Email Reference" />
                                             </Form.Item>
                                         </Col>
 
@@ -2402,7 +2402,7 @@ export default function DocumentGenerate({
                                                 label={<span className="font-bold text-xs text-slate-800">Quote Description / Project Title</span>}
                                                 rules={[{ required: true, message: 'Quote description is required' }]}
                                             >
-                                                <Input placeholder="Project Activity or Description" className="font-semibold" />
+                                                <Input placeholder="Enter Project Title / Description" className="font-semibold" />
                                             </Form.Item>
                                         </Col>
                                     </Row>
@@ -2414,7 +2414,7 @@ export default function DocumentGenerate({
                                                 label={<span className="font-bold text-xs text-slate-800">Quotation Given By / Coordinator</span>}
                                                 rules={[{ required: true, message: 'Coordinator Name is required' }]}
                                             >
-                                                <Input placeholder="Scientist Name" />
+                                                <Input placeholder="Enter Coordinator / Scientist Name" />
                                             </Form.Item>
                                         </Col>
 
@@ -2423,7 +2423,7 @@ export default function DocumentGenerate({
                                                 name="center"
                                                 label={<span className="font-bold text-xs text-slate-800">Centre / Department</span>}
                                             >
-                                                <Input placeholder="Centre / Dept" />
+                                                <Input placeholder="e.g. C-SMPM" />
                                             </Form.Item>
                                         </Col>
 
@@ -2432,7 +2432,7 @@ export default function DocumentGenerate({
                                                 name="group"
                                                 label={<span className="font-bold text-xs text-slate-800">Group</span>}
                                             >
-                                                <Input placeholder="Group Name" />
+                                                <Input placeholder="Enter Group Name" />
                                             </Form.Item>
                                         </Col>
                                     </Row>
