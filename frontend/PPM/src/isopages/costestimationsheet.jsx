@@ -16,6 +16,7 @@ import {
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api.js';
 import { isoSubmissionService, getLoggedUserName, getCurrentUserRole } from '../services/isoSubmissionService';
+import cmtiLogo from '../assets/waitro-member-cmti.png';
 
 const getTodayDateString = () => {
     const today = new Date();
@@ -794,9 +795,12 @@ export default function CostEstimationSheet({ proposalId: propProposalId, submis
 
                         {/* 1. Institute Info Box */}
                         <div className="border border-slate-800 bg-white">
-                            <div className="bg-slate-200 text-slate-900 font-bold p-1.5 text-center border-b border-slate-800 text-xs md:text-sm tracking-wide">
-                                <div>Central Manufacturing Technology Institute</div>
-                                <div className="text-[11px] font-semibold text-slate-700 tracking-normal">ISO 9001:2015</div>
+                            <div className="bg-slate-200 text-slate-900 font-bold p-1.5 border-b border-slate-800 text-xs md:text-sm tracking-wide flex items-center justify-center gap-3">
+                                <img src={cmtiLogo} alt="CMTI Logo" className="h-7 md:h-8 object-contain" />
+                                <div className="text-center">
+                                    <div>Central Manufacturing Technology Institute</div>
+                                    <div className="text-[11px] font-semibold text-slate-700 tracking-normal">ISO 9001:2015</div>
+                                </div>
                             </div>
                             <div className="p-1.5 border-b border-slate-800 flex items-center gap-2 bg-white">
                                 <span className="font-bold text-slate-800 shrink-0 text-xs">Prepared on:</span>

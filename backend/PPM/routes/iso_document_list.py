@@ -196,6 +196,20 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
         db.add(complaint_doc)
         db.commit()
 
+    existing_atp = db.query(ISODocumentList).filter(
+        (ISODocumentList.document_no == "084") | (ISODocumentList.name.ilike("%acceptance test procedure%")) | (ISODocumentList.name.ilike("%test procedure%")) | (ISODocumentList.initial == "ATP")
+    ).first()
+    if not existing_atp:
+        atp_doc = ISODocumentList(
+            name="Acceptance Test Procedure",
+            initial="ATP",
+            code="CMTI-QMS-SMC-084/Rev00",
+            document_no="084",
+            is_active=True,
+        )
+        db.add(atp_doc)
+        db.commit()
+
     existing_087 = db.query(ISODocumentList).filter(
         (ISODocumentList.document_no == "087") | (ISODocumentList.name.ilike("%acceptance test%")) | (ISODocumentList.name.ilike("%atr%"))
     ).first()
@@ -227,7 +241,7 @@ def list_iso_documents(is_active: Optional[bool] = None, db: Session = Depends(g
     query = db.query(ISODocumentList)
     if is_active is not None:
         query = query.filter(ISODocumentList.is_active == is_active)
-    return query.order_by(ISODocumentList.id.asc()).all()
+    return query.order_by(ISODocumentList.document_no.asc(), ISODocumentList.id.asc()).all()
 
 
 

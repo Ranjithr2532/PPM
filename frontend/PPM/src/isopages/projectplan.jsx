@@ -18,6 +18,221 @@ import cmtiLogo from '../assets/waitro-member-cmti.png';
 
 const DEFAULT_PLAN_TASKS = [];
 
+export const parseDate = (dateStr) => {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date && !isNaN(dateStr.getTime())) return dateStr;
+    const s = String(dateStr).trim();
+    if (!s) return null;
+
+    // Check YYYY-MM-DD
+    const isoMatch = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if (isoMatch) {
+        const y = parseInt(isoMatch[1], 10);
+        const m = parseInt(isoMatch[2], 10) - 1;
+        const d = parseInt(isoMatch[3], 10);
+        return new Date(y, m, d);
+    }
+
+    // Check DD-MM-YYYY or DD.MM.YYYY or DD/MM/YYYY
+    const dmyMatch = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+    if (dmyMatch) {
+        const d = parseInt(dmyMatch[1], 10);
+        const m = parseInt(dmyMatch[2], 10) - 1;
+        const y = parseInt(dmyMatch[3], 10);
+        return new Date(y, m, d);
+    }
+
+    // Check YYYY-MM
+    const ymMatch = s.match(/^(\d{4})[-/.](\d{1,2})$/);
+    if (ymMatch) {
+        const y = parseInt(ymMatch[1], 10);
+        const m = parseInt(ymMatch[2], 10) - 1;
+        return new Date(y, m, 1);
+    }
+
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+};
+
+export const toHtmlDateString = (dateStr) => {
+    const d = parseDate(dateStr);
+    if (!d) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
+export const toDisplayDateString = (dateStr) => {
+    const d = parseDate(dateStr);
+    if (!d) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${dd}.${mm}.${yyyy}`;
+};
+
+export const getDaysInMonth = (year, monthIndex) => {
+    return new Date(year, monthIndex + 1, 0).getDate();
+};
+
+export const getWeeksInMonth = (year, monthIndex) => {
+    const days = getDaysInMonth(year, monthIndex);
+    return days <= 28 ? 4 : 5;
+};
+
+export const calculateMonthWeeks = (startDt, endDt, year, monthIndex) => {
+    const daysInMonth = getDaysInMonth(year, monthIndex);
+    const fullMonthWeeks = daysInMonth <= 28 ? 4 : 5;
+    if (!startDt || !endDt) return fullMonthWeeks;
+
+    const mFirst = new Date(year, monthIndex, 1);
+    const mLast = new Date(year, monthIndex, daysInMonth);
+
+    const effStart = startDt > mFirst ? startDt : mFirst;
+    const effEnd = endDt < mLast ? endDt : mLast;
+    if (effEnd < effStart) return 1;
+
+    const diffTime = Date.UTC(effEnd.getFullYear(), effEnd.getMonth(), effEnd.getDate()) - 
+                     Date.UTC(effStart.getFullYear(), effStart.getMonth(), effStart.getDate());
+    const activeDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    if (activeDays >= daysInMonth - 2) {
+        return fullMonthWeeks;
+    }
+    const calcW = Math.round(activeDays / 7);
+    return Math.max(1, Math.min(fullMonthWeeks, calcW));
+};
+
+export const computeScheduleStructure = (startDateStr, endDateStr, fallbackMonths = 6) => {
+    const start = parseDate(startDateStr);
+    const end = parseDate(endDateStr);
+
+    let startYear, startMonth, endYear, endMonth;
+
+    if (start && end && end >= start) {
+        startYear = start.getFullYear();
+        startMonth = start.getMonth();
+        endYear = end.getFullYear();
+        endMonth = end.getMonth();
+    } else if (start) {
+        startYear = start.getFullYear();
+        startMonth = start.getMonth();
+        const cnt = Math.max(1, Math.min(60, Number(fallbackMonths) || 6));
+        const fallbackEnd = new Date(startYear, startMonth + cnt - 1, 1);
+        endYear = fallbackEnd.getFullYear();
+        endMonth = fallbackEnd.getMonth();
+    } else {
+        const now = new Date();
+        startYear = now.getFullYear();
+        startMonth = now.getMonth();
+        const cnt = Math.max(1, Math.min(60, Number(fallbackMonths) || 6));
+        const fallbackEnd = new Date(startYear, startMonth + cnt - 1, 1);
+        endYear = fallbackEnd.getFullYear();
+        endMonth = fallbackEnd.getMonth();
+    }
+
+    const months = [];
+    const allWeeks = [];
+    let currentGlobalWeek = 1;
+    let mIdx = 0;
+
+    let y = startYear;
+    let m = startMonth;
+
+    const MONTH_NAMES = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+
+    while (y < endYear || (y === endYear && m <= endMonth)) {
+        mIdx++;
+        const weekCount = (start && end && end >= start)
+            ? calculateMonthWeeks(start, end, y, m)
+            : getWeeksInMonth(y, m);
+        const monthStartWeek = currentGlobalWeek;
+        const monthEndWeek = currentGlobalWeek + weekCount - 1;
+        const monthName = MONTH_NAMES[m];
+        const monthLabel = `MONTH ${mIdx}`;
+        const monthSubLabel = `${monthName} ${y}`;
+
+        const monthObj = {
+            monthIndex: mIdx,
+            year: y,
+            month: m,
+            monthName,
+            monthLabel,
+            monthSubLabel,
+            fullLabel: `${monthLabel} (${monthName} ${y})`,
+            weekCount,
+            startWeek: monthStartWeek,
+            endWeek: monthEndWeek
+        };
+
+        for (let w = 1; w <= weekCount; w++) {
+            allWeeks.push({
+                globalWeek: currentGlobalWeek,
+                monthIndex: mIdx,
+                weekInMonth: w,
+                monthName,
+                year: y
+            });
+            currentGlobalWeek++;
+        }
+
+        months.push(monthObj);
+
+        m++;
+        if (m > 11) {
+            m = 0;
+            y++;
+        }
+
+        if (months.length >= 60) break;
+    }
+
+    if (months.length === 0) {
+        return computeScheduleStructure(null, null, 6);
+    }
+
+    return {
+        months,
+        allWeeks,
+        totalMonths: months.length,
+        totalWeeks: allWeeks.length
+    };
+};
+
+export const syncTasksToActual = (plannedTasks = [], existingActualTasks = []) => {
+    if (!Array.isArray(plannedTasks)) return [];
+    const actualList = Array.isArray(existingActualTasks) ? existingActualTasks : [];
+
+    return plannedTasks.map((pTask, idx) => {
+        let matchedActual = null;
+        if (pTask.sl_no || pTask.sub_no) {
+            matchedActual = actualList.find(
+                a => String(a.sl_no || '').trim() === String(pTask.sl_no || '').trim() &&
+                     String(a.sub_no || '').trim() === String(pTask.sub_no || '').trim()
+            );
+        }
+        if (!matchedActual && pTask.task_name) {
+            matchedActual = actualList.find(
+                a => String(a.task_name || '').trim().toLowerCase() === String(pTask.task_name || '').trim().toLowerCase()
+            );
+        }
+        if (!matchedActual && actualList[idx]) {
+            matchedActual = actualList[idx];
+        }
+
+        return {
+            sl_no: pTask.sl_no || '',
+            sub_no: pTask.sub_no || '',
+            task_name: pTask.task_name || '',
+            active_weeks: Array.isArray(matchedActual?.active_weeks) ? [...matchedActual.active_weeks] : []
+        };
+    });
+};
+
 const getDefaultRevisionCode = (docCode) => {
     const group = getLoggedUserGroup();
     const groupStr = group ? group : '      ';
@@ -45,10 +260,14 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
+    const hasUserEditedRef = useRef(false);
     const submissionIdRef = useRef(submissionId);
     const planTypeRef = useRef(planType);
     const statusRef = useRef(status);
     const isSavingRef = useRef(false);
+    const plannedSubmissionRef = useRef(null);
+    const actualSubmissionRef = useRef(null);
+    const autoSaveTimerRef = useRef(null);
     const [autoSaveState, setAutoSaveState] = useState('idle'); // 'saving', 'saved', 'error', 'idle'
     const [lastSavedAt, setLastSavedAt] = useState(null);
 
@@ -67,6 +286,14 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
     // Track saved submissions for both Planned and Actual plans
     const [plannedSubmission, setPlannedSubmission] = useState(null);
     const [actualSubmission, setActualSubmission] = useState(null);
+
+    useEffect(() => {
+        plannedSubmissionRef.current = plannedSubmission;
+    }, [plannedSubmission]);
+
+    useEffect(() => {
+        actualSubmissionRef.current = actualSubmission;
+    }, [actualSubmission]);
 
     // In-memory working cache when switching between tabs
     const [plannedStateCache, setPlannedStateCache] = useState(null);
@@ -95,6 +322,18 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
     const isReadOnly = isAdmin ? false : isApproved;
     const isActual = planType === 'ACTUAL';
     const isComparison = planType === 'COMPARISON';
+
+    // Automatically calculate dynamic months and 4/5 week columns from commencement & completion dates
+    const scheduleStructure = React.useMemo(() => {
+        return computeScheduleStructure(commencementDate, completionDate, totalMonths);
+    }, [commencementDate, completionDate, totalMonths]);
+
+    // Keep totalMonths state in sync with computed schedule structure
+    useEffect(() => {
+        if (scheduleStructure.totalMonths && scheduleStructure.totalMonths !== totalMonths) {
+            setTotalMonths(scheduleStructure.totalMonths);
+        }
+    }, [scheduleStructure.totalMonths, totalMonths]);
 
     // Helper to populate form fields from a loaded submission record
     const populateFormFromSubmission = useCallback((rec) => {
@@ -453,10 +692,14 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         setTasks(prev => {
             const lastMainTask = [...prev].reverse().find(t => t.sl_no && !t.sub_no);
             const nextSl = lastMainTask ? (Number(lastMainTask.sl_no) + 1 || prev.length + 1) : (prev.length + 1);
-            return [
+            const next = [
                 ...prev,
                 { sl_no: String(nextSl), sub_no: '', task_name: 'New Activity / Main Task', active_weeks: [] }
             ];
+            if (planType === 'PLANNED' && actualStateCache) {
+                setActualStateCache(old => old ? { ...old, tasks: syncTasksToActual(next, old.tasks) } : old);
+            }
+            return next;
         });
     };
 
@@ -469,10 +712,14 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                 const charCode = lastSubTask.sub_no.charCodeAt(0);
                 nextSub = String.fromCharCode(charCode + 1);
             }
-            return [
+            const next = [
                 ...prev,
                 { sl_no: '', sub_no: nextSub, task_name: 'New Sub-task / Activity', active_weeks: [] }
             ];
+            if (planType === 'PLANNED' && actualStateCache) {
+                setActualStateCache(old => old ? { ...old, tasks: syncTasksToActual(next, old.tasks) } : old);
+            }
+            return next;
         });
     };
 
@@ -496,13 +743,22 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
             };
 
             next.splice(index + 1, 0, newSubTask);
+            if (planType === 'PLANNED' && actualStateCache) {
+                setActualStateCache(old => old ? { ...old, tasks: syncTasksToActual(next, old.tasks) } : old);
+            }
             return next;
         });
     };
 
     const handleDeleteTask = (index) => {
         if (isReadOnly) return;
-        setTasks(prev => prev.filter((_, i) => i !== index));
+        setTasks(prev => {
+            const next = prev.filter((_, i) => i !== index);
+            if (planType === 'PLANNED' && actualStateCache) {
+                setActualStateCache(old => old ? { ...old, tasks: syncTasksToActual(next, old.tasks) } : old);
+            }
+            return next;
+        });
     };
 
     const handleTaskChange = (index, field, value) => {
@@ -510,47 +766,57 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         setTasks(prev => {
             const next = [...prev];
             next[index] = { ...next[index], [field]: value };
+            if (planType === 'PLANNED' && actualStateCache) {
+                setActualStateCache(old => old ? { ...old, tasks: syncTasksToActual(next, old.tasks) } : old);
+            }
             return next;
         });
     };
 
     const handleCreateActualPlan = () => {
-        // Cache current planned state
-        setPlannedStateCache({
-            projectTitle,
-            scheduleTitle,
-            projectNo,
-            customerName,
-            totalMonths,
-            commencementDate,
-            completionDate,
-            tasks,
-            preparedBy,
-            approvedBy,
-            docNo,
-            revisionCode,
-            docDate,
-            submissionId,
-            status
-        });
+        const currentPlannedTasks = planType === 'PLANNED' ? tasks : (plannedStateCache?.tasks || plannedSubmission?.form_data?.tasks || []);
 
-        // If an actual submission already exists in DB, load it
+        // Cache current planned state
+        if (planType === 'PLANNED') {
+            setPlannedStateCache({
+                projectTitle,
+                scheduleTitle,
+                projectNo,
+                customerName,
+                totalMonths,
+                commencementDate,
+                completionDate,
+                tasks,
+                preparedBy,
+                approvedBy,
+                docNo,
+                revisionCode,
+                docDate,
+                submissionId,
+                status
+            });
+        }
+
+        // If an actual submission already exists in DB, load it and sync latest tasks from planned
         if (actualSubmission) {
             populateFormFromSubmission(actualSubmission);
+            const synced = syncTasksToActual(currentPlannedTasks, actualSubmission.form_data?.tasks);
+            setTasks(synced);
             setPlanType('ACTUAL');
             return;
         }
 
-        // If an actual state was already cached in memory during this session, restore it
+        // If an actual state was already cached in memory during this session, restore it and sync latest tasks
         if (actualStateCache) {
             setProjectTitle(actualStateCache.projectTitle);
             setScheduleTitle(actualStateCache.scheduleTitle);
             setProjectNo(actualStateCache.projectNo);
             setCustomerName(actualStateCache.customerName);
             setTotalMonths(actualStateCache.totalMonths);
-            setCommencementDate(actualStateCache.commencementDate);
-            setCompletionDate(actualStateCache.completionDate);
-            setTasks(actualStateCache.tasks);
+            setCommencementDate(actualStateCache.commencementDate || '');
+            setCompletionDate(actualStateCache.completionDate || '');
+            const synced = syncTasksToActual(currentPlannedTasks, actualStateCache.tasks);
+            setTasks(synced);
             setPreparedBy(actualStateCache.preparedBy);
             setApprovedBy(actualStateCache.approvedBy);
             setSubmissionId(actualStateCache.submissionId || null);
@@ -560,14 +826,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         }
 
         // Derive new Actual Plan from Planned Plan:
-        // Copy: project information, task names, task structure (sl_no, sub_no), static definition fields
-        // DO NOT COPY: actual start/end dates, actual duration/weeks, actual progress/completion
-        const derivedActualTasks = (tasks || []).map(t => ({
-            sl_no: t.sl_no || '',
-            sub_no: t.sub_no || '',
-            task_name: t.task_name || '',
-            active_weeks: [] // CRITICAL: Gantt chart active execution weeks empty
-        }));
+        // Automatically sync task names & hierarchy (sl_no, sub_no, task_name), but keep actual execution dates and weeks empty
+        const derivedActualTasks = syncTasksToActual(currentPlannedTasks, []);
 
         setSubmissionId(null);
         setStatus('DRAFT');
@@ -577,8 +837,6 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         setTasks(derivedActualTasks);
         setScheduleTitle(scheduleTitle ? `${scheduleTitle} (Actual)` : 'Actual Project Execution Schedule');
         setApprovedBy('');
-
-        alert('Actual Project Plan created successfully with task structure from Planned Plan.\n\nActual start/end dates and Gantt execution weeks are empty for real-world execution tracking.');
     };
 
     const handleSwitchToPlannedPlan = () => {
@@ -629,6 +887,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                 projectNo,
                 customerName,
                 totalMonths,
+                commencementDate,
+                completionDate,
                 tasks,
                 preparedBy,
                 approvedBy,
@@ -645,6 +905,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                 projectNo,
                 customerName,
                 totalMonths,
+                commencementDate,
+                completionDate,
                 tasks,
                 preparedBy,
                 approvedBy,
@@ -712,7 +974,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         setGenerating(true);
         try {
             const plannedTasksList = plannedStateCache?.tasks || plannedSubmission?.form_data?.tasks || (planType === 'PLANNED' ? tasks : DEFAULT_PLAN_TASKS);
-            const actualTasksList = actualStateCache?.tasks || actualSubmission?.form_data?.tasks || (planType === 'ACTUAL' ? tasks : []);
+            const rawActualTasksList = actualStateCache?.tasks || actualSubmission?.form_data?.tasks || (planType === 'ACTUAL' ? tasks : []);
+            const actualTasksList = syncTasksToActual(plannedTasksList, rawActualTasksList);
             const monthsVal = Math.max(Number(totalMonths) || 6, plannedStateCache?.totalMonths || 6, actualStateCache?.totalMonths || 6);
 
             const payload = {
@@ -757,6 +1020,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
     const performAutoSave = useCallback(async () => {
         if (isReadOnly || isComparison) return;
         if (!isHydratedRef.current) return;
+        if (!hasUserEditedRef.current) return;
         if (isSavingRef.current) return;
 
         isSavingRef.current = true;
@@ -782,7 +1046,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                 doc_no: docNo,
                 doc_date: docDate,
                 plan_type: planTypeRef.current,
-                planned_submission_id: plannedSubmission?.id || plannedStateCache?.submissionId || null,
+                planned_submission_id: plannedSubmissionRef.current?.id || plannedStateCache?.submissionId || null,
                 filename: isActual ? `ISO_Actual_ProjectPlan_${projectNo || '053'}.docx` : `ISO_ProjectPlan_${projectNo || '053'}.docx`
             };
 
@@ -823,47 +1087,67 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
 
             if (res) {
                 if (isActual) {
-                    setActualSubmission(res);
+                    actualSubmissionRef.current = res;
                 } else {
-                    setPlannedSubmission(res);
+                    plannedSubmissionRef.current = res;
                 }
             }
             setAutoSaveState('saved');
             setLastSavedAt(new Date());
+            hasUserEditedRef.current = false;
+            setTimeout(() => {
+                setAutoSaveState(prev => prev === 'saved' ? 'idle' : prev);
+            }, 3000);
         } catch (err) {
             console.error('Auto-save draft error:', err);
             setAutoSaveState('error');
         } finally {
             isSavingRef.current = false;
         }
-    }, [isReadOnly, isComparison, projectTitle, scheduleTitle, projectNo, customerName, commencementDate, completionDate, totalMonths, tasks, preparedBy, approvedBy, docNo, revisionCode, docDate, selectedProposalId, plannedSubmission, plannedStateCache]);
+    }, [isReadOnly, isComparison, projectTitle, scheduleTitle, projectNo, customerName, commencementDate, completionDate, totalMonths, tasks, preparedBy, approvedBy, docNo, revisionCode, docDate, selectedProposalId, plannedStateCache]);
 
-    // Debounced Auto-Save on any field / week changes
+    const performAutoSaveRef = useRef(performAutoSave);
     useEffect(() => {
+        performAutoSaveRef.current = performAutoSave;
+    }, [performAutoSave]);
+
+    // Debounced Auto-Save on user edits
+    const initialRenderRef = useRef(true);
+    useEffect(() => {
+        if (initialRenderRef.current) {
+            initialRenderRef.current = false;
+            return;
+        }
         if (!isHydratedRef.current || isReadOnly || isComparison) return;
 
-        const timer = setTimeout(() => {
-            performAutoSave();
-        }, 1000);
+        hasUserEditedRef.current = true;
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => {
+            performAutoSaveRef.current?.();
+        }, 1500);
 
-        return () => clearTimeout(timer);
-    }, [projectTitle, scheduleTitle, projectNo, customerName, totalMonths, tasks, preparedBy, approvedBy, docNo, revisionCode, docDate, planType, performAutoSave, isReadOnly, isComparison]);
+        return () => {
+            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        };
+    }, [
+        projectTitle, scheduleTitle, projectNo, customerName,
+        commencementDate, completionDate, totalMonths, tasks,
+        preparedBy, approvedBy, docNo, revisionCode, docDate,
+        planType, isReadOnly, isComparison
+    ]);
 
     // Immediate flush on page refresh / tab close
     useEffect(() => {
         const handleBeforeUnload = () => {
-            if (isHydratedRef.current && !isReadOnly && !isComparison) {
-                performAutoSave();
+            if (isHydratedRef.current && hasUserEditedRef.current && !isReadOnly && !isComparison) {
+                performAutoSaveRef.current?.();
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
-            if (isHydratedRef.current && !isReadOnly && !isComparison) {
-                performAutoSave();
-            }
         };
-    }, [performAutoSave, isReadOnly, isComparison]);
+    }, [isReadOnly, isComparison]);
 
     // Save or Submit
     const handleSaveOrSubmit = async (targetStatus = 'DRAFT') => {
@@ -962,10 +1246,24 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
         }
     };
 
-    // Comparison datasets
+    // Comparison datasets & dynamic schedule structure
     const plannedTasksForComparison = plannedStateCache?.tasks || plannedSubmission?.form_data?.tasks || (planType === 'PLANNED' ? tasks : DEFAULT_PLAN_TASKS);
-    const actualTasksForComparison = actualStateCache?.tasks || actualSubmission?.form_data?.tasks || (planType === 'ACTUAL' ? tasks : []);
+    const rawActualTasksForComparison = actualStateCache?.tasks || actualSubmission?.form_data?.tasks || (planType === 'ACTUAL' ? tasks : []);
+    const actualTasksForComparison = syncTasksToActual(plannedTasksForComparison, rawActualTasksForComparison);
+
+    const plannedStart = plannedSubmission?.form_data?.commencement_date || plannedStateCache?.commencementDate || (planType === 'PLANNED' ? commencementDate : '');
+    const plannedEnd = plannedSubmission?.form_data?.completion_date || plannedStateCache?.completionDate || (planType === 'PLANNED' ? completionDate : '');
+    const actualStart = actualSubmission?.form_data?.commencement_date || actualStateCache?.commencementDate || (planType === 'ACTUAL' ? commencementDate : '');
+    const actualEnd = actualSubmission?.form_data?.completion_date || actualStateCache?.completionDate || (planType === 'ACTUAL' ? completionDate : '');
+
     const compTotalMonths = Math.max(1, Number(totalMonths) || 1, Number(plannedSubmission?.form_data?.total_months) || 1, Number(actualSubmission?.form_data?.total_months) || 1);
+
+    const compScheduleStructure = React.useMemo(() => {
+        const effStart = plannedStart || actualStart || commencementDate;
+        const effEnd = plannedEnd || actualEnd || completionDate;
+        return computeScheduleStructure(effStart, effEnd, compTotalMonths);
+    }, [plannedStart, actualStart, plannedEnd, actualEnd, commencementDate, completionDate, compTotalMonths]);
+
     const maxCompTasksLen = Math.max(plannedTasksForComparison.length, actualTasksForComparison.length);
 
     // Summary KPI metrics for Comparison
@@ -1184,8 +1482,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                             </div>
                             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                                 <div className="text-[11px] font-semibold text-slate-600">Total Duration Window</div>
-                                <div className="text-lg font-extrabold text-slate-900 mt-0.5">{compTotalMonths} Months</div>
-                                <div className="text-[10px] text-slate-500 font-medium">{compTotalMonths * 4} Total Matrix Weeks</div>
+                                <div className="text-lg font-extrabold text-slate-900 mt-0.5">{compScheduleStructure.totalMonths} Months</div>
+                                <div className="text-[10px] text-slate-500 font-medium">{compScheduleStructure.totalWeeks} Total Matrix Weeks (Dynamic 4/5w)</div>
                             </div>
                         </div>
 
@@ -1291,30 +1589,41 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Total Duration (Months)</label>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                Start Date (Commencement) <span className="text-rose-500">*</span>
+                            </label>
                             <input
-                                type="number"
-                                min="1"
-                                max="60"
-                                value={totalMonths}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (val === '') {
-                                        setTotalMonths('');
-                                    } else {
-                                        const num = parseInt(val, 10);
-                                        setTotalMonths(isNaN(num) ? '' : num);
-                                    }
-                                }}
-                                onBlur={() => {
-                                    if (!totalMonths || Number(totalMonths) < 1) {
-                                        setTotalMonths(6);
-                                    }
-                                }}
+                                type="date"
+                                value={toHtmlDateString(commencementDate)}
+                                onChange={(e) => setCommencementDate(e.target.value)}
                                 disabled={isReadOnly || isComparison}
-                                placeholder="e.g. 6"
-                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                End Date (Target Completion) <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                                type="date"
+                                value={toHtmlDateString(completionDate)}
+                                onChange={(e) => setCompletionDate(e.target.value)}
+                                disabled={isReadOnly || isComparison}
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            />
+                        </div>
+
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-2.5 flex flex-col justify-center shadow-xs">
+                            <div className="text-[11px] font-bold text-blue-900 flex items-center justify-between">
+                                <span>🗓️ Computed Schedule:</span>
+                                <span className="bg-blue-600 text-white font-extrabold px-1.5 py-0.5 rounded text-[10px]">
+                                    {scheduleStructure.totalMonths} {scheduleStructure.totalMonths === 1 ? 'Month' : 'Months'} • {scheduleStructure.totalWeeks} Weeks
+                                </span>
+                            </div>
+                            <div className="text-[10px] text-blue-700 mt-1 font-medium truncate" title={scheduleStructure.months.map(m => `${m.monthName} ${m.year} (${m.weekCount}w)`).join(' | ')}>
+                                {scheduleStructure.months.map(m => `${m.monthName}: ${m.weekCount}w`).join(', ')}
+                            </div>
                         </div>
 
                         <div>
@@ -1336,6 +1645,18 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                 onChange={(e) => setApprovedBy(e.target.value)}
                                 disabled={isReadOnly || isComparison}
                                 placeholder="Approver Name / Center Head"
+                                className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Customer / Organization Name</label>
+                            <input
+                                type="text"
+                                value={customerName}
+                                onChange={(e) => setCustomerName(e.target.value)}
+                                disabled={isReadOnly || isComparison}
+                                placeholder="e.g. CMTI Internal / Client"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
                             />
                         </div>
@@ -1364,16 +1685,26 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                         <th className="p-1.5 border-r border-slate-300 text-center w-10 text-[11px]" rowSpan={2}>Sub</th>
                                         <th className="p-1.5 border-r border-slate-300 text-left min-w-[200px] text-[11px]" rowSpan={2}>Task / Activity Description</th>
                                         <th className="p-1 border-r border-slate-300 text-center w-12 text-[10px] font-bold" rowSpan={2}>Type</th>
-                                        {Array.from({ length: compTotalMonths }).map((_, mIdx) => (
-                                            <th key={mIdx} colSpan={4} className="p-1 border-r border-slate-300 text-center font-bold text-[11px] bg-purple-50 text-purple-900">
-                                                MONTH {mIdx + 1}
+                                        {compScheduleStructure.months.map((m, mIdx) => (
+                                            <th
+                                                key={mIdx}
+                                                colSpan={m.weekCount}
+                                                className="p-1.5 border-r border-slate-300 text-center font-bold text-[11px] bg-purple-50 text-purple-900"
+                                                title={`${m.fullLabel} (${m.weekCount} Weeks)`}
+                                            >
+                                                <div className="font-extrabold">{m.monthLabel}</div>
+                                                <div className="text-[10px] font-medium text-purple-700">({m.monthName} {m.year} • {m.weekCount}w)</div>
                                             </th>
                                         ))}
                                     </tr>
                                     <tr className="bg-slate-50 text-slate-600 border-b border-slate-300">
-                                        {Array.from({ length: compTotalMonths * 4 }).map((_, wIdx) => (
-                                            <th key={wIdx} className="p-0.5 border-r border-slate-300 text-center text-[10px] w-6 bg-slate-100/60 font-semibold">
-                                                {(wIdx % 4) + 1}
+                                        {compScheduleStructure.allWeeks.map((w, wIdx) => (
+                                            <th
+                                                key={wIdx}
+                                                className="p-0.5 border-r border-slate-300 text-center text-[10px] w-6 bg-slate-100/60 font-semibold"
+                                                title={`Week ${w.globalWeek} (${w.monthName} ${w.year} - Week ${w.weekInMonth})`}
+                                            >
+                                                {w.weekInMonth}
                                             </th>
                                         ))}
                                     </tr>
@@ -1408,8 +1739,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                     <td className="p-1 border-r border-slate-200 text-center bg-blue-50/80 font-bold text-blue-800 text-[10px]">
                                                         Plan
                                                     </td>
-                                                    {Array.from({ length: compTotalMonths * 4 }).map((_, wIdx) => {
-                                                        const weekNum = wIdx + 1;
+                                                    {compScheduleStructure.allWeeks.map((w, wIdx) => {
+                                                        const weekNum = w.globalWeek;
                                                         const isActive = pWeeks.includes(weekNum);
                                                         return (
                                                             <td
@@ -1417,6 +1748,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                                 className={`border-r border-slate-200 text-center font-bold select-none ${
                                                                     isActive ? 'bg-blue-600 text-white font-extrabold' : 'bg-white'
                                                                 }`}
+                                                                title={`Planned: Week ${weekNum} (${w.monthName} ${w.year} W${w.weekInMonth})`}
                                                             >
                                                                 {isActive ? 'P' : ''}
                                                             </td>
@@ -1429,8 +1761,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                     <td className="p-1 border-r border-slate-200 text-center bg-emerald-50 font-bold text-emerald-800 text-[10px]">
                                                         Act
                                                     </td>
-                                                    {Array.from({ length: compTotalMonths * 4 }).map((_, wIdx) => {
-                                                        const weekNum = wIdx + 1;
+                                                    {compScheduleStructure.allWeeks.map((w, wIdx) => {
+                                                        const weekNum = w.globalWeek;
                                                         const isActive = aWeeks.includes(weekNum);
                                                         return (
                                                             <td
@@ -1438,6 +1770,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                                 className={`border-r border-slate-200 text-center font-bold select-none ${
                                                                     isActive ? 'bg-emerald-600 text-white font-black' : 'bg-white'
                                                                 }`}
+                                                                title={`Actual: Week ${weekNum} (${w.monthName} ${w.year} W${w.weekInMonth})`}
                                                             >
                                                                 {isActive ? 'A' : ''}
                                                             </td>
@@ -1489,19 +1822,29 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                         <th className="p-1.5 border-r border-slate-300 text-center w-10 text-[11px]" rowSpan={2}>Sl#</th>
                                         <th className="p-1.5 border-r border-slate-300 text-center w-10 text-[11px]" rowSpan={2}>Sub</th>
                                         <th className="p-1.5 border-r border-slate-300 text-left min-w-[200px] text-[11px]" rowSpan={2}>Task / Activity Description</th>
-                                        {Array.from({ length: Math.max(1, Number(totalMonths) || 1) }).map((_, mIdx) => (
-                                            <th key={mIdx} colSpan={4} className={`p-1 border-r border-slate-300 text-center font-bold text-[11px] ${
-                                                isActual ? 'bg-emerald-50 text-emerald-900' : 'bg-blue-50/80 text-blue-900'
-                                            }`}>
-                                                MONTH {mIdx + 1}
+                                        {scheduleStructure.months.map((m, mIdx) => (
+                                            <th
+                                                key={mIdx}
+                                                colSpan={m.weekCount}
+                                                className={`p-1.5 border-r border-slate-300 text-center font-bold text-[11px] ${
+                                                    isActual ? 'bg-emerald-50 text-emerald-900' : 'bg-blue-50/90 text-blue-900'
+                                                }`}
+                                                title={`${m.fullLabel} (${m.weekCount} Weeks)`}
+                                            >
+                                                <div className="font-extrabold">{m.monthLabel}</div>
+                                                <div className="text-[10px] font-medium opacity-80">({m.monthName} {m.year} • {m.weekCount}w)</div>
                                             </th>
                                         ))}
                                         {!isReadOnly && <th className="p-1.5 text-center min-w-[90px] text-[11px]" rowSpan={2}>Action</th>}
                                     </tr>
                                     <tr className="bg-slate-50 text-slate-600 border-b border-slate-300">
-                                        {Array.from({ length: Math.max(1, Number(totalMonths) || 1) * 4 }).map((_, wIdx) => (
-                                            <th key={wIdx} className="p-0.5 border-r border-slate-300 text-center text-[10px] w-6 bg-slate-100/60 font-semibold">
-                                                {(wIdx % 4) + 1}
+                                        {scheduleStructure.allWeeks.map((w, wIdx) => (
+                                            <th
+                                                key={wIdx}
+                                                className="p-0.5 border-r border-slate-300 text-center text-[10px] w-6 bg-slate-100/60 font-semibold"
+                                                title={`Week ${w.globalWeek} (${w.monthName} ${w.year} - Week ${w.weekInMonth})`}
+                                            >
+                                                {w.weekInMonth}
                                             </th>
                                         ))}
                                     </tr>
@@ -1538,8 +1881,8 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                         className={`w-full text-xs bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded ${isMainHdr ? 'font-bold text-slate-900' : 'text-slate-700'}`}
                                                     />
                                                 </td>
-                                                {Array.from({ length: Math.max(1, Number(totalMonths) || 1) * 4 }).map((_, wIdx) => {
-                                                    const weekNum = wIdx + 1;
+                                                {scheduleStructure.allWeeks.map((w, wIdx) => {
+                                                    const weekNum = w.globalWeek;
                                                     const isActive = (task.active_weeks || []).includes(weekNum);
                                                     return (
                                                         <td
@@ -1551,7 +1894,7 @@ export default function ProjectPlan({ proposalId: propProposalId, submissionId: 
                                                                     ? (isActual ? 'bg-emerald-500 shadow-inner' : 'bg-blue-600 shadow-inner')
                                                                     : (isActual ? 'hover:bg-emerald-100/70 active:bg-emerald-200' : 'hover:bg-blue-100/60 active:bg-blue-200')
                                                             }`}
-                                                            title={`Week ${weekNum} (Click or drag to toggle)`}
+                                                            title={`Week ${weekNum} (${w.monthName} ${w.year} - Week ${w.weekInMonth}) (Click or drag to toggle)`}
                                                         >
                                                         </td>
                                                     );

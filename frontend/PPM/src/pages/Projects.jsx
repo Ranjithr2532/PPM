@@ -52,6 +52,12 @@ const { Dragger } = Upload
 const formatValue = (value) => (value ? value : 'Not available')
 const safeId = (item) => item?.id ?? item?.key ?? ''
 
+const isValidProjectNumber = (num) => {
+  if (!num) return false
+  const clean = String(num).trim().toLowerCase()
+  return clean !== '' && clean !== 'null' && clean !== 'none' && clean !== 'undefined' && clean !== '-' && clean !== 'n/a' && clean !== 'nil'
+}
+
 // Helper functions to format center and group names with prefixes
 const formatCenterName = (center) => {
   if (!center || typeof center !== 'string') return center
@@ -1269,7 +1275,7 @@ function Projects() {
 
   // Extract project type options
   const projectTypeOptions = useMemo(() => {
-    const types = [...new Set(projectRows.map(p => {
+    const types = [...new Set(projectRows.filter(p => p?.is_acknowledged === true && isValidProjectNumber(p?.project_number)).map(p => {
       const num = (p.project_number || '').toString().toUpperCase()
       return num.substring(0, 3)
     }).filter(prefix => prefix && prefix.length >= 3))]
@@ -1279,7 +1285,7 @@ function Projects() {
   // Filtered list based on role
   const filteredCards = useMemo(() => {
     return (projectRows || [])
-      .filter(p => p?.project_number)
+      .filter(p => p?.is_acknowledged === true && isValidProjectNumber(p?.project_number))
       .filter(p => {
         // Search filter
         const searchLower = searchText.toLowerCase().trim()
@@ -1339,7 +1345,7 @@ function Projects() {
 
   const teamProjects = useMemo(() => {
     return (projectRows || [])
-      .filter((p) => p?.project_number && teamProposalIds.includes(p.id))
+      .filter((p) => p?.is_acknowledged === true && isValidProjectNumber(p?.project_number) && teamProposalIds.includes(p.id))
   }, [projectRows, teamProposalIds])
 
   const filteredTeamProjects = useMemo(() => {

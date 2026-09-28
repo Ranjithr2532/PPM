@@ -124,9 +124,66 @@ axios.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
 axios.interceptors.response.use(
     (response) => response,
-    (error) => {
+    async (error) => {
+        const originalRequest = error.config;
+        if (error.response && error.response.status === 401 && originalRequest && !originalRequest._retry) {
+            const requestUrl = originalRequest.url || '';
+            if (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/refresh')) {
+                return Promise.reject(error);
+            }
+
+            if (isRefreshing) {
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                })
+                    .then((token) => {
+                        originalRequest.headers = originalRequest.headers || {};
+                        originalRequest.headers['Authorization'] = `Bearer ${token}`;
+                        return axios(originalRequest);
+                    })
+                    .catch((err) => Promise.reject(err));
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                const refreshRes = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+                const newToken = refreshRes.data?.access_token;
+                if (newToken) {
+                    setAccessToken(newToken);
+                    processQueue(null, newToken);
+                    originalRequest.headers = originalRequest.headers || {};
+                    originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+                    return axios(originalRequest);
+                }
+            } catch (refreshErr) {
+                processQueue(refreshErr, null);
+                logout();
+                const secMsg = getSecurityErrorMessage(401);
+                notifySecurity401(secMsg);
+                return Promise.reject(refreshErr);
+            } finally {
+                isRefreshing = false;
+            }
+        }
+
         if (error.response && error.response.status === 401) {
             const secMsg = getSecurityErrorMessage(401);
             error.message = secMsg;

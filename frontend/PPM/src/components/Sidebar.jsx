@@ -154,6 +154,7 @@ function Sidebar() {
   const isGHOrScientist = basePath === 'gh' || basePath === 'scientist'
   const isScientistOrCoordinator = basePath === 'scientist' || userRole === 'scientist' || userRole === 'coordinator' || userRole === 'project coordinator' || userRole === 'project_coordinator' || userRole === 'pi'
   const showNotification = isGHOrScientist || normalizedBasePath === 'admin'
+  const showConfiguration = normalizedBasePath === 'admin' || normalizedBasePath === 'guest'
   const notificationPath = isGHOrScientist ? `/${basePath}/gh-notification` : `/${basePath}/notification`
 
   // Determine role-specific User Manual PDF URL
@@ -249,7 +250,9 @@ function Sidebar() {
     if (normalizedBasePath === 'admin' || normalizedBasePath === 'guest') {
       axios.get(`${API_BASE_URL}/proposals/false`)
         .then((response) => {
-          const list = Array.isArray(response.data) ? response.data : []
+          const list = Array.isArray(response.data)
+            ? response.data.filter((p) => !p.draft || p.draft === 'false' || p.draft === 0)
+            : []
           setUnacknowledgedCount(list.length)
         })
         .catch((error) => console.error('Error fetching unacknowledged count:', error));
@@ -388,11 +391,6 @@ function Sidebar() {
                   icon: <BarChartOutlined />,
                   label: 'Overall Analytics',
                 },
-                {
-                  key: 'configuration',
-                  icon: <SettingOutlined />,
-                  label: 'Configuration',
-                },
               ]
               : []),
 
@@ -421,22 +419,22 @@ function Sidebar() {
 
       {/* Footer & Logout */}
       <div className="px-4 pb-6 border-t border-slate-100 pt-4 bg-slate-50/50 flex flex-col gap-2.5">
-        {/* Actions (Team, Notification, Chat & Profile Trigger) */}
+        {/* Actions (Team, Notification, Chat, Configuration & Profile Trigger) */}
         <div className="flex justify-between items-center py-1">
           {isScientistOrCoordinator && (
             <Button
               type="default"
               shape="circle"
               size="large"
-              icon={<TeamOutlined className="text-slate-600 text-lg" />}
+              icon={<TeamOutlined className={selectedKey === 'team-members' ? "text-blue-600 text-lg" : "text-slate-600 text-lg"} />}
               onClick={() => {
                 setMobileOpen(false);
                 navigate(`/${basePath}/team-members`);
               }}
               title="Team Members"
               style={{
-                backgroundColor: "#ffffff",
-                borderColor: "#cbd5e1",
+                backgroundColor: selectedKey === 'team-members' ? "#eff6ff" : "#ffffff",
+                borderColor: selectedKey === 'team-members' ? "#2563eb" : "#cbd5e1",
               }}
               className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:!text-blue-600 hover:scale-105"
             />
@@ -447,15 +445,15 @@ function Sidebar() {
                 type="default"
                 shape="circle"
                 size="large"
-                icon={<BellOutlined className="text-slate-600 text-lg" />}
+                icon={<BellOutlined className={(selectedKey === 'notification' || selectedKey === 'gh-notification') ? "text-blue-600 text-lg" : "text-slate-600 text-lg"} />}
                 onClick={() => {
                   setMobileOpen(false);
                   navigate(notificationPath);
                 }}
                 title="Notifications"
                 style={{
-                  backgroundColor: "#ffffff",
-                  borderColor: "#cbd5e1",
+                  backgroundColor: (selectedKey === 'notification' || selectedKey === 'gh-notification') ? "#eff6ff" : "#ffffff",
+                  borderColor: (selectedKey === 'notification' || selectedKey === 'gh-notification') ? "#2563eb" : "#cbd5e1",
                 }}
                 className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:!text-blue-600 hover:scale-105"
               />
@@ -474,12 +472,30 @@ function Sidebar() {
                 }}
                 title="Chats"
                 style={{
-                  backgroundColor: "#ffffff",
-                  borderColor: "#cbd5e1",
+                  backgroundColor: selectedKey === 'chats' ? "#eff6ff" : "#ffffff",
+                  borderColor: selectedKey === 'chats' ? "#2563eb" : "#cbd5e1",
                 }}
                 className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:scale-105"
               />
             </Badge>
+          )}
+          {showConfiguration && (
+            <Button
+              type="default"
+              shape="circle"
+              size="large"
+              icon={<SettingOutlined className={selectedKey === 'configuration' ? "text-blue-600 text-lg" : "text-slate-600 text-lg"} />}
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(`/${basePath}/configuration`);
+              }}
+              title="Configuration"
+              style={{
+                backgroundColor: selectedKey === 'configuration' ? "#eff6ff" : "#ffffff",
+                borderColor: selectedKey === 'configuration' ? "#2563eb" : "#cbd5e1",
+              }}
+              className="shadow-sm transition-all flex items-center justify-center hover:!border-blue-500 hover:!text-blue-600 hover:scale-105"
+            />
           )}
           <Button
             type="default"
@@ -579,6 +595,16 @@ function Sidebar() {
                 title="Chats"
               />
             </Badge>
+          )}
+          {showConfiguration && (
+            <Button
+              size="small"
+              type="text"
+              icon={<SettingOutlined className={selectedKey === 'configuration' ? "text-blue-600" : "text-slate-700"} style={{ fontSize: '18px' }} />}
+              onClick={() => navigate(`/${basePath}/configuration`)}
+              className="flex items-center justify-center p-1 hover:text-blue-600"
+              title="Configuration"
+            />
           )}
           {manualPdfUrl && (
             <Button

@@ -167,7 +167,12 @@ export default function Isogenration() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/iso-document-list/?is_active=true`);
                 if (Array.isArray(res.data)) {
-                    setIsoDocs(res.data);
+                    const sorted = [...res.data].sort((a, b) => {
+                        const docNoA = (a.document_no || '').trim();
+                        const docNoB = (b.document_no || '').trim();
+                        return docNoA.localeCompare(docNoB, undefined, { numeric: true, sensitivity: 'base' });
+                    });
+                    setIsoDocs(sorted);
                 }
             } catch (err) {
                 console.error('Failed to load ISO document list from DB:', err);

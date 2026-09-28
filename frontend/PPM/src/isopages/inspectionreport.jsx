@@ -36,6 +36,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
+    const hasUserEditedRef = useRef(false);
     const submissionIdRef = useRef(submissionId);
     const statusRef = useRef(status);
     const isSavingRef = useRef(false);
@@ -99,22 +100,31 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
         fetchProposal();
     }, [effectiveProposalId, selectedProposalId]);
 
-    // Load existing submission data if editing or linked to proposal
+    // Load existing submission data if editing; or initialize next report index if creating new
     useEffect(() => {
+        let isMounted = true;
         const loadSubmission = async () => {
             try {
                 let sub = null;
                 const targetSubId = propSubmissionId || null;
-                const targetPropId = propProposalId || selectedProposalId;
+                const targetPropId = effectiveProposalId || selectedProposalId;
 
                 if (targetSubId) {
                     sub = await isoSubmissionService.getSubmissionById(targetSubId);
                 } else if (targetPropId) {
-                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: targetPropId, doc_type: 'INSPECTION_REPORT' });
-                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
+                    // Creating new report under proposal: count existing reports to propose IR number
+                    try {
+                        const subs = await isoSubmissionService.getSubmissions({ proposal_id: targetPropId, doc_type: 'INSPECTION_REPORT' });
+                        if (Array.isArray(subs) && isMounted) {
+                            const nextCount = subs.length + 1;
+                            setReportNo(`IR-${String(nextCount).padStart(2, '0')}`);
+                        }
+                    } catch (e) {
+                        console.error('Error fetching existing reports count:', e);
+                    }
                 }
 
-                if (sub) {
+                if (sub && isMounted) {
                     setSubmissionId(sub.id);
                     submissionIdRef.current = sub.id;
                     setStatus(sub.status || 'DRAFT');
@@ -141,16 +151,20 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
             } catch (err) {
                 console.error('Failed to load Inspection Report submission:', err);
             } finally {
-                setTimeout(() => { isHydratedRef.current = true; }, 400);
+                if (isMounted) {
+                    setTimeout(() => { isHydratedRef.current = true; }, 400);
+                }
             }
         };
 
         loadSubmission();
-    }, [propSubmissionId, propProposalId, docInfo]);
+        return () => { isMounted = false; };
+    }, [propSubmissionId, effectiveProposalId, docInfo]);
 
     // Measurement Row Handlers
     const handleAddRow = () => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setRows(prev => [
             ...prev,
             { sl_no: String(prev.length + 1), specified_dimensions: '', drawing_zone: '', measured_values: '', instrument_used: '', remarks: '' }
@@ -159,6 +173,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
 
     const handleRemoveRow = (rowIdx) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setRows(prev => {
             const next = prev.filter((_, i) => i !== rowIdx);
             // Re-sequence Sl. Nos
@@ -168,6 +183,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
 
     const handleCellChange = (rowIdx, field, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setRows(prev => prev.map((row, rI) => {
             if (rI !== rowIdx) return row;
             return { ...row, [field]: val };
@@ -175,6 +191,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
     };
 
     const buildPayload = () => {
+        const cleanDrawing = (drawingName || drawingNo || reportNo || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
         return {
             report_no: reportNo,
             date: date,
@@ -188,9 +205,9 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
             approved_by: approvedBy,
             group_name: getLoggedUserGroup(),
             centre_dept: getLoggedUserCentreDept(),
-            doc_no: docNo,
+            doc_no: docNo || '085',
             doc_date: docDate,
-            filename: `ISO_Inspection_Report_${projectNo || reportNo || '085'}.docx`
+            filename: `ISO_Inspection_Report_${cleanDrawing ? `${cleanDrawing}_` : ''}${projectNo || reportNo || '085'}.docx`
         };
     };
 
@@ -223,7 +240,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
     // Auto-Save Draft to Database
     const performAutoSave = useCallback(async () => {
         if (isReadOnly) return;
-        if (!isHydratedRef.current) return;
+        if (!isHydratedRef.current || !hasUserEditedRef.current) return;
         if (isSavingRef.current) return;
 
         isSavingRef.current = true;
@@ -268,7 +285,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
 
     // Debounced Auto-Save
     useEffect(() => {
-        if (!isHydratedRef.current || isReadOnly) return;
+        if (!isHydratedRef.current || !hasUserEditedRef.current || isReadOnly) return;
         const timer = setTimeout(() => { performAutoSave(); }, 1000);
         return () => clearTimeout(timer);
     }, [reportNo, date, projectNo, type, drawingNo, drawingName, quantity, rows, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
@@ -276,17 +293,18 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
     // Flush on page unload / refresh
     useEffect(() => {
         const handleBeforeUnload = () => {
-            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+            if (isHydratedRef.current && hasUserEditedRef.current && !isReadOnly) performAutoSave();
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
-            if (isHydratedRef.current && !isReadOnly) performAutoSave();
+            if (isHydratedRef.current && hasUserEditedRef.current && !isReadOnly) performAutoSave();
         };
     }, [performAutoSave, isReadOnly]);
 
     const handleSaveOrSubmit = async (targetStatus = 'DRAFT') => {
         setSubmitting(true);
+        hasUserEditedRef.current = true;
         try {
             const rawUser = window.localStorage.getItem('ppm_user');
             const currentUser = rawUser ? JSON.parse(rawUser) : {};
@@ -357,7 +375,7 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                 <div className="flex items-center gap-3">
                     <button
                         onClick={async () => {
-                            if (isHydratedRef.current && !isReadOnly) {
+                            if (isHydratedRef.current && hasUserEditedRef.current && !isReadOnly) {
                                 await performAutoSave();
                             }
                             if (onClose) onClose();
@@ -462,7 +480,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={reportNo}
-                                onChange={(e) => setReportNo(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setReportNo(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Report Number"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-medium"
@@ -474,7 +495,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={date}
-                                onChange={(e) => setDate(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setDate(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="DD.MM.YYYY"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -486,7 +510,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={projectNo}
-                                onChange={(e) => setProjectNo(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setProjectNo(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="e.g. GST2502201"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-semibold text-slate-800"
@@ -498,7 +525,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={type}
-                                onChange={(e) => setType(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setType(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="e.g. Prototype / Production / Job Work"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -510,7 +540,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={drawingNo}
-                                onChange={(e) => setDrawingNo(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setDrawingNo(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Drawing Number"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -522,7 +555,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={quantity}
-                                onChange={(e) => setQuantity(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setQuantity(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Quantity"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -534,7 +570,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                             <input
                                 type="text"
                                 value={drawingName}
-                                onChange={(e) => setDrawingName(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setDrawingName(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Drawing Name / Description"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-medium text-slate-800"
@@ -667,7 +706,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                                 <input
                                     type="text"
                                     value={preparedBy}
-                                    onChange={(e) => setPreparedBy(e.target.value)}
+                                    onChange={(e) => {
+                                        hasUserEditedRef.current = true;
+                                        setPreparedBy(e.target.value);
+                                    }}
                                     disabled={isReadOnly}
                                     placeholder="Inspector Name"
                                     className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white mt-1 outline-none"
@@ -678,7 +720,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                                 <input
                                     type="text"
                                     value={docDate}
-                                    onChange={(e) => setDocDate(e.target.value)}
+                                    onChange={(e) => {
+                                        hasUserEditedRef.current = true;
+                                        setDocDate(e.target.value);
+                                    }}
                                     disabled={isReadOnly}
                                     placeholder="DD.MM.YYYY"
                                     className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white mt-1 outline-none"
@@ -695,7 +740,10 @@ export default function InspectionReport({ proposalId: propProposalId, submissio
                                 <input
                                     type="text"
                                     value={approvedBy}
-                                    onChange={(e) => setApprovedBy(e.target.value)}
+                                    onChange={(e) => {
+                                        hasUserEditedRef.current = true;
+                                        setApprovedBy(e.target.value);
+                                    }}
                                     disabled={isReadOnly}
                                     placeholder="Approver Name"
                                     className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white mt-1 outline-none"

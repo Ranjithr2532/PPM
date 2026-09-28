@@ -5,6 +5,9 @@ Generates Word (.docx) document matching CMTI-QMS-053/Rev00 specification.
 
 from typing import List, Dict, Any, Optional
 import io
+import calendar
+from datetime import datetime
+import re
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -23,6 +26,172 @@ from iso.header import add_header_table
 from iso.finalfooter import add_footer_table
 
 router = APIRouter(prefix="/iso", tags=["ISO Project Plan (Doc 053)"])
+
+# Helper function to parse diverse date string formats
+def parse_iso_date(date_str: str) -> Optional[datetime]:
+    if not date_str:
+        return None
+    s = str(date_str).strip()
+    if not s:
+        return None
+
+    # Try matching common formats
+    formats = [
+        "%Y-%m-%d", "%d-%m-%Y", "%d.%m.%Y", "%d/%m/%Y",
+        "%Y.%m.%d", "%Y/%m/%d", "%m/%d/%Y", "%d-%b-%Y",
+        "%b %Y", "%m-%Y", "%Y-%m", "%b %d, %Y", "%B %d, %Y"
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            pass
+
+    # Regex fallback for DD-MM-YYYY or YYYY-MM-DD
+    m_iso = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+    if m_iso:
+        try:
+            return datetime(int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3)))
+        except Exception:
+            pass
+
+    m_dmy = re.match(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+    if m_dmy:
+        try:
+            return datetime(int(m_dmy.group(3)), int(m_dmy.group(2)), int(m_dmy.group(1)))
+        except Exception:
+            pass
+
+    return None
+
+def get_weeks_in_month(year: int, month: int) -> int:
+    """Returns 4 weeks for months with <= 28 days (Feb non-leap), 5 weeks for 29, 30, 31 days."""
+    try:
+        _, days_in_month = calendar.monthrange(year, month)
+        return 4 if days_in_month <= 28 else 5
+    except Exception:
+        return 4
+
+def calculate_month_weeks(start_dt: Optional[datetime], end_dt: Optional[datetime], year: int, month: int) -> int:
+    """
+    Calculates the exact active project weeks for a specific month between start_dt and end_dt.
+    If the project only runs for partial weeks in that month, it computes the exact week duration (e.g. 3 weeks for Sep 6 to Sep 28).
+    """
+    _, days_in_month = calendar.monthrange(year, month)
+    full_month_weeks = 4 if days_in_month <= 28 else 5
+
+    if not start_dt or not end_dt:
+        return full_month_weeks
+
+    m_first = datetime(year, month, 1)
+    m_last = datetime(year, month, days_in_month)
+
+    eff_start = max(start_dt, m_first)
+    eff_end = min(end_dt, m_last)
+
+    if eff_end < eff_start:
+        return 1
+
+    active_days = (eff_end.date() - eff_start.date()).days + 1
+
+    if active_days >= days_in_month - 2:
+        return full_month_weeks
+
+    calc_w = round(active_days / 7)
+    return max(1, min(full_month_weeks, calc_w))
+
+def compute_schedule_structure(
+    commencement_date_str: str = "",
+    completion_date_str: str = "",
+    total_months: int = 6
+):
+    """
+    Dynamically computes the schedule months and sequential weeks breakdown
+    based on commencement_date and completion_date.
+    """
+    start_dt = parse_iso_date(commencement_date_str)
+    end_dt = parse_iso_date(completion_date_str)
+
+    now = datetime.now()
+    if start_dt and end_dt and end_dt >= start_dt:
+        start_year = start_dt.year
+        start_month = start_dt.month
+        end_year = end_dt.year
+        end_month = end_dt.month
+    elif start_dt:
+        start_year = start_dt.year
+        start_month = start_dt.month
+        cnt = max(1, min(60, int(total_months or 6)))
+        tot_m = (start_month - 1) + (cnt - 1)
+        end_year = start_year + (tot_m // 12)
+        end_month = (tot_m % 12) + 1
+    else:
+        start_year = now.year
+        start_month = now.month
+        cnt = max(1, min(60, int(total_months or 6)))
+        tot_m = (start_month - 1) + (cnt - 1)
+        end_year = start_year + (tot_m // 12)
+        end_month = (tot_m % 12) + 1
+
+    months = []
+    all_weeks = []
+    current_global_week = 1
+    m_idx = 0
+
+    y = start_year
+    m = start_month
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    while y < end_year or (y == end_year and m <= end_month):
+        m_idx += 1
+        if start_dt and end_dt and end_dt >= start_dt:
+            week_count = calculate_month_weeks(start_dt, end_dt, y, m)
+        else:
+            week_count = get_weeks_in_month(y, m)
+
+        month_start_week = current_global_week
+        month_end_week = current_global_week + week_count - 1
+        m_name = month_names[m - 1]
+
+        month_obj = {
+            "month_index": m_idx,
+            "year": y,
+            "month": m,
+            "month_name": m_name,
+            "month_label": f"MONTH {m_idx}",
+            "month_sub_label": f"{m_name} {y}",
+            "full_label": f"MONTH {m_idx} ({m_name} {y})",
+            "week_count": week_count,
+            "start_week": month_start_week,
+            "end_week": month_end_week
+        }
+
+        for w in range(1, week_count + 1):
+            all_weeks.append({
+                "global_week": current_global_week,
+                "month_index": m_idx,
+                "week_in_month": w,
+                "month_name": m_name,
+                "year": y
+            })
+            current_global_week += 1
+
+        months.append(month_obj)
+
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+        if len(months) >= 60:
+            break
+
+    if not months:
+        # Fallback to standard 6 months
+        return compute_schedule_structure("", "", 6)
+
+    return months, all_weeks
 
 # Helper function to set cell background color (shading)
 def set_cell_shading(cell, color_hex: str):
@@ -201,14 +370,28 @@ def create_project_plan_document(
     title_str = project_title or customer_name or ("Actual Project Execution Schedule" if is_actual else "Project Plan & Execution Schedule")
     add_text(title_p, f"Project: {title_str}", font_size=11, bold=True, space_after=2)
 
-    if schedule_title:
+    sched_subtitle = schedule_title
+    if commencement_date or completion_date:
+        dates_info = []
+        if commencement_date:
+            dates_info.append(f"Start: {commencement_date}")
+        if completion_date:
+            dates_info.append(f"End: {completion_date}")
+        date_text = f" ({', '.join(dates_info)})"
+        sched_subtitle = f"{schedule_title}{date_text}" if schedule_title else f"Schedule: {', '.join(dates_info)}"
+
+    if sched_subtitle:
         sched_p = doc.add_paragraph()
-        add_text(sched_p, f"Schedule: {schedule_title}", font_size=10, italic=True, space_after=4)
+        add_text(sched_p, sched_subtitle, font_size=10, italic=True, space_after=4)
 
-    months_cnt = max(1, min(12, total_months or 6))
-    weeks_cols = months_cnt * 4
+    # Compute dynamic schedule structure (months & 4/5 week counts)
+    months, all_weeks = compute_schedule_structure(
+        commencement_date_str=commencement_date,
+        completion_date_str=completion_date,
+        total_months=total_months
+    )
 
-    # Table columns: Sl. No (0), Sub No (1), Task Name (2), Weeks 1..N (3..3+weeks_cols-1)
+    weeks_cols = len(all_weeks)
     total_cols = 3 + weeks_cols
 
     task_list = tasks or DEFAULT_TASKS
@@ -222,15 +405,17 @@ def create_project_plan_document(
 
     border_fmt = {"val": "single", "sz": "4", "color": "D3D3D3"}
 
-    # Set explicit fitted column widths (total width = ~10.5 in <= 11.09 in printable width)
-    week_col_width = Inches(0.28) if weeks_cols <= 24 else Inches(0.22)
-    col_widths = [Inches(0.35), Inches(0.35), Inches(3.1)] + [week_col_width] * weeks_cols
+    # Set explicit fitted column widths dynamically to fit page width
+    available_width = 11.09 - (0.35 + 0.35 + 3.0)
+    calculated_week_w = max(0.18, min(0.28, available_width / max(1, weeks_cols)))
+    week_col_width = Inches(calculated_week_w)
+    col_widths = [Inches(0.35), Inches(0.35), Inches(3.0)] + [week_col_width] * weeks_cols
 
     for row in table.rows:
         for c_idx, cell in enumerate(row.cells):
             set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-            set_cell_margins(cell, top=20, start=20, bottom=20, end=20)
+            set_cell_margins(cell, top=20, start=15, bottom=20, end=15)
             if c_idx < len(col_widths):
                 set_cell_width(cell, col_widths[c_idx] / Inches(1))
 
@@ -258,21 +443,22 @@ def create_project_plan_document(
     add_text(c_task, "TASK NAME", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.LEFT)
     set_cell_shading(c_task, "F0F4F8")
 
-    # Header Row 2 & 3: Months & Weeks
-    for m in range(months_cnt):
-        col_start = 3 + (m * 4)
-        col_end = col_start + 3
+    # Header Row 2 & 3: Dynamic Months (4 or 5 weeks colSpan) & Week sub-columns
+    for m_item in months:
+        col_start = 3 + (m_item["start_week"] - 1)
+        col_end = col_start + m_item["week_count"] - 1
 
-        # Merge 4 week columns horizontally for Month header in Row 2
+        # Merge week columns horizontally for Month header in Row 2
         c_month = table.cell(2, col_start).merge(table.cell(2, col_end))
-        add_text(c_month, f"MONTH {m + 1}", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        month_label_text = f"{m_item['month_label']} ({m_item['month_name']} {m_item['year']})" if len(months) <= 12 else m_item['month_label']
+        add_text(c_month, month_label_text, font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
         set_cell_shading(c_month, "E6EEF8")
 
-        # Row 3: Week Numbers (1, 2, 3, 4 per month)
-        for w in range(4):
-            c_idx = col_start + w
-            add_text(table.cell(3, c_idx), str(w + 1), font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-            set_cell_shading(table.cell(3, c_idx), "F0F4F8")
+    # Row 3: Week Numbers (1..week_count per month)
+    for w_item in all_weeks:
+        c_idx = 3 + (w_item["global_week"] - 1)
+        add_text(table.cell(3, c_idx), str(w_item["week_in_month"]), font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        set_cell_shading(table.cell(3, c_idx), "F0F4F8")
 
     # Populate Tasks Rows (Row 4 onwards)
     active_map = task_active_weeks or {}
@@ -314,13 +500,12 @@ def create_project_plan_document(
             set_cell_shading(table.cell(r_idx, 2), "F7F9FC")
 
         # Fill active week cells
-        for m in range(months_cnt):
-            for w in range(4):
-                wk_num = (m * 4) + w + 1
-                c_idx = 3 + (m * 4) + w
-                if wk_num in weeks:
-                    fill_color = "C6E0B4" if is_actual else "C6D9F1"
-                    set_cell_shading(table.cell(r_idx, c_idx), fill_color)
+        for w_item in all_weeks:
+            wk_num = w_item["global_week"]
+            c_idx = 3 + (wk_num - 1)
+            if wk_num in weeks:
+                fill_color = "C6E0B4" if is_actual else "C6D9F1"
+                set_cell_shading(table.cell(r_idx, c_idx), fill_color)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
@@ -609,11 +794,27 @@ def create_project_plan_comparison_document(
     add_text(title_p, f"Project: {title_str}", font_size=11, bold=True, space_after=2)
 
     sched_str = schedule_title or "Planned vs Actual Schedule Execution & Variance Matrix"
-    sched_p = doc.add_paragraph()
-    add_text(sched_p, f"Schedule: {sched_str}", font_size=10, italic=True, space_after=4)
+    sched_subtitle = sched_str
+    if commencement_date or completion_date:
+        dates_info = []
+        if commencement_date:
+            dates_info.append(f"Start: {commencement_date}")
+        if completion_date:
+            dates_info.append(f"End: {completion_date}")
+        date_text = f" ({', '.join(dates_info)})"
+        sched_subtitle = f"{sched_str}{date_text}"
 
-    months_cnt = max(1, min(12, total_months or 6))
-    weeks_cols = months_cnt * 4
+    sched_p = doc.add_paragraph()
+    add_text(sched_p, f"Schedule: {sched_subtitle}", font_size=10, italic=True, space_after=4)
+
+    # Compute dynamic schedule structure (months & 4/5 week counts)
+    months, all_weeks = compute_schedule_structure(
+        commencement_date_str=commencement_date,
+        completion_date_str=completion_date,
+        total_months=total_months
+    )
+
+    weeks_cols = len(all_weeks)
 
     # Table columns: Sl. No (0), Sub (1), Task Name (2), Plan Type (3), Weeks 1..N (4..4+weeks_cols-1)
     total_cols = 4 + weeks_cols
@@ -629,14 +830,18 @@ def create_project_plan_comparison_document(
     table.autofit = False
 
     border_fmt = {"val": "single", "sz": "4", "color": "D3D3D3"}
-    week_col_width = Inches(0.26) if weeks_cols <= 24 else Inches(0.20)
-    col_widths = [Inches(0.35), Inches(0.35), Inches(2.8), Inches(0.45)] + [week_col_width] * weeks_cols
+
+    # Dynamic column widths
+    available_width = 11.09 - (0.35 + 0.35 + 2.7 + 0.45)
+    calculated_week_w = max(0.16, min(0.26, available_width / max(1, weeks_cols)))
+    week_col_width = Inches(calculated_week_w)
+    col_widths = [Inches(0.35), Inches(0.35), Inches(2.7), Inches(0.45)] + [week_col_width] * weeks_cols
 
     for row in table.rows:
         for c_idx, cell in enumerate(row.cells):
             set_cell_border(cell, top=border_fmt, bottom=border_fmt, left=border_fmt, right=border_fmt)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-            set_cell_margins(cell, top=15, start=15, bottom=15, end=15)
+            set_cell_margins(cell, top=15, start=10, bottom=15, end=10)
             if c_idx < len(col_widths):
                 set_cell_width(cell, col_widths[c_idx] / Inches(1))
 
@@ -667,19 +872,20 @@ def create_project_plan_comparison_document(
     add_text(c_type, "TYPE", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
     set_cell_shading(c_type, "F0F4F8")
 
-    # Header Row 2 & 3: Months & Weeks
-    for m in range(months_cnt):
-        col_start = 4 + (m * 4)
-        col_end = col_start + 3
+    # Header Row 2 & 3: Dynamic Months & Weeks
+    for m_item in months:
+        col_start = 4 + (m_item["start_week"] - 1)
+        col_end = col_start + m_item["week_count"] - 1
 
         c_month = table.cell(2, col_start).merge(table.cell(2, col_end))
-        add_text(c_month, f"MONTH {m + 1}", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        month_label_text = f"{m_item['month_label']} ({m_item['month_name']} {m_item['year']})" if len(months) <= 12 else m_item['month_label']
+        add_text(c_month, month_label_text, font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
         set_cell_shading(c_month, "E6EEF8")
 
-        for w in range(4):
-            c_idx = col_start + w
-            add_text(table.cell(3, c_idx), str(w + 1), font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-            set_cell_shading(table.cell(3, c_idx), "F0F4F8")
+    for w_item in all_weeks:
+        c_idx = 4 + (w_item["global_week"] - 1)
+        add_text(table.cell(3, c_idx), str(w_item["week_in_month"]), font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        set_cell_shading(table.cell(3, c_idx), "F0F4F8")
 
     # Populate Tasks Rows
     for t_idx in range(max_len):
@@ -719,20 +925,19 @@ def create_project_plan_comparison_document(
         set_cell_shading(table.cell(r_actual, 3), "EAF5EA")
 
         # Populate week cells for Planned and Actual
-        for m in range(months_cnt):
-            for w in range(4):
-                wk_num = (m * 4) + w + 1
-                c_idx = 4 + (m * 4) + w
+        for w_item in all_weeks:
+            wk_num = w_item["global_week"]
+            c_idx = 4 + (wk_num - 1)
 
-                # Planned cell
-                if wk_num in p_weeks:
-                    add_text(table.cell(r_planned, c_idx), "P", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-                    set_cell_shading(table.cell(r_planned, c_idx), "C6D9F1")
+            # Planned cell
+            if wk_num in p_weeks:
+                add_text(table.cell(r_planned, c_idx), "P", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                set_cell_shading(table.cell(r_planned, c_idx), "C6D9F1")
 
-                # Actual cell
-                if wk_num in a_weeks:
-                    add_text(table.cell(r_actual, c_idx), "A", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-                    set_cell_shading(table.cell(r_actual, c_idx), "C6E0B4")
+            # Actual cell
+            if wk_num in a_weeks:
+                add_text(table.cell(r_actual, c_idx), "A", font_size=8, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                set_cell_shading(table.cell(r_actual, c_idx), "C6E0B4")
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 

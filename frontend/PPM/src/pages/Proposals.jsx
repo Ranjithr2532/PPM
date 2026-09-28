@@ -387,6 +387,7 @@ const mapUiToApi = (values) => {
   })
 
   payload.make_in_india = values.make_in_india ?? ''
+  payload.is_acknowledged = true
 
   if (values.delivery_date_mutually_agreed) {
     payload["Mutually_Agreed"] = true
@@ -1826,11 +1827,16 @@ function Proposals() {
       }
     }
     const payload = mapUiToApi(values)
+    const isEditing = Boolean(editingRecord)
+    if (!isEditing) {
+      payload.is_acknowledged = true
+    } else if (editingRecord.is_acknowledged !== undefined && editingRecord.is_acknowledged !== null) {
+      payload.is_acknowledged = editingRecord.is_acknowledged
+    }
     const isEditingProject = Boolean(editingRecord?.project_number?.toString().trim())
     if (isEditingProject) {
       delete payload.proposal_status
     }
-    const isEditing = Boolean(editingRecord)
     const url = isEditing
       ? `${API_BASE_URL}/proposals/${editingRecord.id}`
       : `${API_BASE_URL}/proposals/`

@@ -65,6 +65,7 @@ class ProposalBase(BaseModel):
     if_not_reason: Optional[str] = None
     mutually_agreed: Optional[bool] = Field(default=None, alias="Mutually_Agreed")
     draft: Optional[bool] = False
+    is_acknowledged: Optional[bool] = None
 
     class Config:
         populate_by_name = True

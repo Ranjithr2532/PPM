@@ -57,6 +57,7 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
 
     // Auto-save draft tracking states & refs
     const isHydratedRef = useRef(false);
+    const hasUserEditedRef = useRef(false);
     const submissionIdRef = useRef(submissionId);
     const statusRef = useRef(status);
     const isSavingRef = useRef(false);
@@ -132,13 +133,9 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
             try {
                 let sub = null;
                 const targetSubId = propSubmissionId || null;
-                const targetPropId = propProposalId || selectedProposalId;
 
                 if (targetSubId) {
                     sub = await isoSubmissionService.getSubmissionById(targetSubId);
-                } else if (targetPropId) {
-                    const subs = await isoSubmissionService.getSubmissions({ proposal_id: targetPropId, doc_type: 'TECHNICAL_SPECIFICATION' });
-                    if (Array.isArray(subs) && subs.length > 0) sub = subs[0];
                 }
 
                 if (sub) {
@@ -152,7 +149,7 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                     if (fd.project_title) setProjectTitle(fd.project_title);
                     if (fd.project_no) setProjectNo(fd.project_no);
                     if (fd.customer_name) setCustomerName(fd.customer_name);
-                    if (fd.item_description) setItemDescription(fd.item_description);
+                    if (fd.item_description !== undefined) setItemDescription(fd.item_description);
 
                     if (Array.isArray(fd.specs) && fd.specs.length > 0) setSpecs(fd.specs);
                     if (Array.isArray(fd.scope_of_supply) && fd.scope_of_supply.length > 0) setScopeOfSupply(fd.scope_of_supply);
@@ -172,11 +169,12 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
         };
 
         loadSubmission();
-    }, [propSubmissionId, propProposalId]);
+    }, [propSubmissionId]);
 
     // Specs Handlers
     const handleAddSpecRow = () => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setSpecs(prev => [
             ...prev,
             { sl_no: String(prev.length + 1), specification: '', requirement: '', vendor_compliance: '' }
@@ -185,6 +183,7 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
 
     const handleRemoveSpecRow = (idx) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setSpecs(prev => {
             const next = prev.filter((_, i) => i !== idx);
             return next.map((r, i) => ({ ...r, sl_no: String(i + 1) }));
@@ -193,12 +192,14 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
 
     const handleSpecChange = (idx, field, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setSpecs(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
     };
 
     // Scope of Supply Handlers
     const handleAddScopeRow = () => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setScopeOfSupply(prev => [
             ...prev,
             { sl_no: String(prev.length + 1), particulars: '', qty: '', remarks: '' }
@@ -207,6 +208,7 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
 
     const handleRemoveScopeRow = (idx) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setScopeOfSupply(prev => {
             const next = prev.filter((_, i) => i !== idx);
             return next.map((r, i) => ({ ...r, sl_no: String(i + 1) }));
@@ -215,47 +217,55 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
 
     const handleScopeChange = (idx, field, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setScopeOfSupply(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
     };
 
     // Checklist Handlers
     const toggleBoiCheck = (idx) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setBoiChecklist(prev => prev.map((item, i) => i === idx ? { ...item, checked: !item.checked } : item));
     };
 
     const handleBoiChange = (idx, field, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setBoiChecklist(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
     };
 
     const toggleMfgCheck = (idx) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setMfgChecklist(prev => prev.map((item, i) => i === idx ? { ...item, checked: !item.checked } : item));
     };
 
     const handleMfgChange = (idx, field, val) => {
         if (isReadOnly) return;
+        hasUserEditedRef.current = true;
         setMfgChecklist(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
     };
 
-    const buildPayload = () => ({
-        project_title: projectTitle,
-        project_no: projectNo,
-        customer_name: customerName,
-        item_description: itemDescription,
-        specs: specs,
-        scope_of_supply: scopeOfSupply,
-        boi_checklist: boiChecklist,
-        mfg_checklist: mfgChecklist,
-        prepared_by: preparedBy,
-        approved_by: approvedBy,
-        group_name: getLoggedUserGroup(),
-        centre_dept: getLoggedUserCentreDept(),
-        doc_no: docNo,
-        doc_date: docDate,
-        filename: `ISO_Technical_Specification_${projectNo || '065'}.docx`
-    });
+    const buildPayload = () => {
+        const cleanDesc = (itemDescription || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        return {
+            project_title: projectTitle,
+            project_no: projectNo,
+            customer_name: customerName,
+            item_description: itemDescription,
+            specs: specs,
+            scope_of_supply: scopeOfSupply,
+            boi_checklist: boiChecklist,
+            mfg_checklist: mfgChecklist,
+            prepared_by: preparedBy,
+            approved_by: approvedBy,
+            group_name: getLoggedUserGroup(),
+            centre_dept: getLoggedUserCentreDept(),
+            doc_no: docNo || '065',
+            doc_date: docDate,
+            filename: `ISO_Technical_Specification_${cleanDesc ? `${cleanDesc}_` : ''}${projectNo || '065'}.docx`
+        };
+    };
 
     const handleGenerateDoc = async () => {
         setGenerating(true);
@@ -284,9 +294,11 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
     };
 
     // Auto-Save Draft to Database
+    const performAutoSaveRef = useRef(null);
+
     const performAutoSave = useCallback(async () => {
         if (isReadOnly) return;
-        if (!isHydratedRef.current) return;
+        if (!isHydratedRef.current || !hasUserEditedRef.current) return;
         if (isSavingRef.current) return;
 
         isSavingRef.current = true;
@@ -329,12 +341,20 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
         }
     }, [isReadOnly, projectTitle, projectNo, customerName, itemDescription, specs, scopeOfSupply, boiChecklist, mfgChecklist, preparedBy, approvedBy, docNo, docDate, selectedProposalId]);
 
+    useEffect(() => {
+        performAutoSaveRef.current = performAutoSave;
+    }, [performAutoSave]);
+
     // Debounced Auto-Save
     useEffect(() => {
-        if (!isHydratedRef.current || isReadOnly) return;
-        const timer = setTimeout(() => { performAutoSave(); }, 1000);
+        if (!isHydratedRef.current || !hasUserEditedRef.current || isReadOnly) return;
+        const timer = setTimeout(() => {
+            if (performAutoSaveRef.current) {
+                performAutoSaveRef.current();
+            }
+        }, 1000);
         return () => clearTimeout(timer);
-    }, [projectTitle, projectNo, customerName, itemDescription, specs, scopeOfSupply, boiChecklist, mfgChecklist, preparedBy, approvedBy, docNo, docDate, selectedProposalId, performAutoSave, isReadOnly]);
+    }, [projectTitle, projectNo, customerName, itemDescription, specs, scopeOfSupply, boiChecklist, mfgChecklist, preparedBy, approvedBy, docNo, docDate, selectedProposalId, isReadOnly]);
 
     // Flush on page unload / refresh
     useEffect(() => {
@@ -524,7 +544,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                             <input
                                 type="text"
                                 value={projectTitle}
-                                onChange={(e) => setProjectTitle(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setProjectTitle(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Project Title"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -536,7 +559,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                             <input
                                 type="text"
                                 value={projectNo}
-                                onChange={(e) => setProjectNo(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setProjectNo(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="e.g. GST2502201"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none font-semibold text-slate-800"
@@ -548,7 +574,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                             <input
                                 type="text"
                                 value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setCustomerName(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Customer Name"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -560,7 +589,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                             <input
                                 type="text"
                                 value={docDate}
-                                onChange={(e) => setDocDate(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setDocDate(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="DD.MM.YYYY"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white outline-none"
@@ -578,7 +610,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                         <textarea
                             rows={2}
                             value={itemDescription}
-                            onChange={(e) => setItemDescription(e.target.value)}
+                            onChange={(e) => {
+                                hasUserEditedRef.current = true;
+                                setItemDescription(e.target.value);
+                            }}
                             disabled={isReadOnly}
                             placeholder="Enter detailed description of the item / equipment..."
                             className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-white outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
@@ -868,7 +903,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                             <input
                                 type="text"
                                 value={preparedBy}
-                                onChange={(e) => setPreparedBy(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setPreparedBy(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Prepared By Name"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white mt-1 outline-none"
@@ -883,7 +921,10 @@ export default function TechnicalSpecification({ proposalId: propProposalId, sub
                             <input
                                 type="text"
                                 value={approvedBy}
-                                onChange={(e) => setApprovedBy(e.target.value)}
+                                onChange={(e) => {
+                                    hasUserEditedRef.current = true;
+                                    setApprovedBy(e.target.value);
+                                }}
                                 disabled={isReadOnly}
                                 placeholder="Approved By Name"
                                 className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white mt-1 outline-none"

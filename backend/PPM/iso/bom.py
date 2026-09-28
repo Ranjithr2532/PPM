@@ -89,6 +89,7 @@ class BOMItemRequest(BaseModel):
     part_name: str = ""
     specification: str = ""
     make: str = ""
+    make_model: str = ""
     quantity: str = ""
     function_criticality: str = "NC"
 
@@ -122,7 +123,7 @@ class BOMRequest(BaseModel):
 DEFAULT_BOM_HEADERS = [
     "Part name/Part Number",
     "Specification",
-    "Make",
+    "Make/Model",
     "Quantity",
     "Function Criticality"
 ]
@@ -213,7 +214,7 @@ def create_bom_document(
             if isinstance(item, dict):
                 part = item.get("part_name") or item.get("part_name_part_number") or item.get("part_no_spec") or item.get("item_description") or ""
                 spec = item.get("specification") or item.get("spec") or ""
-                make = item.get("make") or item.get("make_supplier") or ""
+                make = item.get("make_model") or item.get("make") or item.get("make_supplier") or item.get("model") or ""
                 qty = str(item.get("quantity") or item.get("qty") or "")
                 crit = item.get("function_criticality") or item.get("criticality") or item.get("remarks") or item.get("unit") or "NC"
                 custom_rows.append([part, spec, make, qty, crit])
