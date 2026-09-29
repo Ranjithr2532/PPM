@@ -776,6 +776,8 @@ def save_generated_iso_file(rec: ISOSubmission, db: Session):
             is_proposal_doc = (rec.doc_type or "").upper() in ["PROJECT_PROPOSAL", "PROJECT_PROPSAL", "009"]
             doc_name = "Proposal" if is_proposal_doc else f"{rec.doc_type}_{rec.document_no}"
 
+            h_data = rec.header_data or {}
+            prepared_by = h_data.get("prepared_by") or f_data.get("prepared_by") or f_data.get("quotation_given_by_name") or f_data.get("project_leader")
             creator_name = prepared_by
             if not creator_name and rec.created_by:
                 creator = db.query(User).filter(User.id == rec.created_by).first()

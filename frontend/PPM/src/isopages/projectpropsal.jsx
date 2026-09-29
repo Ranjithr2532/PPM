@@ -892,7 +892,11 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
             let activePropId = proposalId || propProposalId || (existingRecord ? existingRecord.id : null);
 
             const proposalPayload = {
-                enquiry_date: docDate || getTodayDateString(),
+                enquiry_date: docDate
+                    ? (dayjs(docDate, ['DD-MM-YYYY', 'YYYY-MM-DD']).isValid()
+                        ? dayjs(docDate, ['DD-MM-YYYY', 'YYYY-MM-DD']).format('YYYY-MM-DD')
+                        : docDate)
+                    : dayjs().format('YYYY-MM-DD'),
                 customer_type: customerType || 'Govt',
                 customer_name: finalCustName,
                 address: customerAddress || '',
@@ -1380,16 +1384,22 @@ export default function ProjectProposal({ submissionId: propSubmissionId, propos
                                 FORMAT FOR PROJECT PROPOSAL
                             </td>
                             <td className="border border-slate-800 px-2 py-1 text-left text-[9px] font-semibold">
-                                Date: {isReadOnly ? (
-                                    <span className="font-bold text-slate-900 px-1">{docDate || '--'}</span>
-                                ) : (
-                                    <input
-                                        type="text"
-                                        value={docDate}
-                                        onChange={(e) => setDocDate(e.target.value)}
-                                        className="bg-transparent border-0 border-b border-transparent focus:border-slate-300 outline-none w-20 px-1 py-0 text-[9px] font-normal text-slate-800"
-                                    />
-                                )}<br />
+                                <div className="flex items-center gap-1">
+                                    <span>Date:</span>
+                                    {isReadOnly ? (
+                                        <span className="font-bold text-slate-900 px-1">{docDate || '--'}</span>
+                                    ) : (
+                                        <DatePicker
+                                            size="small"
+                                            format="DD-MM-YYYY"
+                                            value={docDate ? dayjs(docDate, ['DD-MM-YYYY', 'YYYY-MM-DD']) : null}
+                                            onChange={(date, dateString) => setDocDate(dateString || '')}
+                                            placeholder="DD-MM-YYYY"
+                                            className="w-28 text-[9px] py-0 px-1 border-0 border-b border-slate-300 rounded-none bg-transparent"
+                                            allowClear={false}
+                                        />
+                                    )}
+                                </div>
                                 Page: <span className="font-normal text-slate-600">1 of 1</span>
                             </td>
                         </tr>
