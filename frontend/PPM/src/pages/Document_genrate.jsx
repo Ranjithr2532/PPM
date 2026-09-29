@@ -327,7 +327,9 @@ export default function DocumentGenerate({
         const fetchedGroup = getUserGroup();
 
         const initialValues = {
-            date: new Date().toLocaleDateString('en-GB'),
+            date: (convertingDraftRecord && (convertingDraftRecord.enquiry_date || convertingDraftRecord.quote_date))
+                ? dayjs(convertingDraftRecord.enquiry_date || convertingDraftRecord.quote_date)
+                : dayjs(),
             dept: fetchedCenter || '',
             quotation_given_by_name: fetchedName || '',
             quotation_given_by_department: fetchedCenter || '',
@@ -915,7 +917,7 @@ export default function DocumentGenerate({
         const primarySig = formattedSignatories[0] || { name: values.quotation_given_by_name || getUserName(), lines: [] };
 
         const payload = {
-            date: values.date || new Date().toLocaleDateString('en-GB'),
+            date: (dayjs.isDayjs(values.date) ? values.date.format(DISPLAY_DATE_FORMAT) : (values.date ? dayjs(values.date).format(DISPLAY_DATE_FORMAT) : dayjs().format(DISPLAY_DATE_FORMAT))),
             dept: values.dept || values.center || getUserCenter(),
             email_to,
             email_cc,
@@ -1045,7 +1047,7 @@ export default function DocumentGenerate({
             const uGroup = values.group || parsedUser.group || getUserGroup();
 
             const proposalPayload = {
-                enquiry_date: values.date || new Date().toLocaleDateString('en-GB'),
+                enquiry_date: (dayjs.isDayjs(values.date) ? values.date.format('YYYY-MM-DD') : (values.date ? dayjs(values.date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'))),
                 customer_type: values.customer_type || (selectedCustomer && selectedCustomer.customer_type) || 'Govt',
                 customer_name: custName,
                 address: values.address || custRaw.slice(1).join(', ') || '',
@@ -1320,7 +1322,7 @@ export default function DocumentGenerate({
                 form={form}
                 layout="vertical"
                 initialValues={{
-                    date: new Date().toLocaleDateString('en-GB'),
+                    date: dayjs(),
                     dept: '',
                     email_to: '',
                     email_cc: '',
@@ -1460,7 +1462,13 @@ export default function DocumentGenerate({
                                         <tr>
                                             <td className="border-r border-slate-900 p-1">
                                                 <Form.Item name="date" noStyle rules={[{ required: true, message: 'Date is required' }]}>
-                                                    <Input prefix={<CalendarOutlined className="text-slate-400 mr-1" />} variant="borderless" className="p-1 text-xs" />
+                                                    <DatePicker
+                                                        format={DISPLAY_DATE_FORMAT}
+                                                        variant="borderless"
+                                                        className="w-full p-1 text-xs"
+                                                        placeholder="Select Proposal Date"
+                                                        allowClear={false}
+                                                    />
                                                 </Form.Item>
                                             </td>
                                             <td className="border-r border-slate-900 p-1">
@@ -2526,7 +2534,9 @@ export default function DocumentGenerate({
                                         >
                                             {/* Header */}
                                             <div className="text-right text-slate-600 space-y-0.5 border-b border-slate-100 pb-2">
-                                                <div className="font-bold text-xs text-slate-900">Date: {formValues.date || new Date().toLocaleDateString('en-GB')}</div>
+                                                <div className="font-bold text-xs text-slate-900">
+                                                    Date: {dayjs.isDayjs(formValues.date) ? formValues.date.format(DISPLAY_DATE_FORMAT) : (formValues.date ? formatDate(formValues.date) : dayjs().format(DISPLAY_DATE_FORMAT))}
+                                                </div>
                                                 {formValues.dept && <div className="font-bold text-blue-700 text-xs">Dept: {formValues.dept}</div>}
                                             </div>
 

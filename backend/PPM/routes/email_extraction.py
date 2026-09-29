@@ -8,7 +8,7 @@ import requests
 
 router = APIRouter(tags=["AI Email Extraction"])
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_URL = "http://172.18.7.91:11434/api/generate"
 OLLAMA_MODEL = "gemma3:270m"
 
 
