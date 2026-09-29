@@ -320,31 +320,11 @@ def create_cost_estimation_sheet_document(
     t_info.autofit = False
     set_table_fixed_grid(t_info, [0.90, 3.55])
 
-    # Row 0: Logo on left (0.90 in), Central Manufacturing Technology Institute on right (3.55 in)
-    cell_logo = t_info.rows[0].cells[0]
-    cell_title = t_info.rows[0].cells[1]
-    set_cell_width(cell_logo, 0.90)
-    set_cell_width(cell_title, 3.55)
-    set_cell_shading(cell_logo, grey_shd)
-    set_cell_shading(cell_title, grey_shd)
-
-    p_logo = cell_logo.paragraphs[0]
-    p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_logo.paragraph_format.space_before = Pt(0)
-    p_logo.paragraph_format.space_after = Pt(0)
-    p_logo.paragraph_format.line_spacing = 1.0
-
-    logo_file = get_logo_path()
-    if logo_file and os.path.exists(logo_file):
-        run_logo = p_logo.add_run()
-        run_logo.add_picture(logo_file, width=Inches(0.72))
-    else:
-        run_logo = p_logo.add_run("CMTI")
-        run_logo.bold = True
-        run_logo.font.name = "Arial"
-        run_logo.font.size = Pt(8.0)
-
-    add_text(cell_title, "Central Manufacturing Technology Institute\nISO 9001:2015", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+    # Row 0: Central Manufacturing Technology Institute / ISO 9001:2015 (Merged across full width, no logo)
+    t_info.rows[0].cells[0].merge(t_info.rows[0].cells[1])
+    set_cell_width(t_info.rows[0].cells[0], 4.45)
+    set_cell_shading(t_info.rows[0].cells[0], grey_shd)
+    add_text(t_info.rows[0].cells[0], "Central Manufacturing Technology Institute\nISO 9001:2015", font_size=7.5, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Row 1: Prepared on: ______________ (Merged)
     t_info.rows[1].cells[0].merge(t_info.rows[1].cells[1])

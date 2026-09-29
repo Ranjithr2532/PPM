@@ -415,7 +415,32 @@ export default function DocumentGenerate({
             }
         };
         fetchScientists();
-    }, [form, convertingDraftRecord]);
+
+        // Fetch existing saved dynamic cost estimation tables if project/draft ID exists
+        const effectiveId = projectId || convertingDraftRecord?.id;
+        if (effectiveId) {
+            const fetchExistingCostTables = async () => {
+                try {
+                    const token = localStorage.getItem('token');
+                    const headers = {
+                        accept: 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    };
+                    const res = await axios.get(`${API_BASE_URL}/dynamic-tables/${effectiveId}`, { headers });
+                    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+                        setRawStudioHeaders(res.data);
+                        const formatted = convertHeadersToDocumentTables(res.data);
+                        if (formatted && formatted.length > 0) {
+                            setInternalCostTables(formatted);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error loading saved cost tables:', err);
+                }
+            };
+            fetchExistingCostTables();
+        }
+    }, [form, convertingDraftRecord, projectId]);
 
     // Handle searching customers by name, address, email or phone
     const handleCustomerSearch = (searchText) => {
@@ -1100,7 +1125,7 @@ export default function DocumentGenerate({
                 try {
                     const token = localStorage.getItem('token');
                     await axios.post(
-                        `${API_BASE_URL}/dynamic-tables/${newProjectId}/generate-word`,
+                        `${API_BASE_URL}/dynamic-tables/${newProjectId}/save`,
                         {
                             title: values.subject || "Internal Cost Estimation",
                             created_by: uName,
@@ -1112,7 +1137,6 @@ export default function DocumentGenerate({
                                 'Content-Type': 'application/json',
                                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
                             },
-                            responseType: 'blob',
                         }
                     );
                     console.log("Successfully saved cost estimation tables to DB under ID:", newProjectId);
@@ -2631,7 +2655,7 @@ export default function DocumentGenerate({
             <CostEstimationModal
                 open={costModalOpen}
                 onClose={() => setCostModalOpen(false)}
-                projectId={null}
+                projectId={projectId || convertingDraftRecord?.id || null}
                 hideGenerateWord={true}
                 initialHeaders={rawStudioHeaders}
                 onApply={(studioHeaders) => {
