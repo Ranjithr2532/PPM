@@ -817,9 +817,9 @@ function Projects() {
           <tbody>
             ${paymentsRows.length > 0
           ? paymentsRows.map((row) => {
-              const invNoAndAmt = [row.invoice_no, row.amount_claimed ? `Rs. ${row.amount_claimed}` : null].filter(Boolean).join('<br />')
-              const balAndRemarks = [row.bal, row.follow_up_status].filter(Boolean).join(' - ')
-              return `
+            const invNoAndAmt = [row.invoice_no, row.amount_claimed ? `Rs. ${row.amount_claimed}` : null].filter(Boolean).join('<br />')
+            const balAndRemarks = [row.bal, row.follow_up_status].filter(Boolean).join(' - ')
+            return `
                 <tr>
                   <td>${row.description || ''}</td>
                   <td>${row.full_stage_payment || ''}</td>
@@ -829,7 +829,7 @@ function Projects() {
                   <td style="white-space: nowrap;">${formatDDMMYYYY(row.recieved_date) || row.recieved_date || ''}</td>
                   <td>${balAndRemarks}</td>
                 </tr>`
-            }).join('')
+          }).join('')
           : `
                 <tr>
                   <td colspan="7" style="text-align:center;color:#666;">No payment records available</td>
@@ -1571,214 +1571,214 @@ function Projects() {
       <div className="space-y-4">
         {renderTopTabs()}
         <div className="rounded-3xl bg-white p-6 shadow-sm">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={handleBackToProjects}
-              size="large"
-            >
-            </Button>
-            <div>
-              <Title level={3} className="!mb-0">
-                <FileTextOutlined /> Project {formatValue(selectedProject.project_number)}
-              </Title>
-              <Text type="secondary">{selectedProject.activity}</Text>
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={handleBackToProjects}
+                size="large"
+              >
+              </Button>
+              <div>
+                <Title level={3} className="!mb-0">
+                  <FileTextOutlined /> Project {formatValue(selectedProject.project_number)}
+                </Title>
+                <Text type="secondary">{selectedProject.activity}</Text>
+              </div>
             </div>
           </div>
-        </div>
 
-        {loadingStages ? (
-          <div className="py-20 text-center">
-            <Spin size="large" tip="Loading stages..." />
-          </div>
-        ) : stageData.length === 0 ? (
-          <Empty description="No stages found" />
-        ) : (
-          <div className="space-y-8">
-            {stageData
-              .filter(stage => (stage.stage_name || '').trim().toLowerCase() !== 'dgdfh')
-              .sort((a, b) => {
-                const configA = stageConfig.find((s) => s.id === a.stage_id)
-                const configB = stageConfig.find((s) => s.id === b.stage_id)
-                const posA = configA?.position ?? a.position ?? Infinity
-                const posB = configB?.position ?? b.position ?? Infinity
-                return posA - posB
-              })
-              .map((stage) => {
-                const rawName = (stage.stage_name || '').trim()
-                const stageName = rawName
-                const stageNameLower = rawName.toLowerCase()
-                const hasDocs = Array.isArray(stage.documents) && stage.documents.length > 0
-                const hasProg = Array.isArray(stage.progress) && stage.progress.length > 0
-                const hasPay = Array.isArray(stage.payments) && stage.payments.length > 0
-                const accessList = getStageAccessList(stage)
-                const canUpload = accessList.includes('upload')
-                const canAddRemarks = accessList.includes('add remarks')
-                const canAddPayments = accessList.includes('add payments')
-                const canViewAllotment = accessList.includes('view allotment sheet')
-                // Show Add Details button only for Payment stages (position 11)
-                const config = stageConfig.find((s) => s.id === stage.stage_id)
-                const stagePosition = config?.position ?? stage.position ?? 0
-                const isCostEstimationStage = stagePosition === 6 || stageNameLower.includes('cost estimation') || stageNameLower.includes('cost');
-                const canAddStageDetails = stagePosition === 11
-                const stageDetails = projectPaymentStageRows.filter((detail) =>
-                  String(detail.project_no || '').trim() === String(selectedProject?.project_number || '').trim()
-                )
+          {loadingStages ? (
+            <div className="py-20 text-center">
+              <Spin size="large" tip="Loading stages..." />
+            </div>
+          ) : stageData.length === 0 ? (
+            <Empty description="No stages found" />
+          ) : (
+            <div className="space-y-8">
+              {stageData
+                .filter(stage => (stage.stage_name || '').trim().toLowerCase() !== 'dgdfh')
+                .sort((a, b) => {
+                  const configA = stageConfig.find((s) => s.id === a.stage_id)
+                  const configB = stageConfig.find((s) => s.id === b.stage_id)
+                  const posA = configA?.position ?? a.position ?? Infinity
+                  const posB = configB?.position ?? b.position ?? Infinity
+                  return posA - posB
+                })
+                .map((stage) => {
+                  const rawName = (stage.stage_name || '').trim()
+                  const stageName = rawName
+                  const stageNameLower = rawName.toLowerCase()
+                  const hasDocs = Array.isArray(stage.documents) && stage.documents.length > 0
+                  const hasProg = Array.isArray(stage.progress) && stage.progress.length > 0
+                  const hasPay = Array.isArray(stage.payments) && stage.payments.length > 0
+                  const accessList = getStageAccessList(stage)
+                  const canUpload = accessList.includes('upload')
+                  const canAddRemarks = accessList.includes('add remarks')
+                  const canAddPayments = accessList.includes('add payments')
+                  const canViewAllotment = accessList.includes('view allotment sheet')
+                  // Show Add Details button only for Payment stages (position 11)
+                  const config = stageConfig.find((s) => s.id === stage.stage_id)
+                  const stagePosition = config?.position ?? stage.position ?? 0
+                  const isCostEstimationStage = stagePosition === 6 || stageNameLower.includes('cost estimation') || stageNameLower.includes('cost');
+                  const canAddStageDetails = stagePosition === 11
+                  const stageDetails = projectPaymentStageRows.filter((detail) =>
+                    String(detail.project_no || '').trim() === String(selectedProject?.project_number || '').trim()
+                  )
 
-                return (
-                  <div key={stage.stage_id ?? stageName} className="border rounded-xl p-6 bg-gray-50">
-                    <div className="flex justify-between items-center mb-5">
-                      <Title level={4} className="!mb-0">
-                        {(() => {
-                          const config = stageConfig.find((s) => s.id === stage.stage_id)
-                          const position = config?.position ?? stage.position ?? '-'
-                          return <Tag color="blue">{position}</Tag>
-                        })()} {stageName || 'Stage'}
-                      </Title>
-                      {!isReadOnly && (
-                        <Space>
-                          {isCostEstimationStage && (
-                            <Button
-                              size="small"
-                              type="default"
-                              icon={<FileTextOutlined className="text-emerald-600" />}
-                              onClick={() => setSelectedCostEstimationProject(selectedProject)}
-                              className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-medium"
-                            >
-                              Template
-                            </Button>
-                          )}
-                          {canUpload && (
-                            <Button size="small" type="primary" icon={<UploadOutlined />} onClick={() => handleOpenUploadModal(stage)}>
-                              Upload
-                            </Button>
-                          )}
-                        </Space>
-                      )}
-                    </div>
+                  return (
+                    <div key={stage.stage_id ?? stageName} className="border rounded-xl p-6 bg-gray-50">
+                      <div className="flex justify-between items-center mb-5">
+                        <Title level={4} className="!mb-0">
+                          {(() => {
+                            const config = stageConfig.find((s) => s.id === stage.stage_id)
+                            const position = config?.position ?? stage.position ?? '-'
+                            return <Tag color="blue">{position}</Tag>
+                          })()} {stageName || 'Stage'}
+                        </Title>
+                        {!isReadOnly && (
+                          <Space>
+                            {isCostEstimationStage && (
+                              <Button
+                                size="small"
+                                type="default"
+                                icon={<FileTextOutlined className="text-emerald-600" />}
+                                onClick={() => setSelectedCostEstimationProject(selectedProject)}
+                                className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-medium"
+                              >
+                                Template
+                              </Button>
+                            )}
+                            {canUpload && (
+                              <Button size="small" type="primary" icon={<UploadOutlined />} onClick={() => handleOpenUploadModal(stage)}>
+                                Upload
+                              </Button>
+                            )}
+                          </Space>
+                        )}
+                      </div>
 
-                    {hasDocs && (
-                      <div className="mb-6">
-                        <Text strong>Documents:</Text>
-                        <div className="grid gap-3 mt-3 md:grid-cols-2">
-                          {stage.documents.map((doc) => (
-                            <Card key={doc.id} size="small" className="border-l-4 border-l-blue-600 relative">
-                              <div className="pr-8">
-                                <Text strong>
-                                  {doc.name ? `${doc.name.substring(0, 30)}${doc.name.length > 30 ? '...' : ''}` : 'Document'} - Version {doc.version || 'N/A'}
-                                </Text>
-                                {doc.description && <Text type="secondary" className="block text-xs mt-1">{doc.description}</Text>}
-                                <div className="text-xs text-gray-500 mt-1">
-                                  <UserOutlined /> {doc.uploaded_by || 'Unknown'} • <CalendarOutlined /> {formatDate(doc.updated_at)}
-                                </div>
-                                {Array.isArray(doc.attachment) && doc.attachment.length > 0 && (
-                                  <div className="flex flex-wrap gap-2 mt-2">
-                                    {doc.attachment.map((url, idx) => (
-                                      <Button
-                                        key={idx}
-                                        type="link"
-                                        size="small"
-                                        icon={<LinkOutlined />}
-                                        style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                                        onClick={() => {
-                                          const urlNoQuery = url.split('#')[0].split('?')[0]
-                                          const ext = (urlNoQuery.split('.').pop() || '').toLowerCase()
-                                          if (ext === 'xlsx' || ext === 'xls') {
-                                            loadExcelWithRenderer(url)
-                                          } else if (ext === 'docx' || ext === 'doc') {
-                                            loadWordDocument(url)
-                                          }
-                                          setViewDocumentUrl(url)
-                                        }}
-                                      >
-                                        Attachment {idx + 1}
-                                      </Button>
-                                    ))}
+                      {hasDocs && (
+                        <div className="mb-6">
+                          <Text strong>Documents:</Text>
+                          <div className="grid gap-3 mt-3 md:grid-cols-2">
+                            {stage.documents.map((doc) => (
+                              <Card key={doc.id} size="small" className="border-l-4 border-l-blue-600 relative">
+                                <div className="pr-8">
+                                  <Text strong>
+                                    {doc.name ? `${doc.name.substring(0, 30)}${doc.name.length > 30 ? '...' : ''}` : 'Document'} - Version {doc.version || 'N/A'}
+                                  </Text>
+                                  {doc.description && <Text type="secondary" className="block text-xs mt-1">{doc.description}</Text>}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    <UserOutlined /> {doc.uploaded_by || 'Unknown'} • <CalendarOutlined /> {formatDate(doc.updated_at)}
                                   </div>
-                                )}
-                              </div>
-                              <div className="absolute bottom-2 right-2 flex items-center gap-1">
-                                <Text type="secondary" className="text-xs">v{doc.version || 'N/A'}</Text>
-                                {!isReadOnly && (
-                                  <>
-                                    <Button
-                                      type="text"
-                                      size="small"
-                                      icon={<EditOutlined />}
-                                      onClick={() => handleOpenEditDocumentModal(doc)}
-                                      className="text-blue-600 hover:text-blue-800"
-                                    />
-                                    <Popconfirm
-                                      title="Delete document?"
-                                      description="This action cannot be undone."
-                                      onConfirm={() => handleDeleteDocument(doc.id)}
-                                      okText="Delete"
-                                      cancelText="Cancel"
-                                    >
+                                  {Array.isArray(doc.attachment) && doc.attachment.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {doc.attachment.map((url, idx) => (
+                                        <Button
+                                          key={idx}
+                                          type="link"
+                                          size="small"
+                                          icon={<LinkOutlined />}
+                                          style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                                          onClick={() => {
+                                            const urlNoQuery = url.split('#')[0].split('?')[0]
+                                            const ext = (urlNoQuery.split('.').pop() || '').toLowerCase()
+                                            if (ext === 'xlsx' || ext === 'xls') {
+                                              loadExcelWithRenderer(url)
+                                            } else if (ext === 'docx' || ext === 'doc') {
+                                              loadWordDocument(url)
+                                            }
+                                            setViewDocumentUrl(url)
+                                          }}
+                                        >
+                                          Attachment {idx + 1}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                                  <Text type="secondary" className="text-xs">v{doc.version || 'N/A'}</Text>
+                                  {!isReadOnly && (
+                                    <>
                                       <Button
                                         type="text"
                                         size="small"
-                                        icon={<DeleteOutlined />}
-                                        className="text-red-600 hover:text-red-800"
+                                        icon={<EditOutlined />}
+                                        onClick={() => handleOpenEditDocumentModal(doc)}
+                                        className="text-blue-600 hover:text-blue-800"
                                       />
-                                    </Popconfirm>
-                                  </>
-                                )}
-                              </div>
-                              {doc.url ? (
-                                <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => {
-                                  const urlNoQuery = doc.url.split('#')[0].split('?')[0]
-                                  const ext = (urlNoQuery.split('.').pop() || '').toLowerCase()
-                                  if (ext === 'xlsx' || ext === 'xls') {
-                                    loadExcelWithRenderer(doc.url)
-                                  } else if (ext === 'docx' || ext === 'doc') {
-                                    loadWordDocument(doc.url)
-                                  }
-                                  setViewDocumentUrl(doc.url)
-                                }}>
+                                      <Popconfirm
+                                        title="Delete document?"
+                                        description="This action cannot be undone."
+                                        onConfirm={() => handleDeleteDocument(doc.id)}
+                                        okText="Delete"
+                                        cancelText="Cancel"
+                                      >
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          icon={<DeleteOutlined />}
+                                          className="text-red-600 hover:text-red-800"
+                                        />
+                                      </Popconfirm>
+                                    </>
+                                  )}
+                                </div>
+                                {doc.url ? (
+                                  <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => {
+                                    const urlNoQuery = doc.url.split('#')[0].split('?')[0]
+                                    const ext = (urlNoQuery.split('.').pop() || '').toLowerCase()
+                                    if (ext === 'xlsx' || ext === 'xls') {
+                                      loadExcelWithRenderer(doc.url)
+                                    } else if (ext === 'docx' || ext === 'doc') {
+                                      loadWordDocument(doc.url)
+                                    }
+                                    setViewDocumentUrl(doc.url)
+                                  }}>
+                                    View
+                                  </Button>
+                                ) : null}
+                              </Card>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {canViewAllotment && (
+                        <div className="mb-6">
+                          <Card size="small" className="border-l-4 border-l-indigo-600">
+                            <div className="flex items-center justify-between">
+                              <Text strong>Allotment Sheet</Text>
+                              <Space>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  icon={<EyeOutlined />}
+                                  onClick={() => handleOpenAllotmentModal(stage)}
+                                >
                                   View
                                 </Button>
-                              ) : null}
-                            </Card>
-                          ))}
+                                <Button
+                                  size="small"
+                                  onClick={() => handleDownloadAllotment('word')}
+                                >
+                                  Download as Word
+                                </Button>
+                                <Button
+                                  size="small"
+                                  onClick={() => handleDownloadAllotment('pdf')}
+                                >
+                                  Download as PDF
+                                </Button>
+                              </Space>
+                            </div>
+                          </Card>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {canViewAllotment && (
-                      <div className="mb-6">
-                        <Card size="small" className="border-l-4 border-l-indigo-600">
-                          <div className="flex items-center justify-between">
-                            <Text strong>Allotment Sheet</Text>
-                            <Space>
-                              <Button
-                                size="small"
-                                type="primary"
-                                icon={<EyeOutlined />}
-                                onClick={() => handleOpenAllotmentModal(stage)}
-                              >
-                                View
-                              </Button>
-                              <Button
-                                size="small"
-                                onClick={() => handleDownloadAllotment('word')}
-                              >
-                                Download as Word
-                              </Button>
-                              <Button
-                                size="small"
-                                onClick={() => handleDownloadAllotment('pdf')}
-                              >
-                                Download as PDF
-                              </Button>
-                            </Space>
-                          </div>
-                        </Card>
-                      </div>
-                    )}
-
-                    {/* {canAddStageDetails && (
+                      {/* {canAddStageDetails && (
                       <div className="mb-6">
                         <Text strong>Payment Stages</Text>
                         <div className="mt-3">
@@ -1837,657 +1837,657 @@ function Projects() {
                       </div>
                     )} */}
 
-                    <div className="mb-6">
-                      <div className="flex justify-between items-center mb-3">
-                        {!isReadOnly && canAddRemarks && (
-                          <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={() => handleOpenRemarksModal(stage)}>
-                            Add Remark
-                          </Button>
-                        )}
-                      </div>
-                      {hasProg && stage.progress.map((p) => (
-                        <Card key={p.id} size="small" className="mb-3 border-l-4 border-l-green-600">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <Text>{p.remarks}</Text>
-                              <Text type="secondary" className="block text-xs mt-1">
-                                {p.updated_by || 'Unknown'} • {formatDate(p.updated_at)}
-                              </Text>
-                            </div>
-                            {!isReadOnly && (
-                              <div>
-                                <Space>
-                                  <Button size="small" icon={<EditOutlined />} onClick={() => handleEditRemark(stage, p)}>Edit</Button>
-                                  <Popconfirm title="Delete remark?" onConfirm={() => handleDeleteRemark(p.id)}>
-                                    <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
-                                  </Popconfirm>
-                                </Space>
-                              </div>
-                            )}
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-
-                    {/* Progress Stages Table for Position 7 */}
-                    {stagePosition === 7 && (
                       <div className="mb-6">
-                        <Text strong>Progress Stages</Text>
-                        <div className="mt-3">
-                          <table className="min-w-full bg-white border border-gray-200">
-                            <thead className="bg-gray-100">
-                              <tr>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Stages
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Remarks
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Status
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Invoice Details
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Invoice Status
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {stageDetails.map((detail, index) => (
-                                <tr key={detail.id} className="hover:bg-gray-50">
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    Stage {index + 1}
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    {detail.value || 'No remarks'}
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    <Tag color={getStatusColor(detail.status)}>
-                                      {detail.status || 'Pending'}
-                                    </Tag>
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    <div className="max-w-xs truncate" title={detail.invoice_details}>
-                                      {detail.invoice_details || 'No invoice details'}
-                                    </div>
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    <Tag color={detail.invoice_status === 'Paid' ? 'green' :
-                                      detail.invoice_status === 'Pending' ? 'orange' :
-                                        detail.invoice_status === 'Generated' ? 'blue' : 'default'}>
-                                      {detail.invoice_status || 'Pending'}
-                                    </Tag>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <div className="flex justify-between items-center mb-3">
+                          {!isReadOnly && canAddRemarks && (
+                            <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={() => handleOpenRemarksModal(stage)}>
+                              Add Remark
+                            </Button>
+                          )}
                         </div>
+                        {hasProg && stage.progress.map((p) => (
+                          <Card key={p.id} size="small" className="mb-3 border-l-4 border-l-green-600">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <Text>{p.remarks}</Text>
+                                <Text type="secondary" className="block text-xs mt-1">
+                                  {p.updated_by || 'Unknown'} • {formatDate(p.updated_at)}
+                                </Text>
+                              </div>
+                              {!isReadOnly && (
+                                <div>
+                                  <Space>
+                                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEditRemark(stage, p)}>Edit</Button>
+                                    <Popconfirm title="Delete remark?" onConfirm={() => handleDeleteRemark(p.id)}>
+                                      <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
+                                    </Popconfirm>
+                                  </Space>
+                                </div>
+                              )}
+                            </div>
+                          </Card>
+                        ))}
                       </div>
-                    )}
 
-                    {/* Project Stages Table for Position 11 */}
-                    {stagePosition === 11 && (
-                      <div className="mb-6">
-                        <div className="flex items-center justify-between mb-4">
-                          {/* <Input 
+                      {/* Progress Stages Table for Position 7 */}
+                      {stagePosition === 8 && (
+                        <div className="mb-6">
+                          <Text strong>Progress Stages</Text>
+                          <div className="mt-3">
+                            <table className="min-w-full bg-white border border-gray-200">
+                              <thead className="bg-gray-100">
+                                <tr>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Stages
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Remarks
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Status
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Invoice Details
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Invoice Status
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {stageDetails.map((detail, index) => (
+                                  <tr key={detail.id} className="hover:bg-gray-50">
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      Stage {index + 1}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      {detail.value || 'No remarks'}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      <Tag color={getStatusColor(detail.status)}>
+                                        {detail.status || 'Pending'}
+                                      </Tag>
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      <div className="max-w-xs truncate" title={detail.invoice_details}>
+                                        {detail.invoice_details || 'No invoice details'}
+                                      </div>
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      <Tag color={detail.invoice_status === 'Paid' ? 'green' :
+                                        detail.invoice_status === 'Pending' ? 'orange' :
+                                          detail.invoice_status === 'Generated' ? 'blue' : 'default'}>
+                                        {detail.invoice_status || 'Pending'}
+                                      </Tag>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Project Stages Table for Position 11 */}
+                      {stagePosition === 11 && (
+                        <div className="mb-6">
+                          <div className="flex items-center justify-between mb-4">
+                            {/* <Input 
                             placeholder="Enter project stage title..."
                             style={{ width: '300px' }}
                             value={projectStageTitle}
                             onChange={(e) => setProjectStageTitle(e.target.value)}
                           /> */}
-                          {!isReadOnly && (
-                            <Button
-                              type="primary"
-                              size="small"
-                              icon={<PlusOutlined />}
-                              onClick={() => handleOpenStageDetailModal(stage)}
-                            >
-                              Add Stage
-                            </Button>
-                          )}
-                        </div>
-                        <div className="mt-3">
-                          <table className="min-w-full bg-white border border-gray-200">
-                            <thead className="bg-gray-100">
-                              <tr>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  SL No
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Stages
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Remarks
-                                </th>
-                                <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                  Status
-                                </th>
-                                {!isReadOnly && (
+                            {!isReadOnly && (
+                              <Button
+                                type="primary"
+                                size="small"
+                                icon={<PlusOutlined />}
+                                onClick={() => handleOpenStageDetailModal(stage)}
+                              >
+                                Add Stage
+                              </Button>
+                            )}
+                          </div>
+                          <div className="mt-3">
+                            <table className="min-w-full bg-white border border-gray-200">
+                              <thead className="bg-gray-100">
+                                <tr>
                                   <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Actions
+                                    SL No
                                   </th>
-                                )}
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {stageDetails.map((detail, index) => (
-                                <tr key={detail.id} className="hover:bg-gray-50">
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    {index + 1}
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    {detail.name || 'No name'}
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    {detail.value || 'No remarks'}
-                                  </td>
-                                  <td className="border border-gray-300 px-4 py-2 text-sm">
-                                    <Tag color={getStatusColor(detail.status)}>
-                                      {detail.status || 'Pending'}
-                                    </Tag>
-                                  </td>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Stages
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Remarks
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Status
+                                  </th>
                                   {!isReadOnly && (
-                                    <td className="border border-gray-300 px-4 py-2 text-sm">
-                                      <Space>
-                                        <Button size="small" icon={<EditOutlined />} onClick={() => handleEditStageDetail(detail)}>Edit</Button>
-                                        <Popconfirm title="Delete stage?" onConfirm={() => handleDeleteStageDetail(detail.id)}>
-                                          <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
-                                        </Popconfirm>
-                                      </Space>
-                                    </td>
+                                    <th className="border border-gray-300 px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                      Actions
+                                    </th>
                                   )}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {stageDetails.map((detail, index) => (
+                                  <tr key={detail.id} className="hover:bg-gray-50">
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      {index + 1}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      {detail.name || 'No name'}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      {detail.value || 'No remarks'}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-2 text-sm">
+                                      <Tag color={getStatusColor(detail.status)}>
+                                        {detail.status || 'Pending'}
+                                      </Tag>
+                                    </td>
+                                    {!isReadOnly && (
+                                      <td className="border border-gray-300 px-4 py-2 text-sm">
+                                        <Space>
+                                          <Button size="small" icon={<EditOutlined />} onClick={() => handleEditStageDetail(detail)}>Edit</Button>
+                                          <Popconfirm title="Delete stage?" onConfirm={() => handleDeleteStageDetail(detail.id)}>
+                                            <Button danger size="small" icon={<DeleteOutlined />}>Delete</Button>
+                                          </Popconfirm>
+                                        </Space>
+                                      </td>
+                                    )}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
+                      )}
+
+                      <div>
+                        {!isReadOnly && (
+                          <div className="flex justify-between items-center mb-3">
+                            {canAddPayments && (
+                              <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => handleOpenPaymentModal(stage)}>
+                                Add Payment
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {hasPay && (
+                          <Table
+                            dataSource={stage.payments}
+                            columns={getPaymentColumns(stage)}
+                            pagination={false}
+                            size="small"
+                            scroll={{ x: 'max-content' }}
+                            rowKey="id"
+                          />
+                        )}
                       </div>
-                    )}
-
-                    <div>
-                      {!isReadOnly && (
-                        <div className="flex justify-between items-center mb-3">
-                          {canAddPayments && (
-                            <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => handleOpenPaymentModal(stage)}>
-                              Add Payment
-                            </Button>
-                          )}
-                        </div>
-                      )}
-
-                      {hasPay && (
-                        <Table
-                          dataSource={stage.payments}
-                          columns={getPaymentColumns(stage)}
-                          pagination={false}
-                          size="small"
-                          scroll={{ x: 'max-content' }}
-                          rowKey="id"
-                        />
-                      )}
                     </div>
-                  </div>
-                )
-              })}
-          </div>
-        )}
-
-        <Modal
-          title={<>{editingPayment ? 'Edit' : 'Add'} Payment - {selectedStageForPayment?.stage_name}</>}
-          open={paymentModalVisible}
-          onCancel={() => {
-            setPaymentModalVisible(false)
-            setEditingPayment(null)
-            paymentForm.resetFields()
-          }}
-          footer={null}
-          width={1000}
-        >
-          <Form form={paymentForm} layout="vertical" onFinish={handleSubmitPayment}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Form.Item label="Description" name="description" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-              <Form.Item label="Full/Stage Payment" name="full_stage_payment">
-                <Input placeholder="Enter Full/Stage Payment" />
-              </Form.Item>
-              <Form.Item label="Invoice No" name="invoice_no" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-              <Form.Item label="Invoice Date" name="invoice_date">
-                <DatePicker format="DD-MM-YYYY" className="w-full" />
-              </Form.Item>
-              <Form.Item label="Gross Amount" name="gross_amount">
-                <Input />
-              </Form.Item>
-              <Form.Item label="GST Amount" name="get_amount">
-                <Input />
-              </Form.Item>
-              <Form.Item label="Amount Claimed" name="amount_claimed">
-                <Input />
-              </Form.Item>
-              <Form.Item label="Amount Received" name="amount_recieved">
-                <Input />
-              </Form.Item>
-              <Form.Item label="Received Date" name="recieved_date">
-                <DatePicker format="DD-MM-YYYY" className="w-full" />
-              </Form.Item>
-              <Form.Item label="TDS" name="tds">
-                <Input />
-              </Form.Item>
-              <Form.Item label="GST TDS" name="get_tds">
-                <Input />
-              </Form.Item>
-              <Form.Item label="LD" name="ld">
-                <Input />
-              </Form.Item>
-              <Form.Item label="Balance" name="bal">
-                <Input />
-              </Form.Item>
-              <Form.Item label="Follow-up Status" name="follow_up_status">
-                <Input />
-              </Form.Item>
+                  )
+                })}
             </div>
+          )}
 
-            {/* Updated By - Read Only Field */}
-            <div className="mb-4">
-              <Form.Item label="Updated By">
-                <Input
-                  value={(() => {
-                    try {
-                      const ppmUser = JSON.parse(localStorage.getItem('ppm_user'))
-                      return ppmUser?.name || 'Unknown'
-                    } catch (e) {
-                      return 'Unknown'
-                    }
-                  })()}
-                  disabled
-                  style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
-                />
-              </Form.Item>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <Button onClick={() => {
-                setPaymentModalVisible(false)
-                setEditingPayment(null)
-                paymentForm.resetFields()
-              }}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={submittingPayment}>
-                {editingPayment ? 'Update' : 'Add'} Payment
-              </Button>
-            </div>
-          </Form>
-        </Modal>
-
-        <Modal
-          title={editingStageDetail ? `Edit Invoice for ${editingStageDetail.name || selectedStageForDetail?.stage_name}` : selectedStageForDetail ? `Add Details for ${selectedStageForDetail.stage_name}` : 'Add Payment Stage Details'}
-          open={stageDetailModalVisible}
-          onCancel={() => {
-            setStageDetailModalVisible(false)
-            setSelectedStageForDetail(null)
-            setEditingStageDetail(null)
-            stageDetailForm.resetFields()
-          }}
-          footer={null}
-          width={600}
-        >
-          <Form form={stageDetailForm} layout="vertical" onFinish={handleSubmitStageDetail}>
-            <Form.Item
-              label="Stage Name"
-              name="name"
-              rules={[{ required: true, message: 'Please enter stage name' }]}
-            >
-              <Input placeholder="Enter stage name..." />
-            </Form.Item>
-            {!editingStageDetail && (
-              <>
-                <Form.Item
-                  label="Project Number"
-                  name="project_no"
-                  rules={[{ required: true, message: 'Please enter project number' }]}
-                >
+          <Modal
+            title={<>{editingPayment ? 'Edit' : 'Add'} Payment - {selectedStageForPayment?.stage_name}</>}
+            open={paymentModalVisible}
+            onCancel={() => {
+              setPaymentModalVisible(false)
+              setEditingPayment(null)
+              paymentForm.resetFields()
+            }}
+            footer={null}
+            width={1000}
+          >
+            <Form form={paymentForm} layout="vertical" onFinish={handleSubmitPayment}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Form.Item label="Description" name="description" rules={[{ required: true }]}>
                   <Input />
                 </Form.Item>
-                <Form.Item
-                  label="Remarks"
-                  name="value"
-                  rules={[{ required: true, message: 'Please enter value' }]}
-                >
+                <Form.Item label="Full/Stage Payment" name="full_stage_payment">
+                  <Input placeholder="Enter Full/Stage Payment" />
+                </Form.Item>
+                <Form.Item label="Invoice No" name="invoice_no" rules={[{ required: true }]}>
                   <Input />
                 </Form.Item>
-                <Form.Item
-                  label="Status"
-                  name="status"
-                  rules={[{ required: true, message: 'Please select status' }]}
-                >
-                  <Select
-                    showSearch
-                    allowClear
-                    placeholder="Type status..."
-                    mode="combobox"
-                    options={[
-                      { label: 'Pending', value: 'Pending' },
-                      { label: 'In Progress', value: 'In Progress' },
-                      { label: 'Completed', value: 'Completed' }
-                    ]}
-                    filterOption={(input, option) =>
-                      option?.label?.toLowerCase().includes(input.toLowerCase())
-                    }
-                    notFoundContent="Type custom status"
-                    tagRender={(props) => {
-                      const { label, value, closable, onClose } = props;
-                      return (
-                        <Tag
-                          closable={closable}
-                          onClose={onClose}
-                          style={{ marginRight: 3 }}
-                        >
-                          {value || label}
-                        </Tag>
-                      );
-                    }}
-                    open={false}
-                    defaultActiveFirstOption={false}
+                <Form.Item label="Invoice Date" name="invoice_date">
+                  <DatePicker format="DD-MM-YYYY" className="w-full" />
+                </Form.Item>
+                <Form.Item label="Gross Amount" name="gross_amount">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="GST Amount" name="get_amount">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="Amount Claimed" name="amount_claimed">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="Amount Received" name="amount_recieved">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="Received Date" name="recieved_date">
+                  <DatePicker format="DD-MM-YYYY" className="w-full" />
+                </Form.Item>
+                <Form.Item label="TDS" name="tds">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="GST TDS" name="get_tds">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="LD" name="ld">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="Balance" name="bal">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="Follow-up Status" name="follow_up_status">
+                  <Input />
+                </Form.Item>
+              </div>
+
+              {/* Updated By - Read Only Field */}
+              <div className="mb-4">
+                <Form.Item label="Updated By">
+                  <Input
+                    value={(() => {
+                      try {
+                        const ppmUser = JSON.parse(localStorage.getItem('ppm_user'))
+                        return ppmUser?.name || 'Unknown'
+                      } catch (e) {
+                        return 'Unknown'
+                      }
+                    })()}
+                    disabled
+                    style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
                   />
                 </Form.Item>
-              </>
-            )}
-            <Form.Item label="Invoice Details" name="invoice_details">
-              <Input.TextArea rows={3} placeholder="Enter invoice details or notes" />
-            </Form.Item>
-            <Form.Item
-              label="Invoice Status"
-              name="invoice_status"
-              rules={[{ required: true, message: 'Please select invoice status' }]}
-            >
-              <Select options={[
-                { label: 'Pending', value: 'Pending' },
-                { label: 'Generated', value: 'Generated' },
-                { label: 'Submitted', value: 'Submitted' },
-                { label: 'Approved', value: 'Approved' },
-                { label: 'Paid', value: 'Paid' },
-                { label: 'Rejected', value: 'Rejected' }
-              ]} />
-            </Form.Item>
-            <div className="flex justify-end gap-3 mt-4">
-              <Button
-                onClick={() => {
-                  setStageDetailModalVisible(false)
-                  setSelectedStageForDetail(null)
-                  stageDetailForm.resetFields()
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="primary" htmlType="submit" loading={submittingStageDetail}>
-                Save Details
-              </Button>
-            </div>
-          </Form>
-        </Modal>
-        <Modal
-          title={`Upload Document - ${selectedStageForUpload?.stage_name}`}
-          open={uploadModalVisible}
-          onCancel={handleCloseUploadModal}
-          footer={[
-            <Button key="cancel" onClick={handleCloseUploadModal}>Cancel</Button>,
-            <Button key="upload" type="primary" loading={uploading} onClick={handleUpload}>Upload</Button>
-          ]}
-          width={600}
-        >
-          <Space direction="vertical" size="large" className="w-full">
-            <Dragger {...uploadProps}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Click or drag file to this area</p>
-            </Dragger>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Text strong className="text-sm">Attachments (optional)</Text>
-                <label
-                  htmlFor="project-attachment-input"
-                  className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
-                >
-                  <PlusOutlined style={{ fontSize: 12 }} />
-                </label>
-                <input
-                  id="project-attachment-input"
-                  type="file"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={handleAddAttachments}
-                />
               </div>
-              {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {attachments.map((file, index) => (
-                    <Tag
-                      key={`${file.name}-${index}`}
-                      closable
-                      onClose={() => handleRemoveAttachment(index)}
-                    >
-                      {file.name.length > 24 ? file.name.slice(0, 21) + '...' : file.name}
-                    </Tag>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            <Input placeholder="Document Name *" value={documentName} disabled />
-            <div>
+              <div className="flex justify-end gap-3 mt-6">
+                <Button onClick={() => {
+                  setPaymentModalVisible(false)
+                  setEditingPayment(null)
+                  paymentForm.resetFields()
+                }}>Cancel</Button>
+                <Button type="primary" htmlType="submit" loading={submittingPayment}>
+                  {editingPayment ? 'Update' : 'Add'} Payment
+                </Button>
+              </div>
+            </Form>
+          </Modal>
+
+          <Modal
+            title={editingStageDetail ? `Edit Invoice for ${editingStageDetail.name || selectedStageForDetail?.stage_name}` : selectedStageForDetail ? `Add Details for ${selectedStageForDetail.stage_name}` : 'Add Payment Stage Details'}
+            open={stageDetailModalVisible}
+            onCancel={() => {
+              setStageDetailModalVisible(false)
+              setSelectedStageForDetail(null)
+              setEditingStageDetail(null)
+              stageDetailForm.resetFields()
+            }}
+            footer={null}
+            width={600}
+          >
+            <Form form={stageDetailForm} layout="vertical" onFinish={handleSubmitStageDetail}>
+              <Form.Item
+                label="Stage Name"
+                name="name"
+                rules={[{ required: true, message: 'Please enter stage name' }]}
+              >
+                <Input placeholder="Enter stage name..." />
+              </Form.Item>
+              {!editingStageDetail && (
+                <>
+                  <Form.Item
+                    label="Project Number"
+                    name="project_no"
+                    rules={[{ required: true, message: 'Please enter project number' }]}
+                  >
+                    <Input />
+                  </Form.Item>
+                  <Form.Item
+                    label="Remarks"
+                    name="value"
+                    rules={[{ required: true, message: 'Please enter value' }]}
+                  >
+                    <Input />
+                  </Form.Item>
+                  <Form.Item
+                    label="Status"
+                    name="status"
+                    rules={[{ required: true, message: 'Please select status' }]}
+                  >
+                    <Select
+                      showSearch
+                      allowClear
+                      placeholder="Type status..."
+                      mode="combobox"
+                      options={[
+                        { label: 'Pending', value: 'Pending' },
+                        { label: 'In Progress', value: 'In Progress' },
+                        { label: 'Completed', value: 'Completed' }
+                      ]}
+                      filterOption={(input, option) =>
+                        option?.label?.toLowerCase().includes(input.toLowerCase())
+                      }
+                      notFoundContent="Type custom status"
+                      tagRender={(props) => {
+                        const { label, value, closable, onClose } = props;
+                        return (
+                          <Tag
+                            closable={closable}
+                            onClose={onClose}
+                            style={{ marginRight: 3 }}
+                          >
+                            {value || label}
+                          </Tag>
+                        );
+                      }}
+                      open={false}
+                      defaultActiveFirstOption={false}
+                    />
+                  </Form.Item>
+                </>
+              )}
+              <Form.Item label="Invoice Details" name="invoice_details">
+                <Input.TextArea rows={3} placeholder="Enter invoice details or notes" />
+              </Form.Item>
+              <Form.Item
+                label="Invoice Status"
+                name="invoice_status"
+                rules={[{ required: true, message: 'Please select invoice status' }]}
+              >
+                <Select options={[
+                  { label: 'Pending', value: 'Pending' },
+                  { label: 'Generated', value: 'Generated' },
+                  { label: 'Submitted', value: 'Submitted' },
+                  { label: 'Approved', value: 'Approved' },
+                  { label: 'Paid', value: 'Paid' },
+                  { label: 'Rejected', value: 'Rejected' }
+                ]} />
+              </Form.Item>
+              <div className="flex justify-end gap-3 mt-4">
+                <Button
+                  onClick={() => {
+                    setStageDetailModalVisible(false)
+                    setSelectedStageForDetail(null)
+                    stageDetailForm.resetFields()
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="primary" htmlType="submit" loading={submittingStageDetail}>
+                  Save Details
+                </Button>
+              </div>
+            </Form>
+          </Modal>
+          <Modal
+            title={`Upload Document - ${selectedStageForUpload?.stage_name}`}
+            open={uploadModalVisible}
+            onCancel={handleCloseUploadModal}
+            footer={[
+              <Button key="cancel" onClick={handleCloseUploadModal}>Cancel</Button>,
+              <Button key="upload" type="primary" loading={uploading} onClick={handleUpload}>Upload</Button>
+            ]}
+            width={600}
+          >
+            <Space direction="vertical" size="large" className="w-full">
+              <Dragger {...uploadProps}>
+                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                <p className="ant-upload-text">Click or drag file to this area</p>
+              </Dragger>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Text strong className="text-sm">Attachments (optional)</Text>
+                  <label
+                    htmlFor="project-attachment-input"
+                    className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
+                  >
+                    <PlusOutlined style={{ fontSize: 12 }} />
+                  </label>
+                  <input
+                    id="project-attachment-input"
+                    type="file"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={handleAddAttachments}
+                  />
+                </div>
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {attachments.map((file, index) => (
+                      <Tag
+                        key={`${file.name}-${index}`}
+                        closable
+                        onClose={() => handleRemoveAttachment(index)}
+                      >
+                        {file.name.length > 24 ? file.name.slice(0, 21) + '...' : file.name}
+                      </Tag>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Input placeholder="Document Name *" value={documentName} disabled />
+              <div>
+                <Input
+                  placeholder="Version"
+                  value={documentVersion || suggestedVersion}
+                  onChange={(e) => setDocumentVersion(e.target.value)}
+                  addonBefore="Auto Version"
+                  addonAfter={suggestedVersion}
+                />
+                {existingDocuments.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
+                    Existing versions: {existingDocuments.map(doc => `v${doc.version}`).join(', ')}
+                  </div>
+                )}
+              </div>
+              <TextArea placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+              <Input placeholder="Your Name *" value={uploadedBy} disabled />
+            </Space>
+          </Modal>
+
+          <Modal
+            title={`Edit Document - ${selectedDocumentForEdit?.name || 'Document'}`}
+            open={editDocumentModalVisible}
+            onCancel={handleCloseEditDocumentModal}
+            footer={[
+              <Button key="cancel" onClick={handleCloseEditDocumentModal}>Cancel</Button>,
+              <Button key="update" type="primary" loading={updatingDocument} onClick={handleUpdateDocument}>Update</Button>
+            ]}
+            width={500}
+          >
+            <Space direction="vertical" size="large" className="w-full">
               <Input
                 placeholder="Version"
-                value={documentVersion || suggestedVersion}
-                onChange={(e) => setDocumentVersion(e.target.value)}
-                addonBefore="Auto Version"
-                addonAfter={suggestedVersion}
+                value={editingDocumentVersion}
+                onChange={(e) => setEditingDocumentVersion(e.target.value)}
+                addonBefore="Version:"
               />
-              {existingDocuments.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
-                  Existing versions: {existingDocuments.map(doc => `v${doc.version}`).join(', ')}
-                </div>
-              )}
-            </div>
-            <TextArea placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-            <Input placeholder="Your Name *" value={uploadedBy} disabled />
-          </Space>
-        </Modal>
+              <TextArea
+                placeholder="Description"
+                value={editingDocumentDescription}
+                onChange={(e) => setEditingDocumentDescription(e.target.value)}
+                rows={3}
+              />
+            </Space>
+          </Modal>
 
-        <Modal
-          title={`Edit Document - ${selectedDocumentForEdit?.name || 'Document'}`}
-          open={editDocumentModalVisible}
-          onCancel={handleCloseEditDocumentModal}
-          footer={[
-            <Button key="cancel" onClick={handleCloseEditDocumentModal}>Cancel</Button>,
-            <Button key="update" type="primary" loading={updatingDocument} onClick={handleUpdateDocument}>Update</Button>
-          ]}
-          width={500}
-        >
-          <Space direction="vertical" size="large" className="w-full">
-            <Input
-              placeholder="Version"
-              value={editingDocumentVersion}
-              onChange={(e) => setEditingDocumentVersion(e.target.value)}
-              addonBefore="Version:"
-            />
-            <TextArea
-              placeholder="Description"
-              value={editingDocumentDescription}
-              onChange={(e) => setEditingDocumentDescription(e.target.value)}
-              rows={3}
-            />
-          </Space>
-        </Modal>
-
-        <Modal
-          title={`${editingRemark ? 'Edit' : 'Add'} Remark - ${selectedStageForRemarks?.stage_name}`}
-          open={remarksModalVisible}
-          onCancel={() => {
-            setRemarksModalVisible(false)
-            setEditingRemark(null)
-            setRemarksText('')
-            setRemarksBy('')
-          }}
-          footer={[
-            <Button key="cancel" onClick={() => {
+          <Modal
+            title={`${editingRemark ? 'Edit' : 'Add'} Remark - ${selectedStageForRemarks?.stage_name}`}
+            open={remarksModalVisible}
+            onCancel={() => {
               setRemarksModalVisible(false)
               setEditingRemark(null)
               setRemarksText('')
               setRemarksBy('')
-            }}>Cancel</Button>,
-            <Button key="submit" type="primary" loading={submittingRemarks} onClick={handleSubmitRemarks}>
-              {editingRemark ? 'Update' : 'Submit'}
-            </Button>
-          ]}
-          width={600}
-        >
-          <Space direction="vertical" size="large" className="w-full">
-            <TextArea placeholder="Enter your remarks *" value={remarksText} onChange={(e) => setRemarksText(e.target.value)} rows={4} />
-            <Input placeholder="Your Name *" value={remarksBy} disabled />
-          </Space>
-        </Modal>
+            }}
+            footer={[
+              <Button key="cancel" onClick={() => {
+                setRemarksModalVisible(false)
+                setEditingRemark(null)
+                setRemarksText('')
+                setRemarksBy('')
+              }}>Cancel</Button>,
+              <Button key="submit" type="primary" loading={submittingRemarks} onClick={handleSubmitRemarks}>
+                {editingRemark ? 'Update' : 'Submit'}
+              </Button>
+            ]}
+            width={600}
+          >
+            <Space direction="vertical" size="large" className="w-full">
+              <TextArea placeholder="Enter your remarks *" value={remarksText} onChange={(e) => setRemarksText(e.target.value)} rows={4} />
+              <Input placeholder="Your Name *" value={remarksBy} disabled />
+            </Space>
+          </Modal>
 
-        <Modal
-          title={
-            <div className="flex justify-between items-center w-full">
-              <span>Document Viewer</span>
-              <div className="space-x-2">
-                <Button
-                  size="small"
-                  onClick={() => setIsFullscreen(!isFullscreen)}
-                  icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-                >
-                  {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                </Button>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setViewDocumentUrl(null)
-                    setExcelRendererData(null)
-                    setExcelRendererError(null)
-                    setExcelRendererLoading(false)
-                    setActiveSheetIndex(0)
-                    setWordDocumentContent(null)
-                    setWordDocumentError(null)
-                    setWordDocumentLoading(false)
-                    setIsFullscreen(false)
-                  }}
-                >
-                  Close Viewer
-                </Button>
+          <Modal
+            title={
+              <div className="flex justify-between items-center w-full">
+                <span>Document Viewer</span>
+                <div className="space-x-2">
+                  <Button
+                    size="small"
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                  >
+                    {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setViewDocumentUrl(null)
+                      setExcelRendererData(null)
+                      setExcelRendererError(null)
+                      setExcelRendererLoading(false)
+                      setActiveSheetIndex(0)
+                      setWordDocumentContent(null)
+                      setWordDocumentError(null)
+                      setWordDocumentLoading(false)
+                      setIsFullscreen(false)
+                    }}
+                  >
+                    Close Viewer
+                  </Button>
+                </div>
               </div>
-            </div>
-          }
-          open={!!viewDocumentUrl}
-          closable={false}
-          maskClosable={false}
-          keyboard={false}
-          footer={null}
-          width={isFullscreen ? '100vw' : 1100}
-          style={{
-            top: isFullscreen ? 0 : undefined,
-            maxWidth: isFullscreen ? '100vw' : undefined,
-            margin: isFullscreen ? 0 : undefined,
-            paddingBottom: isFullscreen ? 0 : undefined
-          }}
-          bodyStyle={{
-            height: isFullscreen ? 'calc(100vh - 120px)' : 'auto',
-            padding: isFullscreen ? 0 : '24px'
-          }}
-        >
-          {(() => {
-            const currentUrl = viewDocumentUrl || ''
-            const urlNoQuery = currentUrl.split('#')[0].split('?')[0]
-            const ext = (urlNoQuery.split('.').pop() || '').toLowerCase()
-            const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']
-            const isOffice = officeTypes.includes(ext)
-            const directPreviewable = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'txt'].includes(ext)
+            }
+            open={!!viewDocumentUrl}
+            closable={false}
+            maskClosable={false}
+            keyboard={false}
+            footer={null}
+            width={isFullscreen ? '100vw' : 1100}
+            style={{
+              top: isFullscreen ? 0 : undefined,
+              maxWidth: isFullscreen ? '100vw' : undefined,
+              margin: isFullscreen ? 0 : undefined,
+              paddingBottom: isFullscreen ? 0 : undefined
+            }}
+            bodyStyle={{
+              height: isFullscreen ? 'calc(100vh - 120px)' : 'auto',
+              padding: isFullscreen ? 0 : '24px'
+            }}
+          >
+            {(() => {
+              const currentUrl = viewDocumentUrl || ''
+              const urlNoQuery = currentUrl.split('#')[0].split('?')[0]
+              const ext = (urlNoQuery.split('.').pop() || '').toLowerCase()
+              const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']
+              const isOffice = officeTypes.includes(ext)
+              const directPreviewable = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'txt'].includes(ext)
 
-            if (!currentUrl) return null
+              if (!currentUrl) return null
 
-            // Office files (including Excel and Word) - show viewer or download option
-            if (isOffice) {
-              // For Excel files, use react-excel-renderer
-              if (ext === 'xlsx' || ext === 'xls') {
-                if (excelRendererLoading) {
-                  return (
-                    <div className="flex items-center justify-center h-[60vh]">
-                      <Spin size="large" tip="Loading Excel file..." />
-                    </div>
-                  )
-                }
-
-                if (excelRendererError) {
-                  return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                      <div className="text-6xl mb-4"> spreadsheet</div>
-                      <h3 className="text-xl font-semibold">Excel Viewer Error</h3>
-                      <p className="text-gray-500 text-center max-w-md">{excelRendererError}</p>
-                      <div className="space-x-2">
-                        <Button
-                          type="primary"
-                          icon={<LinkOutlined />}
-                          onClick={() => window.open(currentUrl, '_blank')}
-                        >
-                          Download File
-                        </Button>
-                        <Button
-                          onClick={() => loadExcelWithRenderer(currentUrl)}
-                        >
-                          Retry
-                        </Button>
+              // Office files (including Excel and Word) - show viewer or download option
+              if (isOffice) {
+                // For Excel files, use react-excel-renderer
+                if (ext === 'xlsx' || ext === 'xls') {
+                  if (excelRendererLoading) {
+                    return (
+                      <div className="flex items-center justify-center h-[60vh]">
+                        <Spin size="large" tip="Loading Excel file..." />
                       </div>
-                    </div>
-                  )
-                }
+                    )
+                  }
 
-                if (excelRendererData) {
-                  return (
-                    <div className={`w-full ${isFullscreen ? 'h-full' : 'h-[80vh]'}`}>
-                      <div className="flex justify-between items-center mb-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">Excel Viewer</h3>
-                          {/* Sheet tabs */}
-                          {excelRendererData.sheets && excelRendererData.sheets.length > 1 && (
-                            <div className="flex space-x-1 mt-2 border-b">
-                              {excelRendererData.sheets.map((sheet, index) => (
-                                <button
-                                  key={index}
-                                  className={`px-3 py-1 text-sm border-b-2 transition-colors ${activeSheetIndex === index
-                                    ? 'border-blue-500 text-blue-600 bg-blue-50'
-                                    : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                                    }`}
-                                  onClick={() => setActiveSheetIndex(index)}
-                                >
-                                  {sheet.name || `Sheet ${index + 1}`}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                  if (excelRendererError) {
+                    return (
+                      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+                        <div className="text-6xl mb-4"> spreadsheet</div>
+                        <h3 className="text-xl font-semibold">Excel Viewer Error</h3>
+                        <p className="text-gray-500 text-center max-w-md">{excelRendererError}</p>
                         <div className="space-x-2">
                           <Button
-                            size="small"
-                            onClick={() => window.open(currentUrl, '_blank')}
+                            type="primary"
                             icon={<LinkOutlined />}
+                            onClick={() => window.open(currentUrl, '_blank')}
                           >
-                            Download
+                            Download File
                           </Button>
                           <Button
-                            size="small"
                             onClick={() => loadExcelWithRenderer(currentUrl)}
                           >
-                            Refresh
+                            Retry
                           </Button>
                         </div>
                       </div>
+                    )
+                  }
 
-                      <div className={`${isFullscreen ? 'h-[calc(100vh-140px)]' : 'h-[70vh]'} border rounded p-4`}>
-                        <style jsx>{`
+                  if (excelRendererData) {
+                    return (
+                      <div className={`w-full ${isFullscreen ? 'h-full' : 'h-[80vh]'}`}>
+                        <div className="flex justify-between items-center mb-4">
+                          <div>
+                            <h3 className="text-lg font-semibold">Excel Viewer</h3>
+                            {/* Sheet tabs */}
+                            {excelRendererData.sheets && excelRendererData.sheets.length > 1 && (
+                              <div className="flex space-x-1 mt-2 border-b">
+                                {excelRendererData.sheets.map((sheet, index) => (
+                                  <button
+                                    key={index}
+                                    className={`px-3 py-1 text-sm border-b-2 transition-colors ${activeSheetIndex === index
+                                      ? 'border-blue-500 text-blue-600 bg-blue-50'
+                                      : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                                      }`}
+                                    onClick={() => setActiveSheetIndex(index)}
+                                  >
+                                    {sheet.name || `Sheet ${index + 1}`}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-x-2">
+                            <Button
+                              size="small"
+                              onClick={() => window.open(currentUrl, '_blank')}
+                              icon={<LinkOutlined />}
+                            >
+                              Download
+                            </Button>
+                            <Button
+                              size="small"
+                              onClick={() => loadExcelWithRenderer(currentUrl)}
+                            >
+                              Refresh
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className={`${isFullscreen ? 'h-[calc(100vh-140px)]' : 'h-[70vh]'} border rounded p-4`}>
+                          <style jsx>{`
                           .excel-scroll-container::-webkit-scrollbar {
                             width: 12px;
                             height: 12px;
@@ -2509,74 +2509,143 @@ function Projects() {
                             overflow: scroll !important;
                           }
                         `}</style>
-                        {(() => {
-                          // Get current sheet data
-                          const currentSheet = excelRendererData.sheets ? excelRendererData.sheets[activeSheetIndex] : excelRendererData
-                          const currentRows = currentSheet?.rows || excelRendererData.rows || []
-                          const currentCols = currentSheet?.cols || excelRendererData.cols || []
+                          {(() => {
+                            // Get current sheet data
+                            const currentSheet = excelRendererData.sheets ? excelRendererData.sheets[activeSheetIndex] : excelRendererData
+                            const currentRows = currentSheet?.rows || excelRendererData.rows || []
+                            const currentCols = currentSheet?.cols || excelRendererData.cols || []
 
-                          return currentRows.length > 0 ? (
-                            <div className="excel-scroll-container h-full">
-                              <Table
-                                dataSource={currentRows.map((row, index) => {
-                                  const transformedRow = { key: index }
-                                  Object.keys(row).forEach(key => {
-                                    const value = row[key]
-                                    // Convert objects to strings, handle null/undefined
-                                    if (value && typeof value === 'object') {
-                                      transformedRow[key] = value.name || value.value || JSON.stringify(value)
-                                    } else {
-                                      transformedRow[key] = value !== null && value !== undefined ? String(value) : ''
+                            return currentRows.length > 0 ? (
+                              <div className="excel-scroll-container h-full">
+                                <Table
+                                  dataSource={currentRows.map((row, index) => {
+                                    const transformedRow = { key: index }
+                                    Object.keys(row).forEach(key => {
+                                      const value = row[key]
+                                      // Convert objects to strings, handle null/undefined
+                                      if (value && typeof value === 'object') {
+                                        transformedRow[key] = value.name || value.value || JSON.stringify(value)
+                                      } else {
+                                        transformedRow[key] = value !== null && value !== undefined ? String(value) : ''
+                                      }
+                                    })
+                                    return transformedRow
+                                  })}
+                                  columns={currentCols.map((col, index) => ({
+                                    title: typeof col === 'object' ? (col.name || col.value || `Column ${index + 1}`) : String(col),
+                                    dataIndex: index.toString(),
+                                    key: index.toString(),
+                                    ellipsis: true,
+                                    width: 180,
+                                    render: (text) => {
+                                      // Ensure we always render a string or valid React child
+                                      if (text === null || text === undefined) return ''
+                                      if (typeof text === 'object') return String(text.name || text.value || JSON.stringify(text))
+                                      return String(text)
                                     }
-                                  })
-                                  return transformedRow
-                                })}
-                                columns={currentCols.map((col, index) => ({
-                                  title: typeof col === 'object' ? (col.name || col.value || `Column ${index + 1}`) : String(col),
-                                  dataIndex: index.toString(),
-                                  key: index.toString(),
-                                  ellipsis: true,
-                                  width: 180,
-                                  render: (text) => {
-                                    // Ensure we always render a string or valid React child
-                                    if (text === null || text === undefined) return ''
-                                    if (typeof text === 'object') return String(text.name || text.value || JSON.stringify(text))
-                                    return String(text)
-                                  }
-                                }))}
-                                pagination={false}
-                                scroll={{
-                                  x: 'max-content',
-                                  y: isFullscreen ? 'calc(100vh - 180px)' : 'calc(70vh - 120px)'
-                                }}
-                                size="small"
-                                bordered
-                                tableLayout="fixed"
-                                className="excel-table"
-                              />
-                            </div>
-                          ) : (
-                            <div className="text-center py-8">
-                              <p className="text-gray-500">No data found in Excel file</p>
-                            </div>
-                          )
-                        })()}
+                                  }))}
+                                  pagination={false}
+                                  scroll={{
+                                    x: 'max-content',
+                                    y: isFullscreen ? 'calc(100vh - 180px)' : 'calc(70vh - 120px)'
+                                  }}
+                                  size="small"
+                                  bordered
+                                  tableLayout="fixed"
+                                  className="excel-table"
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-center py-8">
+                                <p className="text-gray-500">No data found in Excel file</p>
+                              </div>
+                            )
+                          })()}
+                        </div>
                       </div>
+                    )
+                  }
+
+                  // Initial state - show loading
+                  return (
+                    <div className="flex items-center justify-center h-[60vh]">
+                      <Spin size="large" tip="Loading Excel file..." />
                     </div>
                   )
                 }
 
-                // Initial state - show loading
-                return (
-                  <div className="flex items-center justify-center h-[60vh]">
-                    <Spin size="large" tip="Loading Excel file..." />
-                  </div>
-                )
-              }
+                // For Word documents, use mammoth.js
+                if (ext === 'docx' || ext === 'doc') {
+                  if (wordDocumentLoading) {
+                    return (
+                      <div className="flex items-center justify-center h-[60vh]">
+                        <Spin size="large" tip="Loading Word document..." />
+                      </div>
+                    )
+                  }
 
-              // For Word documents, use mammoth.js
-              if (ext === 'docx' || ext === 'doc') {
-                if (wordDocumentLoading) {
+                  if (wordDocumentError) {
+                    return (
+                      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+                        <div className="text-6xl mb-4"> document</div>
+                        <h3 className="text-xl font-semibold">Word Document Error</h3>
+                        <p className="text-gray-500 text-center max-w-md">{wordDocumentError}</p>
+                        <div className="space-x-2">
+                          <Button
+                            type="primary"
+                            icon={<LinkOutlined />}
+                            onClick={() => window.open(currentUrl, '_blank')}
+                          >
+                            Download Document
+                          </Button>
+                          <Button
+                            onClick={() => loadWordDocument(currentUrl)}
+                          >
+                            Retry
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  if (wordDocumentContent) {
+                    return (
+                      <div className={`w-full ${isFullscreen ? 'h-full' : 'h-[80vh]'}`}>
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-semibold">Word Document Viewer - Mammoth.js</h3>
+                          <div className="space-x-2">
+                            <Button
+                              size="small"
+                              onClick={() => window.open(currentUrl, '_blank')}
+                              icon={<LinkOutlined />}
+                            >
+                              Download
+                            </Button>
+                            <Button
+                              size="small"
+                              onClick={() => loadWordDocument(currentUrl)}
+                            >
+                              Refresh
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className={`${isFullscreen ? 'h-[calc(100vh-140px)]' : 'h-[70vh]'} overflow-auto border rounded p-6 bg-white`}>
+                          <div
+                            className="word-document-content"
+                            dangerouslySetInnerHTML={{ __html: wordDocumentContent }}
+                            style={{
+                              fontFamily: 'Arial, sans-serif',
+                              lineHeight: '1.6',
+                              color: '#333'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  // Initial state - show loading
                   return (
                     <div className="flex items-center justify-center h-[60vh]">
                       <Spin size="large" tip="Loading Word document..." />
@@ -2584,88 +2653,53 @@ function Projects() {
                   )
                 }
 
-                if (wordDocumentError) {
-                  return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                      <div className="text-6xl mb-4"> document</div>
-                      <h3 className="text-xl font-semibold">Word Document Error</h3>
-                      <p className="text-gray-500 text-center max-w-md">{wordDocumentError}</p>
-                      <div className="space-x-2">
-                        <Button
-                          type="primary"
-                          icon={<LinkOutlined />}
-                          onClick={() => window.open(currentUrl, '_blank')}
-                        >
-                          Download Document
-                        </Button>
-                        <Button
-                          onClick={() => loadWordDocument(currentUrl)}
-                        >
-                          Retry
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                }
-
-                if (wordDocumentContent) {
-                  return (
-                    <div className={`w-full ${isFullscreen ? 'h-full' : 'h-[80vh]'}`}>
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-semibold">Word Document Viewer - Mammoth.js</h3>
-                        <div className="space-x-2">
-                          <Button
-                            size="small"
-                            onClick={() => window.open(currentUrl, '_blank')}
-                            icon={<LinkOutlined />}
-                          >
-                            Download
-                          </Button>
-                          <Button
-                            size="small"
-                            onClick={() => loadWordDocument(currentUrl)}
-                          >
-                            Refresh
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className={`${isFullscreen ? 'h-[calc(100vh-140px)]' : 'h-[70vh]'} overflow-auto border rounded p-6 bg-white`}>
-                        <div
-                          className="word-document-content"
-                          dangerouslySetInnerHTML={{ __html: wordDocumentContent }}
-                          style={{
-                            fontFamily: 'Arial, sans-serif',
-                            lineHeight: '1.6',
-                            color: '#333'
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )
-                }
-
-                // Initial state - show loading
+                // For other Office files, show download option
                 return (
-                  <div className="flex items-center justify-center h-[60vh]">
-                    <Spin size="large" tip="Loading Word document..." />
+                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+                    <div className="text-6xl mb-4">{
+                      ext === 'pptx' || ext === 'ppt' ? ' presentation' :
+                        ' document'
+                    }</div>
+                    <h3 className="text-xl font-semibold">
+                      {ext ? ext.toUpperCase() : 'Document'}
+                    </h3>
+                    <p className="text-gray-500 text-center max-w-md">
+                      This document type cannot be previewed directly. Please download to view.
+                    </p>
+                    <Button
+                      type="primary"
+                      size="large"
+                      icon={<LinkOutlined />}
+                      onClick={() => window.open(currentUrl, '_blank')}
+                      className="mt-4"
+                    >
+                      Download Document
+                    </Button>
                   </div>
                 )
               }
 
-              // For other Office files, show download option
+              // Files that can be previewed directly (PDF, images, text)
+              if (directPreviewable) {
+                if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
+                  return (
+                    <div className={`w-full ${isFullscreen ? 'h-full' : 'h-[80vh]'} flex items-center justify-center bg-white`}>
+                      <img
+                        src={currentUrl}
+                        alt="Document"
+                        className={`max-w-full ${isFullscreen ? 'max-h-[calc(100vh-120px)]' : 'max-h-[80vh]'} object-contain`}
+                      />
+                    </div>
+                  )
+                }
+                return <iframe src={currentUrl} className={`w-full ${isFullscreen ? 'h-[calc(100vh-120px)]' : 'h-[80vh]'}`} title="Document" />
+              }
+
+              // Unknown file types - offer download
               return (
                 <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                  <div className="text-6xl mb-4">{
-                    ext === 'pptx' || ext === 'ppt' ? ' presentation' :
-                      ' document'
-                  }</div>
-                  <h3 className="text-xl font-semibold">
-                    {ext ? ext.toUpperCase() : 'Document'}
-                  </h3>
-                  <p className="text-gray-500 text-center max-w-md">
-                    This document type cannot be previewed directly. Please download to view.
-                  </p>
+                  <div className="text-6xl mb-4"> attachment</div>
+                  <h3 className="text-xl font-semibold">Document Preview</h3>
                   <Button
                     type="primary"
                     size="large"
@@ -2673,224 +2707,190 @@ function Projects() {
                     onClick={() => window.open(currentUrl, '_blank')}
                     className="mt-4"
                   >
-                    Download Document
+                    Open / Download
                   </Button>
                 </div>
               )
-            }
+            })()}
+          </Modal>
 
-            // Files that can be previewed directly (PDF, images, text)
-            if (directPreviewable) {
-              if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-                return (
-                  <div className={`w-full ${isFullscreen ? 'h-full' : 'h-[80vh]'} flex items-center justify-center bg-white`}>
-                    <img
-                      src={currentUrl}
-                      alt="Document"
-                      className={`max-w-full ${isFullscreen ? 'max-h-[calc(100vh-120px)]' : 'max-h-[80vh]'} object-contain`}
-                    />
-                  </div>
-                )
-              }
-              return <iframe src={currentUrl} className={`w-full ${isFullscreen ? 'h-[calc(100vh-120px)]' : 'h-[80vh]'}`} title="Document" />
-            }
-
-            // Unknown file types - offer download
-            return (
-              <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                <div className="text-6xl mb-4"> attachment</div>
-                <h3 className="text-xl font-semibold">Document Preview</h3>
-                <Button
-                  type="primary"
-                  size="large"
-                  icon={<LinkOutlined />}
-                  onClick={() => window.open(currentUrl, '_blank')}
-                  className="mt-4"
-                >
-                  Open / Download
-                </Button>
+          <Modal
+            title={`Allotment Sheet - ${selectedStageForAllotment?.stage_name || ''}`}
+            open={allotmentModalVisible}
+            onCancel={handleCloseAllotmentModal}
+            footer={null}
+            width={900}
+          >
+            <div className="bg-white text-black p-8 max-h-[80vh] overflow-auto">
+              <div className="text-center mb-8">
+                <h2 className="text-xl font-semibold">PP &amp; BD DEPT</h2>
               </div>
-            )
-          })()}
-        </Modal>
 
-        <Modal
-          title={`Allotment Sheet - ${selectedStageForAllotment?.stage_name || ''}`}
-          open={allotmentModalVisible}
-          onCancel={handleCloseAllotmentModal}
-          footer={null}
-          width={900}
-        >
-          <div className="bg-white text-black p-8 max-h-[80vh] overflow-auto">
-            <div className="text-center mb-8">
-              <h2 className="text-xl font-semibold">PP &amp; BD DEPT</h2>
-            </div>
+              {loadingAllotment && (
+                <div className="py-10 text-center text-slate-500">Loading allotment sheet...</div>
+              )}
 
-            {loadingAllotment && (
-              <div className="py-10 text-center text-slate-500">Loading allotment sheet...</div>
-            )}
+              {!loadingAllotment && (
+                <>
 
-            {!loadingAllotment && (
-              <>
-
-                <div className="flex justify-between mb-2">
-                  <div>
-                    <span className="mr-2 font-semibold">Released to C -</span>
-                    <span className="mr-2 font-semibold">
-                      {allotmentData?.center || ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="mr-2 font-semibold">Date:</span>
-                    <span className="mr-2 font-semibold">
-                      {allotmentData?.order_date || ''}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mb-1">
-                  <div className=" inline-block px-4 py-1 font-semibold">
-                    {allotmentData?.activity || 'Project Name'}
-                  </div>
-                </div>
-
-                <div className="space-y-2 mb-8 text-sm">
-                  <div>
-                    <span className="font-semibold mr-2">Customer:</span>
-                    <span className="inline-block min-w-[300px] align-middle">
-                      {`${allotmentData?.party_name || ''}${allotmentData?.address ? ', ' + allotmentData.address : ''
-                        }`}
-                    </span>
+                  <div className="flex justify-between mb-2">
+                    <div>
+                      <span className="mr-2 font-semibold">Released to C -</span>
+                      <span className="mr-2 font-semibold">
+                        {allotmentData?.center || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="mr-2 font-semibold">Date:</span>
+                      <span className="mr-2 font-semibold">
+                        {allotmentData?.order_date || ''}
+                      </span>
+                    </div>
                   </div>
 
+                  <div className="mb-1">
+                    <div className=" inline-block px-4 py-1 font-semibold">
+                      {allotmentData?.activity || 'Project Name'}
+                    </div>
+                  </div>
 
-                  <div>
-                    <span className="font-semibold mr-2">Contact Person:</span>
-                    <span className="inline-block min-w-[300px]  align-middle"> {allotmentData?.email || ''} </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Project Co-ordinator:</span>
-                    <span className="inline-block min-w-[300px]  align-middle">
-                      {allotmentData?.project_co_ordinator || ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Email &amp; Contact details:</span>
-                    <span className="inline-block min-w-[300px]  align-middle">
-
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Project Number:</span>
-                    <span className="inline-block min-w-[300px] font-semibold align-middle">
-                      {allotmentData?.project_number || ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Project Name:</span>
-                    <span className="inline-block min-w-[300px] font-semibold  align-middle">
-                      {allotmentData?.activity || ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Order Value:</span>
-                    <span className="inline-block min-w-[300px]  align-middle">
-                      {allotmentData?.order_value || ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Purchase order No:</span>
-                    <span className="inline-block min-w-[300px]  align-middle">
-                      {allotmentData?.order_number || ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold mr-2">Delivery date:</span>
-                    <span className="inline-block min-w-[300px]  align-middle">
-                      {formatDDMMYYYY(allotmentData?.delivery_date)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mb-8">
-                  <table className="w-full border border-black text-xs">
-                    <thead>
-                      <tr>
-                        <th className="border border-black px-2 py-1 text-left">Description</th>
-                        <th className="border border-black px-2 py-1 text-left">Full / Stage Payment</th>
-                        <th className="border border-black px-2 py-1 text-left">Invoice No and Amount</th>
-                        <th className="border border-black px-2 py-1 text-left">Invoice Date</th>
-                        <th className="border border-black px-2 py-1 text-left">Payment Received</th>
-                        <th className="border border-black px-2 py-1 text-left">Payment Received Date</th>
-                        <th className="border border-black px-2 py-1 text-left">Balance amount and remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allotmentData?.payments && Array.isArray(allotmentData.payments) && allotmentData.payments.length > 0 ? (
-                        allotmentData.payments.map((row, idx) => {
-                          const balAndRemarks = [row.bal, row.follow_up_status].filter(Boolean).join(' - ')
-                          return (
-                            <tr key={row.id || idx}>
-                              <td className="border border-black px-2 py-1">{row.description || ''}</td>
-                              <td className="border border-black px-2 py-1">{row.full_stage_payment || ''}</td>
-                              <td className="border border-black px-2 py-1">
-                                {row.invoice_no && <div>{row.invoice_no}</div>}
-                                {row.amount_claimed && <div>Rs. {row.amount_claimed}</div>}
-                              </td>
-                              <td className="border border-black px-2 py-1 whitespace-nowrap">{formatDDMMYYYY(row.invoice_date) || row.invoice_date || ''}</td>
-                              <td className="border border-black px-2 py-1 whitespace-nowrap">{row.amount_recieved || ''}</td>
-                              <td className="border border-black px-2 py-1 whitespace-nowrap">{formatDDMMYYYY(row.recieved_date) || row.recieved_date || ''}</td>
-                              <td className="border border-black px-2 py-1">{balAndRemarks}</td>
-                            </tr>
-                          )
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan="7" className="border border-black px-2 py-1 text-center text-gray-500">
-                            No payment records available
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '24px'
-                    }}>
-                      <div style={{ fontWeight: 600 }}>Copy to:</div>
-                      <div style={{ fontWeight: 600, textAlign: 'right', marginLeft: '600px' }}>
-                        CH (PP&amp;BD)
-                      </div>
+                  <div className="space-y-2 mb-8 text-sm">
+                    <div>
+                      <span className="font-semibold mr-2">Customer:</span>
+                      <span className="inline-block min-w-[300px] align-middle">
+                        {`${allotmentData?.party_name || ''}${allotmentData?.address ? ', ' + allotmentData.address : ''
+                          }`}
+                      </span>
                     </div>
 
-                    <table style={{ border: 'none', margin: 0 }}>
-                      <tr>
-                        <td style={{ border: 'none', padding: '4px 50px 4px 10px' }}>GH (P&S)</td>
-                        <td style={{ border: 'none', padding: '4px 50px' }}>Sr. CAO</td>
-                        <td style={{ border: 'none', padding: '4px 50px' }}>GH (C-{allotmentData?.center || ''})</td>
-                        <td style={{ border: 'none', padding: '4px 10px 4px 50px' }}>CH (C-{allotmentData?.center || ''})</td>
-                      </tr>
+
+                    <div>
+                      <span className="font-semibold mr-2">Contact Person:</span>
+                      <span className="inline-block min-w-[300px]  align-middle"> {allotmentData?.email || ''} </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Project Co-ordinator:</span>
+                      <span className="inline-block min-w-[300px]  align-middle">
+                        {allotmentData?.project_co_ordinator || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Email &amp; Contact details:</span>
+                      <span className="inline-block min-w-[300px]  align-middle">
+
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Project Number:</span>
+                      <span className="inline-block min-w-[300px] font-semibold align-middle">
+                        {allotmentData?.project_number || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Project Name:</span>
+                      <span className="inline-block min-w-[300px] font-semibold  align-middle">
+                        {allotmentData?.activity || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Order Value:</span>
+                      <span className="inline-block min-w-[300px]  align-middle">
+                        {allotmentData?.order_value || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Purchase order No:</span>
+                      <span className="inline-block min-w-[300px]  align-middle">
+                        {allotmentData?.order_number || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold mr-2">Delivery date:</span>
+                      <span className="inline-block min-w-[300px]  align-middle">
+                        {formatDDMMYYYY(allotmentData?.delivery_date)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mb-8">
+                    <table className="w-full border border-black text-xs">
+                      <thead>
+                        <tr>
+                          <th className="border border-black px-2 py-1 text-left">Description</th>
+                          <th className="border border-black px-2 py-1 text-left">Full / Stage Payment</th>
+                          <th className="border border-black px-2 py-1 text-left">Invoice No and Amount</th>
+                          <th className="border border-black px-2 py-1 text-left">Invoice Date</th>
+                          <th className="border border-black px-2 py-1 text-left">Payment Received</th>
+                          <th className="border border-black px-2 py-1 text-left">Payment Received Date</th>
+                          <th className="border border-black px-2 py-1 text-left">Balance amount and remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allotmentData?.payments && Array.isArray(allotmentData.payments) && allotmentData.payments.length > 0 ? (
+                          allotmentData.payments.map((row, idx) => {
+                            const balAndRemarks = [row.bal, row.follow_up_status].filter(Boolean).join(' - ')
+                            return (
+                              <tr key={row.id || idx}>
+                                <td className="border border-black px-2 py-1">{row.description || ''}</td>
+                                <td className="border border-black px-2 py-1">{row.full_stage_payment || ''}</td>
+                                <td className="border border-black px-2 py-1">
+                                  {row.invoice_no && <div>{row.invoice_no}</div>}
+                                  {row.amount_claimed && <div>Rs. {row.amount_claimed}</div>}
+                                </td>
+                                <td className="border border-black px-2 py-1 whitespace-nowrap">{formatDDMMYYYY(row.invoice_date) || row.invoice_date || ''}</td>
+                                <td className="border border-black px-2 py-1 whitespace-nowrap">{row.amount_recieved || ''}</td>
+                                <td className="border border-black px-2 py-1 whitespace-nowrap">{formatDDMMYYYY(row.recieved_date) || row.recieved_date || ''}</td>
+                                <td className="border border-black px-2 py-1">{balAndRemarks}</td>
+                              </tr>
+                            )
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan="7" className="border border-black px-2 py-1 text-center text-gray-500">
+                              No payment records available
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
                     </table>
                   </div>
-                </div>
 
-                <div style={{ marginTop: '16px', fontWeight: 600, fontSize: '12px' }}>
-                  Director: For kind information
-                </div>
+                  <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '24px'
+                      }}>
+                        <div style={{ fontWeight: 600 }}>Copy to:</div>
+                        <div style={{ fontWeight: 600, textAlign: 'right', marginLeft: '600px' }}>
+                          CH (PP&amp;BD)
+                        </div>
+                      </div>
+
+                      <table style={{ border: 'none', margin: 0 }}>
+                        <tr>
+                          <td style={{ border: 'none', padding: '4px 50px 4px 10px' }}>GH (P&S)</td>
+                          <td style={{ border: 'none', padding: '4px 50px' }}>Sr. CAO</td>
+                          <td style={{ border: 'none', padding: '4px 50px' }}>GH (C-{allotmentData?.center || ''})</td>
+                          <td style={{ border: 'none', padding: '4px 10px 4px 50px' }}>CH (C-{allotmentData?.center || ''})</td>
+                        </tr>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '16px', fontWeight: 600, fontSize: '12px' }}>
+                    Director: For kind information
+                  </div>
 
 
-              </>
-            )}
-          </div>
-        </Modal>
+                </>
+              )}
+            </div>
+          </Modal>
 
-      </div>
+        </div>
       </div>
     )
   }
@@ -2945,170 +2945,170 @@ function Projects() {
     <div className="space-y-4">
       {renderTopTabs()}
       <div className="rounded-3xl bg-white p-6 shadow-sm">
-      <Title level={3}>Projects</Title>
+        <Title level={3}>Projects</Title>
 
-      <div className="mb-6 flex flex-wrap gap-4 items-center">
-        <Input.Search
-          placeholder="Search by project number, activity or coordinator..."
-          allowClear
-          enterButton
-          size="large"
-          value={searchText}
-          onChange={e => setSearchText(e.target.value)}
-          onSearch={value => setSearchText(value)}
-          style={{ width: 420, maxWidth: '100%' }}
-        />
-
-        {!(isGHOrScientist || isCH) && (
-          <Select
-            placeholder="Filter by centre"
+        <div className="mb-6 flex flex-wrap gap-4 items-center">
+          <Input.Search
+            placeholder="Search by project number, activity or coordinator..."
             allowClear
+            enterButton
             size="large"
-            style={{ width: 240 }}
-            options={centerOptions}
-            value={selectedCenter}
-            onChange={setSelectedCenter}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            onSearch={value => setSearchText(value)}
+            style={{ width: 420, maxWidth: '100%' }}
           />
-        )}
 
-        {isCH && (
-          <Select
-            placeholder="Filter by group"
-            allowClear
-            size="large"
-            style={{ width: 240 }}
-            options={groupOptions}
-            value={selectedGroup}
-            onChange={setSelectedGroup}
-          />
-        )}
+          {!(isGHOrScientist || isCH) && (
+            <Select
+              placeholder="Filter by centre"
+              allowClear
+              size="large"
+              style={{ width: 240 }}
+              options={centerOptions}
+              value={selectedCenter}
+              onChange={setSelectedCenter}
+            />
+          )}
 
-        {isGHOrScientist && (
-          <Select
-            placeholder="Filter by coordinator"
-            allowClear
-            size="large"
-            style={{ width: 240 }}
-            options={coordinatorOptions}
-            value={selectedCoordinator}
-            onChange={setSelectedCoordinator}
-          />
-        )}
+          {isCH && (
+            <Select
+              placeholder="Filter by group"
+              allowClear
+              size="large"
+              style={{ width: 240 }}
+              options={groupOptions}
+              value={selectedGroup}
+              onChange={setSelectedGroup}
+            />
+          )}
 
-        {(searchText || selectedCenter || selectedGroup || selectedCoordinator || selectedProjectType !== 'ALL') && (
-          <Button type="default" size="large" onClick={handleClearFilters}>
-            Clear Filters
-          </Button>
-        )}
-      </div>
+          {isGHOrScientist && (
+            <Select
+              placeholder="Filter by coordinator"
+              allowClear
+              size="large"
+              style={{ width: 240 }}
+              options={coordinatorOptions}
+              value={selectedCoordinator}
+              onChange={setSelectedCoordinator}
+            />
+          )}
 
-      {/* Show count of filtered projects */}
-      <Text type="secondary" className="block mb-4">
-        {displayedProjectsCount} {displayedProjectsCount === 1 ? 'project' : 'projects'} found
-        {Object.keys(groupedProjects).length > 1 && (
-          <span className="ml-2">
-            ({Object.entries(groupedProjects).map(([type, items]) => `${items.length} ${type}`).join(', ')})
-          </span>
-        )}
-      </Text>
-
-      <Tabs
-        activeKey={selectedProjectType}
-        onChange={setSelectedProjectType}
-        className="mb-6"
-        items={[
-          {
-            key: 'ALL',
-            label: `All (${filteredCards.length})`,
-          },
-          ...(currentUserRole === 'scientist' ? [
-            {
-              key: 'TEAM_PROJECTS',
-              label: `Team Projects (${filteredTeamProjects.length})`,
-            }
-          ] : []),
-          ...projectTypeOrder
-            .filter((type) => (groupedProjects[type]?.length || 0) > 0)
-            .map((type) => {
-              const count = groupedProjects[type]?.length || 0
-              return {
-                key: type,
-                label: `${type} (${count})`,
-              }
-            }),
-        ]}
-      />
-
-      {displayedProjectsCount === 0 ? (
-        <Empty description="No projects match the current filters" />
-      ) : (
-        <div className="space-y-8">
-          {selectedProjectType === 'TEAM_PROJECTS' ? (
-            <div key="TEAM_PROJECTS">
-              <div className="flex items-center gap-3 mb-4 pb-2 border-b-2 border-indigo-200">
-                <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
-                <Title level={4} className="!mb-0 !text-indigo-700">
-                  Team Projects
-                </Title>
-                <span className="px-2 py-0.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-700">
-                  {filteredTeamProjects.length}
-                </span>
-              </div>
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {filteredTeamProjects.map((project) => renderProjectCard(project))}
-              </div>
-            </div>
-          ) : (
-            projectTypeOrder.map((type) => {
-              if (selectedProjectType !== 'ALL' && selectedProjectType !== type) return null
-              const projects = groupedProjects[type]
-              if (!projects || projects.length === 0) return null
-
-              const config = projectTypeConfig[type]
-              const colorClasses = {
-                blue: 'border-blue-200 text-blue-700 bg-blue-100',
-                indigo: 'border-indigo-200 text-indigo-700 bg-indigo-100',
-                emerald: 'border-emerald-200 text-emerald-700 bg-emerald-100',
-                amber: 'border-amber-200 text-amber-700 bg-amber-100',
-                purple: 'border-purple-200 text-purple-700 bg-purple-100',
-                teal: 'border-teal-200 text-teal-700 bg-teal-100',
-                cyan: 'border-cyan-200 text-cyan-700 bg-cyan-100',
-                rose: 'border-rose-200 text-rose-700 bg-rose-100',
-                slate: 'border-slate-200 text-slate-700 bg-slate-100'
-              }
-              const dotColors = {
-                blue: 'bg-blue-500',
-                indigo: 'bg-indigo-500',
-                emerald: 'bg-emerald-500',
-                amber: 'bg-amber-500',
-                purple: 'bg-purple-500',
-                teal: 'bg-teal-500',
-                cyan: 'bg-cyan-500',
-                rose: 'bg-rose-500',
-                slate: 'bg-slate-500'
-              }
-
-              return (
-                <div key={type}>
-                  <div className={`flex items-center gap-3 mb-4 pb-2 border-b-2 ${colorClasses[config.color].split(' ')[0]}`}>
-                    <div className={`w-3 h-3 rounded-full ${dotColors[config.color]}`}></div>
-                    <Title level={4} className={`!mb-0 !${colorClasses[config.color].split(' ')[1]}`}>
-                      {config.label}
-                    </Title>
-                    <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${colorClasses[config.color].split(' ')[2]} ${colorClasses[config.color].split(' ')[1]}`}>
-                      {projects.length}
-                    </span>
-                  </div>
-                  <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                    {projects.map((project) => renderProjectCard(project))}
-                  </div>
-                </div>
-              )
-            })
+          {(searchText || selectedCenter || selectedGroup || selectedCoordinator || selectedProjectType !== 'ALL') && (
+            <Button type="default" size="large" onClick={handleClearFilters}>
+              Clear Filters
+            </Button>
           )}
         </div>
-      )}
-    </div>
+
+        {/* Show count of filtered projects */}
+        <Text type="secondary" className="block mb-4">
+          {displayedProjectsCount} {displayedProjectsCount === 1 ? 'project' : 'projects'} found
+          {Object.keys(groupedProjects).length > 1 && (
+            <span className="ml-2">
+              ({Object.entries(groupedProjects).map(([type, items]) => `${items.length} ${type}`).join(', ')})
+            </span>
+          )}
+        </Text>
+
+        <Tabs
+          activeKey={selectedProjectType}
+          onChange={setSelectedProjectType}
+          className="mb-6"
+          items={[
+            {
+              key: 'ALL',
+              label: `All (${filteredCards.length})`,
+            },
+            ...(currentUserRole === 'scientist' ? [
+              {
+                key: 'TEAM_PROJECTS',
+                label: `Team Projects (${filteredTeamProjects.length})`,
+              }
+            ] : []),
+            ...projectTypeOrder
+              .filter((type) => (groupedProjects[type]?.length || 0) > 0)
+              .map((type) => {
+                const count = groupedProjects[type]?.length || 0
+                return {
+                  key: type,
+                  label: `${type} (${count})`,
+                }
+              }),
+          ]}
+        />
+
+        {displayedProjectsCount === 0 ? (
+          <Empty description="No projects match the current filters" />
+        ) : (
+          <div className="space-y-8">
+            {selectedProjectType === 'TEAM_PROJECTS' ? (
+              <div key="TEAM_PROJECTS">
+                <div className="flex items-center gap-3 mb-4 pb-2 border-b-2 border-indigo-200">
+                  <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                  <Title level={4} className="!mb-0 !text-indigo-700">
+                    Team Projects
+                  </Title>
+                  <span className="px-2 py-0.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-700">
+                    {filteredTeamProjects.length}
+                  </span>
+                </div>
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredTeamProjects.map((project) => renderProjectCard(project))}
+                </div>
+              </div>
+            ) : (
+              projectTypeOrder.map((type) => {
+                if (selectedProjectType !== 'ALL' && selectedProjectType !== type) return null
+                const projects = groupedProjects[type]
+                if (!projects || projects.length === 0) return null
+
+                const config = projectTypeConfig[type]
+                const colorClasses = {
+                  blue: 'border-blue-200 text-blue-700 bg-blue-100',
+                  indigo: 'border-indigo-200 text-indigo-700 bg-indigo-100',
+                  emerald: 'border-emerald-200 text-emerald-700 bg-emerald-100',
+                  amber: 'border-amber-200 text-amber-700 bg-amber-100',
+                  purple: 'border-purple-200 text-purple-700 bg-purple-100',
+                  teal: 'border-teal-200 text-teal-700 bg-teal-100',
+                  cyan: 'border-cyan-200 text-cyan-700 bg-cyan-100',
+                  rose: 'border-rose-200 text-rose-700 bg-rose-100',
+                  slate: 'border-slate-200 text-slate-700 bg-slate-100'
+                }
+                const dotColors = {
+                  blue: 'bg-blue-500',
+                  indigo: 'bg-indigo-500',
+                  emerald: 'bg-emerald-500',
+                  amber: 'bg-amber-500',
+                  purple: 'bg-purple-500',
+                  teal: 'bg-teal-500',
+                  cyan: 'bg-cyan-500',
+                  rose: 'bg-rose-500',
+                  slate: 'bg-slate-500'
+                }
+
+                return (
+                  <div key={type}>
+                    <div className={`flex items-center gap-3 mb-4 pb-2 border-b-2 ${colorClasses[config.color].split(' ')[0]}`}>
+                      <div className={`w-3 h-3 rounded-full ${dotColors[config.color]}`}></div>
+                      <Title level={4} className={`!mb-0 !${colorClasses[config.color].split(' ')[1]}`}>
+                        {config.label}
+                      </Title>
+                      <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${colorClasses[config.color].split(' ')[2]} ${colorClasses[config.color].split(' ')[1]}`}>
+                        {projects.length}
+                      </span>
+                    </div>
+                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                      {projects.map((project) => renderProjectCard(project))}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

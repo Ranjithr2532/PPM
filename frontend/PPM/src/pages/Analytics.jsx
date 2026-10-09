@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toPng } from 'html-to-image'
 import {
   EyeOutlined,
   SearchOutlined,
@@ -592,44 +593,42 @@ function Analytics() {
     }
   }
 
-  const handleDownloadGraph = () => {
+  const handleDownloadGraph = async () => {
+    const hide = message.loading('Exporting chart image...', 0)
     try {
       const container = graphCardRef.current
-      if (!container) return
-
-      const svgEl = container.querySelector('svg')
-      if (!svgEl) {
-        message.warning('Chart is not ready yet.')
+      if (!container) {
+        hide()
+        message.warning('Chart container not found.')
         return
       }
 
-      const serializer = new XMLSerializer()
-      const svgString = serializer.serializeToString(svgEl)
-      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
-      const URL = window.URL || window.webkitURL || window
-      const blobURL = URL.createObjectURL(svgBlob)
+      const dataUrl = await toPng(container, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        cacheBust: true,
+        filter: (node) => {
+          if (
+            node.classList &&
+            (node.classList.contains('no-export') ||
+              node.getAttribute?.('data-no-export') === 'true')
+          ) {
+            return false
+          }
+          return true
+        },
+      })
 
-      const image = new Image()
-      image.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = svgEl.clientWidth || svgEl.getBoundingClientRect().width || 800
-        canvas.height = svgEl.clientHeight || svgEl.getBoundingClientRect().height || 420
-        const context = canvas.getContext('2d')
-        context.fillStyle = '#ffffff'
-        context.fillRect(0, 0, canvas.width, canvas.height)
-        context.drawImage(image, 0, 0)
-
-        const png = canvas.toDataURL('image/png')
-        const a = document.createElement('a')
-        a.href = png
-        a.download = `director-analytics_${chartType || 'chart'}_${dayjs().format('YYYY-MM-DD_HH-mm-ss')}.png`
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        URL.revokeObjectURL(blobURL)
-      }
-      image.src = blobURL
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `director-analytics_${chartType || 'chart'}_${dayjs().format('YYYY-MM-DD_HH-mm-ss')}.png`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      hide()
+      message.success('Chart image downloaded successfully!')
     } catch (e) {
+      hide()
       console.error('Download error:', e)
       message.error('Unable to download chart image.')
     }
@@ -3745,8 +3744,9 @@ function Analytics() {
                           </div>
                           {statusFilter !== null && (
                             <button
+                              data-no-export="true"
                               onClick={() => setStatusFilter(null)}
-                              className="text-[11px] text-cyan-600 hover:text-cyan-800 underline font-bold cursor-pointer transition-colors"
+                              className="text-[11px] text-cyan-600 hover:text-cyan-800 underline font-bold cursor-pointer transition-colors no-export"
                             >
                               Reset Card Filter
                             </button>
@@ -3763,7 +3763,7 @@ function Analytics() {
                         <p className="text-slate-500 text-sm">
                           Showing {filteredData.length} records in graph form
                         </p>
-                        <div className="mt-2">
+                        <div className="mt-2 no-export" data-no-export="true">
                           <Segmented
                             size="small"
                             value={chartType}
@@ -3781,7 +3781,7 @@ function Analytics() {
                           />
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2" style={isGraphFullscreen ? { zIndex: 100 } : {}}>
+                      <div className="flex flex-wrap items-center gap-2 no-export" data-no-export="true" style={isGraphFullscreen ? { zIndex: 100 } : {}}>
                         {drillLevel !== 'top' && !trendCategory && (
                           <Button size="small" onClick={handleDrillBack}>
                             Back
